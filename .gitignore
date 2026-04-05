@@ -1,0 +1,47 @@
+# Build output
+dist/
+*.tsbuildinfo
+
+# Compiled TypeScript artifacts in src/ (build outputs to dist/)
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
+src/**/*.d.ts.map
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.tgz
+.npm
+
+# Test runtime artifacts
+**/test-data-integration/
+
+# Internal files
+.claude/
+.codanna/
+.fastembed_cache
+conduct/

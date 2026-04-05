@@ -1,0 +1,36 @@
+name: Compatibility Check
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '25'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update @rcrsr/rill to latest compatible
+        run: pnpm update @rcrsr/rill
+
+      - name: Update @rcrsr/rill-config to latest compatible
+        run: pnpm update @rcrsr/rill-config
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Run tests
+        run: pnpm run test

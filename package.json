@@ -1,0 +1,66 @@
+{
+  "name": "@rcrsr/rill-cli",
+  "version": "0.18.3",
+  "description": "CLI tools for the rill scripting language",
+  "license": "MIT",
+  "author": "Andre Bremer",
+  "type": "module",
+  "packageManager": "pnpm@10.29.2",
+  "keywords": [
+    "rill",
+    "cli",
+    "scripting",
+    "exec",
+    "eval"
+  ],
+  "bin": {
+    "rill-exec": "./dist/cli-exec.js",
+    "rill-eval": "./dist/cli-eval.js",
+    "rill-check": "./dist/cli-check.js",
+    "rill-run": "./dist/cli-run.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "build:dev": "tsc --build tsconfig.dev.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "check": "pnpm run build && pnpm run test && pnpm run lint"
+  },
+  "dependencies": {
+    "@rcrsr/rill": "~0.18.0",
+    "@rcrsr/rill-config": "~0.18.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@rcrsr/rill": "~0.18.0",
+    "@rcrsr/rill-config": "~0.18.0",
+    "@types/node": "^25.3.5",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.2",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rcrsr/rill-cli.git"
+  },
+  "homepage": "https://github.com/rcrsr/rill-cli",
+  "bugs": {
+    "url": "https://github.com/rcrsr/rill-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

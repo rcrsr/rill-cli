@@ -1,8 +1,14 @@
+[![CI](https://github.com/rcrsr/rill-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rcrsr/rill-cli/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@rcrsr/rill-cli)](https://www.npmjs.com/package/@rcrsr/rill-cli)
+[![Node](https://img.shields.io/node/v/@rcrsr/rill-cli)](https://www.npmjs.com/package/@rcrsr/rill-cli)
+[![License](https://img.shields.io/npm/l/@rcrsr/rill-cli)](https://github.com/rcrsr/rill-cli/blob/main/LICENSE)
+
 # @rcrsr/rill-cli
 
 Command-line tools for running and validating [rill](https://rill.run) scripts.
 
-> **Experimental.** Breaking changes will occur before stabilization.
+> [!WARNING]
+> **This language is experimental.** Breaking changes will occur before stabilization.
 
 | Tool | Purpose |
 |------|---------|
@@ -15,6 +21,12 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 
 ```bash
 npm install -g @rcrsr/rill-cli
+```
+
+Or as a project dependency (peer dependencies `@rcrsr/rill` and `@rcrsr/rill-config` are bundled but will deduplicate with your project's versions):
+
+```bash
+npm install @rcrsr/rill-cli
 ```
 
 ## Tools

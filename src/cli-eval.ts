@@ -15,7 +15,12 @@ import {
   toNative,
   type ExecutionResult,
 } from '@rcrsr/rill';
-import { determineExitCode, VERSION, CLI_VERSION } from './cli-shared.js';
+import {
+  determineExitCode,
+  VERSION,
+  CLI_VERSION,
+  detectHelpVersionFlag,
+} from './cli-shared.js';
 
 /**
  * Parse command-line arguments into structured command
@@ -26,17 +31,16 @@ function parseArgs(
   | { mode: 'exec'; file: string; args: string[] }
   | { mode: 'eval'; expression: string }
   | { mode: 'help' | 'version' } {
-  // Check for --help and --version in any position
-  if (argv.includes('--help')) {
-    return { mode: 'help' };
-  }
-  if (argv.includes('--version')) {
-    return { mode: 'version' };
+  // Check for --help and --version in any position (supports -h/-v shorthands)
+  const helpVersionFlag = detectHelpVersionFlag(argv);
+  if (helpVersionFlag !== null) {
+    return helpVersionFlag;
   }
 
   // Check for unknown flags (anything starting with -)
+  const knownFlags = new Set(['--help', '-h', '--version', '-v']);
   for (const arg of argv) {
-    if (arg.startsWith('-') && arg !== '-') {
+    if (arg.startsWith('-') && arg !== '-' && !knownFlags.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
@@ -76,24 +80,24 @@ export async function evaluateExpression(
  * Display help information
  */
 function showHelp(): void {
-  console.log(`Rill Expression Evaluator
+  process.stdout.write(`Rill Expression Evaluator
 
 Usage:
   rill-eval <expression>      Evaluate a Rill expression
-  rill-eval --help            Show this help message
-  rill-eval --version         Show version information
+  rill-eval -h, --help        Show this help message
+  rill-eval -v, --version     Show version information
 
 Examples:
   rill-eval '"hello".len'
   rill-eval '5 + 3'
-  rill-eval '[1, 2, 3] -> map |x|($x * 2)'`);
+  rill-eval '[1, 2, 3] -> map |x|($x * 2)'\n`);
 }
 
 /**
  * Display version information
  */
 function showVersion(): void {
-  console.log(`rill-eval ${CLI_VERSION} (rill ${VERSION})`);
+  process.stdout.write(`rill-eval ${CLI_VERSION} (rill ${VERSION})\n`);
 }
 
 /**
@@ -131,7 +135,9 @@ async function main(): Promise<void> {
     console.error('Unexpected command mode');
     process.exit(1);
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
+    process.stderr.write(
+      (err instanceof Error ? err.message : String(err)) + '\n'
+    );
     process.exit(1);
   }
 }

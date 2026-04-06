@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `rill-build` CLI command: compiles a rill project into a self-contained output directory with bundled extensions, entry files, and build metadata
+
+### Changed
+
+- Rename `rill-compile` to `rill-build` (bin entry, source files, public API types)
+- Standardize `-h`/`-v` shorthands across all CLI commands (rill-eval, rill-run, rill-build)
+- Add `--help`/`--version` and unknown flag rejection to `rill-build`
+- Standardize stderr output to `process.stderr.write` in rill-eval
+- Add CLI flag tests for rill-build, rill-eval, and rill-run
+
 ## [0.18.5] - 2026-04-06
 
 ### Added

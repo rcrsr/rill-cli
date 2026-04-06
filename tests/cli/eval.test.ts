@@ -2,9 +2,46 @@
  * Rill CLI Tests: rill-eval command
  */
 
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ParseError, RuntimeError } from '@rcrsr/rill';
 import { evaluateExpression } from '../../src/cli-eval.js';
+
+const CLI_PATH = path.join(process.cwd(), 'dist', 'cli-eval.js');
+
+// Spawn env without VITEST vars so the CLI's shouldRunMain guard does not block execution
+const SPAWN_ENV = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([k]) => k !== 'VITEST' && k !== 'VITEST_WORKER_ID' && k !== 'NODE_ENV'
+  )
+);
+
+function run(args: string[]): {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+} {
+  try {
+    const stdout = execFileSync('node', [CLI_PATH, ...args], {
+      encoding: 'utf-8',
+      timeout: 10000,
+      env: SPAWN_ENV,
+    });
+    return { stdout, stderr: '', exitCode: 0 };
+  } catch (err: unknown) {
+    const spawnErr = err as {
+      stdout?: string;
+      stderr?: string;
+      status?: number;
+    };
+    return {
+      stdout: spawnErr.stdout ?? '',
+      stderr: spawnErr.stderr ?? '',
+      exitCode: spawnErr.status ?? 1,
+    };
+  }
+}
 
 describe('rill-eval', () => {
   describe('evaluateExpression', () => {
@@ -70,6 +107,67 @@ describe('rill-eval', () => {
         expect((err as RuntimeError).errorId).toBe('RILL-R005');
         expect((err as RuntimeError).location?.line).toBe(1);
       }
+    });
+  });
+});
+
+describe('rill-eval CLI flags', () => {
+  describe('--help flag', () => {
+    it('exits 0 and prints usage for --help', () => {
+      const result = run(['--help']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('rill-eval');
+      expect(result.stdout).toContain('Usage');
+    });
+
+    it('exits 0 and prints usage for -h', () => {
+      const result = run(['-h']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Usage');
+    });
+  });
+
+  describe('--version flag', () => {
+    it('exits 0 and prints rill-eval for --version', () => {
+      const result = run(['--version']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('rill-eval');
+    });
+
+    it('exits 0 and prints rill-eval for -v', () => {
+      const result = run(['-v']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('rill-eval');
+    });
+  });
+
+  describe('unknown flag rejection', () => {
+    it('exits 1 and reports unknown flag for --unknown', () => {
+      const result = run(['--unknown']);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown option: --unknown');
+    });
+
+    it('exits 1 and reports unknown flag for -x', () => {
+      const result = run(['-x']);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown option: -x');
+    });
+  });
+
+  describe('no args defaults to help', () => {
+    it('exits 0 and prints usage when no args provided', () => {
+      const result = run([]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Usage');
+    });
+  });
+
+  describe('expression evaluation via CLI', () => {
+    it('evaluates expression and prints result', () => {
+      const result = run(['"hello".len']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('5');
     });
   });
 });

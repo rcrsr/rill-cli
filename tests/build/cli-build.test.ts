@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { spawn } from 'node:child_process';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
+import os from 'node:os';
+
+beforeAll(() => {
+  execSync('pnpm run build', { stdio: 'ignore' });
+}, 30000);
 
 const CLI_PATH = path.resolve(process.cwd(), 'dist/cli-build.js');
 
@@ -100,7 +105,9 @@ describe('rill-build unknown flags', () => {
 
 describe('rill-build missing config', () => {
   it('exits 1 and reports missing rill-config.json for nonexistent dir', async () => {
-    const result = await run(['/tmp/nonexistent-dir-xyz-rill-cli-test']);
+    const result = await run([
+      path.join(os.tmpdir(), 'rill-build-nonexistent-xyz'),
+    ]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('rill-config.json not found');

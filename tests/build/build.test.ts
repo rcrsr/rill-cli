@@ -454,31 +454,34 @@ describe('buildAgent error cases', () => {
   // ----------------------------------------------------------
   // AC-34/EC-15: Output not writable → BuildError phase 'bundling'
   // ----------------------------------------------------------
-  it('throws BuildError phase bundling when output dir is not writable [AC-34/EC-15]', async () => {
-    const { projectDir } = await makeProjectFixture();
+  it.skipIf(process.platform === 'win32')(
+    'throws BuildError phase bundling when output dir is not writable [AC-34/EC-15]',
+    async () => {
+      const { projectDir } = await makeProjectFixture();
 
-    // Make a read-only parent directory so mkdir on the outputDir path fails.
-    const readOnlyParent = await makeTmpDir();
-    const blockedOutputDir = path.join(readOnlyParent, 'output');
+      // Make a read-only parent directory so mkdir on the outputDir path fails.
+      const readOnlyParent = await makeTmpDir();
+      const blockedOutputDir = path.join(readOnlyParent, 'output');
 
-    // chmod 000 prevents the process from creating subdirectories inside.
-    await import('node:fs/promises').then(({ chmod }) =>
-      chmod(readOnlyParent, 0o000)
-    );
-
-    try {
-      await expect(
-        buildAgent(projectDir, { outputDir: blockedOutputDir })
-      ).rejects.toSatisfy((e: unknown) => {
-        return e instanceof BuildError && e.phase === 'bundling';
-      });
-    } finally {
-      // Restore permissions so afterEach cleanup can remove the dir.
+      // chmod 000 prevents the process from creating subdirectories inside.
       await import('node:fs/promises').then(({ chmod }) =>
-        chmod(readOnlyParent, 0o755)
+        chmod(readOnlyParent, 0o000)
       );
+
+      try {
+        await expect(
+          buildAgent(projectDir, { outputDir: blockedOutputDir })
+        ).rejects.toSatisfy((e: unknown) => {
+          return e instanceof BuildError && e.phase === 'bundling';
+        });
+      } finally {
+        // Restore permissions so afterEach cleanup can remove the dir.
+        await import('node:fs/promises').then(({ chmod }) =>
+          chmod(readOnlyParent, 0o755)
+        );
+      }
     }
-  });
+  );
 });
 
 // ============================================================

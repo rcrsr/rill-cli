@@ -6,9 +6,7 @@ import { readFileSync } from 'node:fs';
  * Files are sorted deterministically before hashing.
  * Returns `sha256:<hex>`.
  */
-export async function computeChecksum(
-  filePaths: readonly string[]
-): Promise<string> {
+export function computeChecksum(filePaths: readonly string[]): string {
   const sorted = [...filePaths].sort();
   const hash = createHash('sha256');
 

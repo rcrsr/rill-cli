@@ -37,14 +37,28 @@ async function main(): Promise<void> {
         process.stderr.write(`Error: Unknown option: ${arg}\n`);
         process.exit(1);
       }
-      // Skip --output value
+      // Skip --output value, validating it exists and is not a flag
       if (arg === '--output') {
+        const next = args[i + 1];
+        if (next === undefined || next.startsWith('-')) {
+          process.stderr.write(`Error: --output requires a value\n`);
+          process.exit(1);
+        }
         i++;
       }
     }
   }
 
-  const positionals = args.filter((a) => !a.startsWith('-'));
+  const positionals: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--output') {
+      i++; // skip value
+    } else if (arg && !arg.startsWith('-')) {
+      positionals.push(arg);
+    }
+  }
+
   const projectDir =
     positionals[0] !== undefined && positionals[0] !== ''
       ? positionals[0]
@@ -52,7 +66,9 @@ async function main(): Promise<void> {
 
   const outputIdx = args.indexOf('--output');
   const outputDir =
-    outputIdx !== -1 && outputIdx + 1 < args.length
+    outputIdx !== -1 &&
+    args[outputIdx + 1] !== undefined &&
+    !args[outputIdx + 1]!.startsWith('-')
       ? args[outputIdx + 1]
       : undefined;
 

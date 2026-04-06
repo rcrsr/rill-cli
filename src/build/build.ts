@@ -134,6 +134,7 @@ async function bundleExtensionToFile(
       platform: 'node',
       outfile: destPath,
       logLevel: 'silent',
+      absWorkingDir: projectDir,
     });
 
     // Post-process: inline _require("...package.json") left by esbuild's
@@ -224,8 +225,22 @@ async function buildAgentFiles(
   for (const [alias, relPath] of Object.entries(modulesMap)) {
     const srcPath = path.resolve(projectDir, relPath);
     const destPath = path.join(agentOutDir, 'modules', `${alias}.rill`);
-    await mkdir(path.dirname(destPath), { recursive: true });
-    await copyFile(srcPath, destPath);
+    if (!existsSync(srcPath)) {
+      throw new BuildError(
+        `Module '${alias}' source not found: ${srcPath}`,
+        'compilation'
+      );
+    }
+    try {
+      await mkdir(path.dirname(destPath), { recursive: true });
+      await copyFile(srcPath, destPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BuildError(
+        `Module '${alias}' copy failed: ${msg}`,
+        'compilation'
+      );
+    }
     writtenFiles.push(destPath);
   }
 
@@ -261,6 +276,14 @@ async function buildAgentFiles(
       ...(existingExtBlock ?? {}),
       mounts: rewrittenMounts,
     };
+  }
+  // Rewrite modules paths to point to the copied ./modules/<alias>.rill files
+  const rewrittenModules: Record<string, string> = {};
+  for (const [alias] of Object.entries(agent.modules)) {
+    rewrittenModules[alias] = `./modules/${alias}.rill`;
+  }
+  if (Object.keys(rewrittenModules).length > 0) {
+    outputConfig['modules'] = rewrittenModules;
   }
   const rillConfigDestPath = path.join(agentOutDir, 'rill-config.json');
   await writeFile(
@@ -355,6 +378,13 @@ export async function buildAgent(
       ? rawConfigObj['name']
       : path.basename(absProjectDir);
   if (
+    agentName.includes('/') ||
+    agentName.includes('\\') ||
+    agentName.includes('..')
+  ) {
+    throw new BuildError(`Invalid agent name: ${agentName}`, 'validation');
+  }
+  if (
     typeof rawConfigObj['version'] !== 'string' ||
     rawConfigObj['version'].length === 0
   ) {
@@ -429,6 +459,21 @@ export async function buildAgent(
     }
   }
 
+  // Validate outputDir does not overlap with project directory
+  const absOutputDir = path.resolve(outputDir);
+  const homedir = (await import('node:os')).homedir();
+  const dangerousPaths = ['/', homedir];
+  if (
+    absOutputDir === absProjectDir ||
+    absProjectDir.startsWith(absOutputDir + path.sep) ||
+    dangerousPaths.includes(absOutputDir)
+  ) {
+    throw new BuildError(
+      'Output directory must not overlap with project directory',
+      'validation'
+    );
+  }
+
   const agentInput: AgentBuildInput = {
     name: agentName,
     entry: parsedMain.filePath,
@@ -437,21 +482,11 @@ export async function buildAgent(
     originalConfig: rawConfigObj,
   };
 
-  // Step: Idempotency — clean output directory
-  try {
-    await rm(outputDir, { recursive: true, force: true });
-    await mkdir(outputDir, { recursive: true });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new BuildError(
-      `Cannot write to output directory ${outputDir}: ${msg}`,
-      'bundling'
-    );
-  }
-
   // Create agent output directory: <outputDir>/<agentName>/
-  const agentOutDir = path.join(outputDir, agentName);
+  // Only clean the agent subdirectory to preserve other agents' output.
+  const agentOutDir = path.join(absOutputDir, agentName);
   try {
+    await rm(agentOutDir, { recursive: true, force: true });
     await mkdir(agentOutDir, { recursive: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -483,12 +518,10 @@ export async function buildAgent(
       configPath: outputRillConfigPath,
       rillVersion,
     });
-    process.chdir(originalCwd);
     for (const dispose of dryRunResult.disposes) {
       await dispose();
     }
   } catch (err) {
-    process.chdir(originalCwd);
     if (
       err instanceof ConfigEnvError ||
       (err instanceof ExtensionLoadError &&
@@ -496,17 +529,19 @@ export async function buildAgent(
     ) {
       // Validation skipped: will be validated at runtime by the harness
     } else {
-      await rm(outputDir, { recursive: true, force: true }).catch(
+      await rm(agentOutDir, { recursive: true, force: true }).catch(
         () => undefined
       );
       const msg = err instanceof Error ? err.message : String(err);
       throw new BuildError(`Bundle validation failed: ${msg}`, 'validation');
     }
+  } finally {
+    process.chdir(originalCwd);
   }
 
   // Compute checksum over all output files EXCEPT rill-config.json
   const sortedFiles = [...allWrittenFiles].sort();
-  const checksum = await computeChecksum(sortedFiles);
+  const checksum = computeChecksum(sortedFiles);
 
   // Step: Rewrite rill-config.json with build metadata section
   const outputConfigWithBuild: Record<string, unknown> = {
@@ -531,6 +566,14 @@ export async function buildAgent(
       ...(existingExtBlock ?? {}),
       mounts: rewrittenMounts,
     };
+  }
+  // Re-apply module path rewrites — all modules are copied locally
+  const finalRewrittenModules: Record<string, string> = {};
+  for (const [alias] of Object.entries(agentInput.modules)) {
+    finalRewrittenModules[alias] = `./modules/${alias}.rill`;
+  }
+  if (Object.keys(finalRewrittenModules).length > 0) {
+    outputConfigWithBuild['modules'] = finalRewrittenModules;
   }
   try {
     await writeFile(

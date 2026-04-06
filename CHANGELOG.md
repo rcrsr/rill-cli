@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.18.5
 
 - Update `@rcrsr/rill-config` from 0.18.4 to 0.18.5
 - Remove `env` parameter from `loadProject()` call (breaking change in rill-config)

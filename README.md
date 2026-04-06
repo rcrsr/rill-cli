@@ -16,6 +16,7 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 | `rill-eval` | Evaluate a single rill expression (no file context) |
 | `rill-check` | Static analysis and lint validation |
 | `rill-run` | Config-driven execution with extensions and modules |
+| `rill-build` | Compile a rill project into a self-contained output directory |
 
 ## Install
 
@@ -127,6 +128,35 @@ rill-run [--config <path>] [args...]
 **Handler mode:** When `main` names a handler (e.g., `"script.rill:processOrder"`), parameters come from `--param_name value` flags. Run `rill-run --help` to print the parameter list.
 
 See [CLI Reference](https://github.com/rcrsr/rill/blob/main/docs/integration-cli.md) and [Config Reference](https://github.com/rcrsr/rill/blob/main/docs/ref-config.md) for details.
+
+### rill-build
+
+Compile a rill project into a self-contained output directory. Bundles extensions via esbuild, copies entry and module files, and writes an enriched `rill-config.json` with build metadata.
+
+```bash
+rill-build [project-dir] [--output <dir>]
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--output <dir>` | Output directory (default: `build/`) |
+
+**Output structure:**
+
+```
+build/<agent-name>/
+  main.rill              # entry script
+  rill-config.json       # enriched with build section
+  extensions/            # bundled extension JS files
+  modules/               # copied module .rill files
+  runtime.js             # bundled rill runtime
+  run.js                 # CLI wrapper
+  handler.js             # handler export for harness consumption
+```
+
+The `build` section in the output `rill-config.json` contains a SHA-256 checksum, rill runtime version, and config version.
 
 ## Documentation
 

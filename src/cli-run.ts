@@ -23,6 +23,9 @@ import {
   parseMainField,
   introspectHandler,
   marshalCliArgs,
+  hasSessionVars,
+  extractSessionVarNames,
+  substituteSessionVars,
   ConfigError,
   type HandlerParam,
 } from '@rcrsr/rill-config';
@@ -233,7 +236,6 @@ export async function main(): Promise<void> {
   try {
     project = await loadProject({
       configPath,
-      env: process.env as Record<string, string>,
       rillVersion: VERSION,
     });
   } catch (err) {
@@ -242,6 +244,22 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
     throw err;
+  }
+
+  // Substitute session vars from environment
+  if (hasSessionVars(project.config)) {
+    const names = extractSessionVarNames(project.config);
+    const vars: Record<string, string> = {};
+    for (const name of names) {
+      const val = process.env[name];
+      if (val !== undefined) {
+        vars[name] = val;
+      }
+    }
+    project = {
+      ...project,
+      config: substituteSessionVars(project.config, vars),
+    };
   }
 
   // Create bindings and exit early if --create-bindings was set

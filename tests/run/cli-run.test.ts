@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   parseMainField: vi.fn(),
   introspectHandler: vi.fn(),
   marshalCliArgs: vi.fn(),
+  hasSessionVars: vi.fn(),
+  extractSessionVarNames: vi.fn(),
+  substituteSessionVars: vi.fn(),
   invokeCallable: vi.fn(),
   isScriptCallable: vi.fn(),
   readFileSync: vi.fn(),
@@ -34,6 +37,9 @@ vi.mock('@rcrsr/rill-config', async (importActual) => {
     parseMainField: mocks.parseMainField,
     introspectHandler: mocks.introspectHandler,
     marshalCliArgs: mocks.marshalCliArgs,
+    hasSessionVars: mocks.hasSessionVars,
+    extractSessionVarNames: mocks.extractSessionVarNames,
+    substituteSessionVars: mocks.substituteSessionVars,
   };
 });
 
@@ -344,6 +350,7 @@ describe('main() loadProject flow', () => {
 
     mocks.resolveConfigPath.mockReturnValue('/project/rill-config.json');
     mocks.runScript.mockResolvedValue({ exitCode: 0 });
+    mocks.hasSessionVars.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -458,6 +465,68 @@ describe('main() loadProject flow', () => {
 
       expect(stderrChunks.join('')).toContain('Extension load failed');
       expect(exitCode).toBe(1);
+    });
+  });
+
+  describe('session var substitution', () => {
+    it('substitutes session vars from process.env', async () => {
+      const originalConfig = { main: 'src/index.rill', modules: {} };
+      const substitutedConfig = { main: 'src/index.rill', modules: {} };
+
+      mocks.loadProject.mockResolvedValue({
+        ...makeProjectResult({ main: 'src/index.rill' }),
+        config: originalConfig,
+      });
+      mocks.hasSessionVars.mockReturnValue(true);
+      mocks.extractSessionVarNames.mockReturnValue(['MY_TOKEN']);
+      mocks.substituteSessionVars.mockReturnValue(substitutedConfig);
+
+      process.env['MY_TOKEN'] = 'secret-value';
+      try {
+        await runMain([]);
+      } finally {
+        delete process.env['MY_TOKEN'];
+      }
+
+      expect(mocks.substituteSessionVars).toHaveBeenCalledWith(originalConfig, {
+        MY_TOKEN: 'secret-value',
+      });
+      expect(mocks.runScript).toHaveBeenCalledWith(
+        expect.anything(),
+        substitutedConfig,
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    it('omits session vars not present in process.env', async () => {
+      mocks.loadProject.mockResolvedValue(
+        makeProjectResult({ main: 'src/index.rill' })
+      );
+      mocks.hasSessionVars.mockReturnValue(true);
+      mocks.extractSessionVarNames.mockReturnValue(['MISSING_VAR']);
+      mocks.substituteSessionVars.mockReturnValue({
+        main: 'src/index.rill',
+        modules: {},
+      });
+
+      await runMain([]);
+
+      expect(mocks.substituteSessionVars).toHaveBeenCalledWith(
+        expect.anything(),
+        {}
+      );
+    });
+
+    it('skips substitution when no session vars exist', async () => {
+      mocks.loadProject.mockResolvedValue(
+        makeProjectResult({ main: 'src/index.rill' })
+      );
+      mocks.hasSessionVars.mockReturnValue(false);
+
+      await runMain([]);
+
+      expect(mocks.substituteSessionVars).not.toHaveBeenCalled();
     });
   });
 

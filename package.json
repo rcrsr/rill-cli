@@ -11,13 +11,15 @@
     "cli",
     "scripting",
     "exec",
-    "eval"
+    "eval",
+    "build"
   ],
   "bin": {
     "rill-exec": "./dist/cli-exec.js",
     "rill-eval": "./dist/cli-eval.js",
     "rill-check": "./dist/cli-check.js",
-    "rill-run": "./dist/cli-run.js"
+    "rill-run": "./dist/cli-run.js",
+    "rill-build": "./dist/cli-build.js"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -37,7 +39,8 @@
   "dependencies": {
     "@rcrsr/rill": "~0.18.3",
     "@rcrsr/rill-config": "~0.18.5",
-    "dotenv": "^17.4.1"
+    "dotenv": "^17.4.1",
+    "esbuild": "^0.28.0"
   },
   "peerDependencies": {
     "@rcrsr/rill": "~0.18.3",
@@ -66,5 +69,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

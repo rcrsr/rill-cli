@@ -29,7 +29,7 @@ import {
   ConfigError,
   type HandlerParam,
 } from '@rcrsr/rill-config';
-import { CLI_VERSION } from './cli-shared.js';
+import { CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
 import { explainError } from './cli-explain.js';
 import { formatOutput, runScript } from './run/runner.js';
 import type { RunCliOptions } from './run/types.js';
@@ -51,8 +51,8 @@ Options:
   --max-stack-depth <n>     Error stack frame limit (default: 10)
   --create-bindings [dir]   Write bindings source to dir and exit (default: ./bindings)
   --explain <code>          Print error code documentation
-  --help                    Print this help message and exit
-  --version                 Print version and exit`.trimEnd();
+  -h, --help                Print this help message and exit
+  -v, --version             Print version and exit`.trimEnd();
 
 // ============================================================
 // BASE OPTIONS (used to separate known flags from handler args)
@@ -105,6 +105,16 @@ function extractCreateBindings(argv: string[]): {
 export function parseCliArgs(
   argv: string[] = process.argv.slice(2)
 ): RunCliOptions & { rootDir?: string | undefined } {
+  const helpVersionFlag = detectHelpVersionFlag(argv);
+  if (helpVersionFlag !== null) {
+    if (helpVersionFlag.mode === 'help') {
+      process.stdout.write(USAGE + '\n');
+      process.exit(0);
+    }
+    process.stdout.write(`rill-run ${CLI_VERSION} (rill ${VERSION})\n`);
+    process.exit(0);
+  }
+
   const { filteredArgv, createBindings } = extractCreateBindings(argv);
 
   const { values, positionals } = parseArgs({
@@ -113,16 +123,6 @@ export function parseCliArgs(
     allowPositionals: true,
     strict: false,
   });
-
-  if (values['help'] === true) {
-    process.stdout.write(USAGE + '\n');
-    process.exit(0);
-  }
-
-  if (values['version'] === true) {
-    process.stdout.write(`rill-run ${CLI_VERSION} (rill ${VERSION})\n`);
-    process.exit(0);
-  }
 
   const rootDir = positionals[0];
   const scriptArgs: string[] = [];

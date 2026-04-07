@@ -8,16 +8,10 @@ import type { BuildFailure } from 'esbuild';
 import {
   loadProject,
   parseMainField,
-  introspectHandler,
   ConfigEnvError,
   ExtensionLoadError,
 } from '@rcrsr/rill-config';
-import {
-  parse,
-  execute as rillExecute,
-  createRuntimeContext,
-  isScriptCallable,
-} from '@rcrsr/rill';
+import { parse, introspectHandlerFromAST } from '@rcrsr/rill';
 import { computeChecksum } from './checksum.js';
 
 // ============================================================
@@ -601,6 +595,7 @@ export async function buildPackage(
   }
 
   // Build-time introspection: extract handler signature for describe()
+  // Uses static AST analysis — no script execution at build time.
   const shouldIntrospect = options?.introspect !== false; // default true
   let introspectionJson: string | null = null;
   if (shouldIntrospect && parsedMain.handlerName !== undefined) {
@@ -610,15 +605,15 @@ export async function buildPackage(
         'utf-8'
       );
       const introAst = parse(introSource);
-      const introCtx = createRuntimeContext({ parseSource: parse });
-      await rillExecute(introAst, introCtx);
-      const introHandler = introCtx.variables.get(parsedMain.handlerName);
-      if (introHandler !== undefined && isScriptCallable(introHandler)) {
-        const intro = introspectHandler(introHandler);
+      const metadata = introspectHandlerFromAST(
+        introAst,
+        parsedMain.handlerName
+      );
+      if (metadata !== null) {
         introspectionJson = JSON.stringify({
           name: packageName,
-          description: intro.description,
-          params: intro.params,
+          description: metadata.description,
+          params: metadata.params,
         });
       }
     } catch {

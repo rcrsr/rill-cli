@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@rcrsr/rill':
-        specifier: ~0.18.3
-        version: 0.18.3
+        specifier: ~0.18.5
+        version: 0.18.5
       '@rcrsr/rill-config':
         specifier: ~0.18.5
-        version: 0.18.5(@rcrsr/rill@0.18.3)
+        version: 0.18.5(@rcrsr/rill@0.18.5)
       dotenv:
         specifier: ^17.4.1
         version: 17.4.1
@@ -289,8 +289,8 @@ packages:
     peerDependencies:
       '@rcrsr/rill': ~0.18.0
 
-  '@rcrsr/rill@0.18.3':
-    resolution: {integrity: sha512-sgHW2cmMohawoMJoRmTi6aXubg+HFvmkVt/ZIQywpW/yNuXPOu2zha3QgM3zDM7dHkvWxOrpAXBiIl1w9J1glg==}
+  '@rcrsr/rill@0.18.5':
+    resolution: {integrity: sha512-SzvIeycMg2Q8Uaso/fuLd7b19+vqvmVVrZdIjjDHuGrZCo4FitscjgFthS5KXri5R/qofPcAStFi/LduwwZgyw==}
     engines: {node: '>=20.0.0'}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
@@ -1169,12 +1169,12 @@ snapshots:
 
   '@oxc-project/types@0.122.0': {}
 
-  '@rcrsr/rill-config@0.18.5(@rcrsr/rill@0.18.3)':
+  '@rcrsr/rill-config@0.18.5(@rcrsr/rill@0.18.5)':
     dependencies:
-      '@rcrsr/rill': 0.18.3
+      '@rcrsr/rill': 0.18.5
       semver: 7.7.4
 
-  '@rcrsr/rill@0.18.3': {}
+  '@rcrsr/rill@0.18.5': {}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.18.6] - 2026-04-06
+
 ### Added
 
 - `rill-build` CLI command: compiles a rill project into a self-contained output directory with bundled extensions, entry files, and build metadata
@@ -42,7 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.18.5...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.18.6...HEAD
+[0.18.6]: https://github.com/rcrsr/rill-cli/compare/v0.18.5...v0.18.6
 [0.18.5]: https://github.com/rcrsr/rill-cli/compare/v0.18.4...v0.18.5
 [0.18.4]: https://github.com/rcrsr/rill-cli/compare/v0.18.3...v0.18.4
 [0.18.3]: https://github.com/rcrsr/rill-cli/releases/tag/v0.18.3

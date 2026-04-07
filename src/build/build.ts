@@ -322,17 +322,33 @@ async function buildPackageFiles(
     let baseName = isLocalExtension(mountSpecifier)
       ? path.basename(identity).replace(/\.[^.]+$/, '')
       : mountSpecifier;
-    let safeName = baseName.replace(/[^a-zA-Z0-9_-]/g, '-');
-    // Disambiguate collisions (e.g. ./foo/ext.ts and ./bar/ext.ts)
-    if (usedFileNames.has(safeName)) {
-      let i = 2;
-      while (usedFileNames.has(`${safeName}-${i}`)) i++;
-      safeName = `${safeName}-${i}`;
-    }
-    usedFileNames.add(safeName);
-
+    const safeName = baseName.replace(/[^a-zA-Z0-9_-]/g, '-');
     const version = resolveExtensionVersion(mountSpecifier, projectDir, pkg);
-    const versionedName = `${safeName}@${version}`;
+    if (
+      !version ||
+      version.includes('/') ||
+      version.includes('\\') ||
+      version.includes('..') ||
+      !/^[0-9A-Za-z._-]+$/.test(version)
+    ) {
+      throw new Error(
+        `Invalid extension version "${version}" for "${mountSpecifier}". ` +
+          'Version must be a safe filename component.'
+      );
+    }
+    // Disambiguate only when the final emitted filename would collide.
+    // Use a stable suffix derived from identity instead of an order-dependent counter.
+    let versionedName = `${safeName}@${version}`;
+    if (usedFileNames.has(versionedName)) {
+      let hash = 0;
+      for (const ch of identity) {
+        hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+      }
+      const stableSuffix = hash.toString(36).padStart(6, '0').slice(0, 6);
+      versionedName = `${safeName}-${stableSuffix}@${version}`;
+    }
+    usedFileNames.add(versionedName);
+
     const destPath = path.join(extensionsOutDir, `${versionedName}.js`);
 
     if (isLocalExtension(mountSpecifier)) {

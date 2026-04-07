@@ -670,6 +670,122 @@ export const extensionManifest = {
 });
 
 // ============================================================
+// VERSION SANITIZATION AND COLLISION DETECTION
+// ============================================================
+
+describe('buildPackage version sanitization and collision detection', () => {
+  // ----------------------------------------------------------
+  // Path traversal in version string → throws with clear message
+  // ----------------------------------------------------------
+  it('throws when extension version contains path traversal characters', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    // resolveExtensionVersion reads the version from rill-config.json for local
+    // extensions. A malicious version in that field must be rejected before it is
+    // used as a filename component.
+    const extensionSrc = `
+export const extensionManifest = {
+  name: 'bad-ext',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: {} }),
+};
+`;
+    await writeFile(path.join(projectDir, 'bad-ext.ts'), extensionSrc, 'utf-8');
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({
+        name: 'traversal-test',
+        version: '../../malicious',
+        main: 'main.rill:run',
+        extensions: { mounts: { badExt: './bad-ext.ts' } },
+      }),
+      'utf-8'
+    );
+
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toThrow(
+      'Invalid extension version'
+    );
+  });
+
+  // ----------------------------------------------------------
+  // Same-basename extensions at different paths use stable hash suffix
+  // ----------------------------------------------------------
+  it('disambiguates same-basename extensions with a stable hash suffix', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    const extSrc = (name: string) => `
+export const extensionManifest = {
+  name: '${name}',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: {} }),
+};
+`;
+
+    // Two extensions with the same basename 'ext' but in different subdirectories.
+    const { mkdir: mkdirNode } = await import('node:fs/promises');
+    await mkdirNode(path.join(projectDir, 'foo'), { recursive: true });
+    await mkdirNode(path.join(projectDir, 'bar'), { recursive: true });
+    await writeFile(
+      path.join(projectDir, 'foo', 'ext.ts'),
+      extSrc('ext-foo'),
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'bar', 'ext.ts'),
+      extSrc('ext-bar'),
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({
+        name: 'collision-test',
+        version: '0.1.0',
+        main: 'main.rill:run',
+        extensions: {
+          mounts: {
+            extFoo: './foo/ext.ts',
+            extBar: './bar/ext.ts',
+          },
+        },
+      }),
+      'utf-8'
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const extensionsDir = path.join(result.outputPath, 'extensions');
+    const files = readdirSync(extensionsDir).sort();
+
+    // Both files must exist and be distinct (hash suffix applied to the collision).
+    expect(files).toHaveLength(2);
+    // Both must end with @0.1.0.js and contain 'ext' in the stem.
+    expect(files.every((f) => f.endsWith('@0.1.0.js'))).toBe(true);
+    expect(files[0]).not.toBe(files[1]);
+
+    // Build is deterministic: running again must produce identical filenames.
+    const outputDir2 = await makeTmpDir();
+    const result2 = await buildPackage(projectDir, { outputDir: outputDir2 });
+    const extensionsDir2 = path.join(result2.outputPath, 'extensions');
+    const files2 = readdirSync(extensionsDir2).sort();
+    expect(files2).toEqual(files);
+  });
+});
+
+// ============================================================
 // HANDLER LIFECYCLE CONTRACT
 // ============================================================
 

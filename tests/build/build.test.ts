@@ -3,7 +3,7 @@ import { rm, readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildAgent } from '../../src/build/build.js';
+import { buildPackage } from '../../src/build/build.js';
 import { BuildError } from '../../src/build/build.js';
 
 // ============================================================
@@ -11,7 +11,7 @@ import { BuildError } from '../../src/build/build.js';
 // ============================================================
 
 const MINIMAL_RILL_CONFIG = {
-  name: 'test-agent',
+  name: 'test-package',
   version: '0.1.0',
   main: 'main.rill:run',
 };
@@ -31,7 +31,7 @@ async function makeTmpDir(): Promise<string> {
 }
 
 /**
- * Create a minimal agent fixture in a temp directory using rill-config.json.
+ * Create a minimal package fixture in a temp directory using rill-config.json.
  * Returns the project directory path and the output dir path.
  */
 async function makeProjectFixture(
@@ -70,16 +70,16 @@ afterEach(async () => {
 // SUCCESS CASES
 // ============================================================
 
-describe('buildAgent success cases', () => {
+describe('buildPackage success cases', () => {
   // ----------------------------------------------------------
   // AC-18: Build produces enriched rill-config.json with build section
   // ----------------------------------------------------------
   it('produces enriched rill-config.json with build section [AC-18]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
-    // outputPath points to the agent dir (build/agent-name/)
+    // outputPath points to the package dir (build/package-name/)
     const rillConfigPath = path.join(result.outputPath, 'rill-config.json');
     expect(existsSync(rillConfigPath)).toBe(true);
 
@@ -99,7 +99,7 @@ describe('buildAgent success cases', () => {
   it('returns sha256 checksum in format sha256:<hex> [AC-20]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     expect(result.checksum).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
@@ -110,7 +110,7 @@ describe('buildAgent success cases', () => {
   it('rill-config.json build.checksum matches result.checksum [AC-20]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     const raw = await readFile(
       path.join(result.outputPath, 'rill-config.json'),
@@ -127,20 +127,20 @@ describe('buildAgent success cases', () => {
   it('does not generate handlers.js (plain rill project output)', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     expect(existsSync(path.join(result.outputPath, 'handlers.js'))).toBe(false);
   });
 
   // ----------------------------------------------------------
-  // AC-22: entry.rill copied to agent dir (flat, no agents/ subdir)
+  // AC-22: entry.rill copied to package dir (flat, no packages/ subdir)
   // ----------------------------------------------------------
-  it('copies entry.rill to <outputDir>/<agent-name>/main.rill [AC-22]', async () => {
+  it('copies entry.rill to <outputDir>/<package-name>/main.rill [AC-22]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
-    // outputPath is the agent dir itself
+    // outputPath is the package dir itself
     const entryPath = path.join(result.outputPath, 'main.rill');
     expect(existsSync(entryPath)).toBe(true);
 
@@ -151,10 +151,10 @@ describe('buildAgent success cases', () => {
   // ----------------------------------------------------------
   // AC-18: Output rill-config.json preserves original main field
   // ----------------------------------------------------------
-  it('writes rill-config.json to <agent-name>/ with original main field preserved [AC-18]', async () => {
+  it('writes rill-config.json to <package-name>/ with original main field preserved [AC-18]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     const rillConfigPath = path.join(result.outputPath, 'rill-config.json');
     expect(existsSync(rillConfigPath)).toBe(true);
@@ -165,17 +165,17 @@ describe('buildAgent success cases', () => {
   });
 
   // ----------------------------------------------------------
-  // AC-26: outputPath points to agent dir inside custom outputDir
+  // AC-26: outputPath points to package dir inside custom outputDir
   // ----------------------------------------------------------
-  it('outputPath points to agent dir inside custom outputDir [AC-26]', async () => {
+  it('outputPath points to package dir inside custom outputDir [AC-26]', async () => {
     const { projectDir } = await makeProjectFixture();
     const customOutputDir = await makeTmpDir();
 
-    const result = await buildAgent(projectDir, {
+    const result = await buildPackage(projectDir, {
       outputDir: customOutputDir,
     });
 
-    expect(result.outputPath).toBe(path.join(customOutputDir, 'test-agent'));
+    expect(result.outputPath).toBe(path.join(customOutputDir, 'test-package'));
     expect(existsSync(path.join(result.outputPath, 'rill-config.json'))).toBe(
       true
     );
@@ -183,16 +183,16 @@ describe('buildAgent success cases', () => {
   });
 
   // ----------------------------------------------------------
-  // Flat layout: no bundle.json, no agents/ subdirectory, no handlers.js
+  // Flat layout: no bundle.json, no packages/ subdirectory, no handlers.js
   // ----------------------------------------------------------
-  it('produces no bundle.json and no agents/ subdirectory [flat-structure]', async () => {
+  it('produces no bundle.json and no packages/ subdirectory [flat-structure]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     expect(existsSync(path.join(outputDir, 'bundle.json'))).toBe(false);
-    expect(existsSync(path.join(outputDir, 'agents'))).toBe(false);
-    // Agent files live directly under outputDir/agent-name/
+    expect(existsSync(path.join(outputDir, 'packages'))).toBe(false);
+    // Package files live directly under outputDir/package-name/
     expect(existsSync(result.outputPath)).toBe(true);
   });
 
@@ -203,8 +203,8 @@ describe('buildAgent success cases', () => {
     const { projectDir, outputDir } = await makeProjectFixture();
     const outputDir2 = await makeTmpDir();
 
-    const result1 = await buildAgent(projectDir, { outputDir });
-    const result2 = await buildAgent(projectDir, { outputDir: outputDir2 });
+    const result1 = await buildPackage(projectDir, { outputDir });
+    const result2 = await buildPackage(projectDir, { outputDir: outputDir2 });
 
     expect(result1.checksum).toBe(result2.checksum);
   });
@@ -236,7 +236,7 @@ export const extensionManifest = {
       path.join(projectDir, 'rill-config.json'),
       JSON.stringify(
         {
-          name: 'ext-agent',
+          name: 'ext-package',
           version: '0.1.0',
           main: 'main.rill:run',
           extensions: { mounts: { myExt: './my-ext.ts' } },
@@ -247,9 +247,9 @@ export const extensionManifest = {
       'utf-8'
     );
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
-    // Compiled extension file must exist inside agent dir
+    // Compiled extension file must exist inside package dir
     const compiledPath = path.join(result.outputPath, 'extensions', 'myExt.js');
     expect(existsSync(compiledPath)).toBe(true);
 
@@ -268,7 +268,7 @@ export const extensionManifest = {
   it('produces no Dockerfile, .zip, or deployment artifacts [AC-29]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    await buildAgent(projectDir, { outputDir });
+    await buildPackage(projectDir, { outputDir });
 
     expect(existsSync(path.join(outputDir, 'Dockerfile'))).toBe(false);
     // Walk output dir and assert no .zip files
@@ -302,7 +302,7 @@ export const extensionManifest = {
   it('rill-config.json build.rillVersion is a non-empty string', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     const raw = await readFile(
       path.join(result.outputPath, 'rill-config.json'),
@@ -320,7 +320,7 @@ export const extensionManifest = {
 // ERROR CASES
 // ============================================================
 
-describe('buildAgent error cases', () => {
+describe('buildPackage error cases', () => {
   // ----------------------------------------------------------
   // AC-47: rill-config.json not found → BuildError('validation')
   // ----------------------------------------------------------
@@ -328,7 +328,7 @@ describe('buildAgent error cases', () => {
     const outputDir = await makeTmpDir();
     const nonExistentDir = path.join(outputDir, 'does-not-exist');
 
-    await expect(buildAgent(nonExistentDir, { outputDir })).rejects.toSatisfy(
+    await expect(buildPackage(nonExistentDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
         return (
           e instanceof BuildError &&
@@ -352,7 +352,7 @@ describe('buildAgent error cases', () => {
       'utf-8'
     );
 
-    await expect(buildAgent(projectDir, { outputDir })).rejects.toSatisfy(
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
         return (
           e instanceof BuildError &&
@@ -377,7 +377,7 @@ describe('buildAgent error cases', () => {
       'utf-8'
     );
 
-    await expect(buildAgent(projectDir, { outputDir })).rejects.toSatisfy(
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
         return (
           e instanceof BuildError &&
@@ -407,7 +407,7 @@ describe('buildAgent error cases', () => {
     );
     await writeFile(path.join(projectDir, 'main.rill'), `"hello"`, 'utf-8');
 
-    await expect(buildAgent(projectDir, { outputDir })).rejects.toSatisfy(
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
         return (
           e instanceof BuildError &&
@@ -440,7 +440,7 @@ describe('buildAgent error cases', () => {
     );
     await writeFile(path.join(projectDir, 'main.rill'), `"hello"`, 'utf-8');
 
-    await expect(buildAgent(projectDir, { outputDir })).rejects.toSatisfy(
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
         return (
           e instanceof BuildError &&
@@ -470,7 +470,7 @@ describe('buildAgent error cases', () => {
 
       try {
         await expect(
-          buildAgent(projectDir, { outputDir: blockedOutputDir })
+          buildPackage(projectDir, { outputDir: blockedOutputDir })
         ).rejects.toSatisfy((e: unknown) => {
           return e instanceof BuildError && e.phase === 'bundling';
         });
@@ -488,11 +488,11 @@ describe('buildAgent error cases', () => {
 // BOUNDARY CONDITIONS
 // ============================================================
 
-describe('buildAgent boundary conditions', () => {
+describe('buildPackage boundary conditions', () => {
   // ----------------------------------------------------------
   // Name defaults to directory basename when not in config
   // ----------------------------------------------------------
-  it('uses directory basename as agent name when name field absent', async () => {
+  it('uses directory basename as package name when name field absent', async () => {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();
     const dirName = path.basename(projectDir);
@@ -504,9 +504,9 @@ describe('buildAgent boundary conditions', () => {
     );
     await writeFile(path.join(projectDir, 'main.rill'), `"hello"`, 'utf-8');
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
-    // Agent dir is named after the project directory
+    // Package dir is named after the project directory
     expect(path.basename(result.outputPath)).toBe(dirName);
   });
 
@@ -550,7 +550,7 @@ export const extensionManifest = {
       path.join(projectDir, 'rill-config.json'),
       JSON.stringify(
         {
-          name: 'multi-ext-agent',
+          name: 'multi-ext-package',
           version: '0.1.0',
           main: 'main.rill:run',
           extensions: {
@@ -567,7 +567,7 @@ export const extensionManifest = {
       'utf-8'
     );
 
-    const result = await buildAgent(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     const extensionsDir = path.join(result.outputPath, 'extensions');
     expect(existsSync(path.join(extensionsDir, 'extAlpha.js'))).toBe(true);
@@ -589,7 +589,7 @@ export const extensionManifest = {
     );
     await writeFile(path.join(projectDir, 'main.rill'), `"hello"`, 'utf-8');
 
-    await expect(buildAgent(projectDir, { outputDir })).rejects.toSatisfy(
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
         return (
           e instanceof BuildError &&
@@ -598,5 +598,103 @@ export const extensionManifest = {
         );
       }
     );
+  });
+});
+
+// ============================================================
+// HANDLER LIFECYCLE CONTRACT
+// ============================================================
+
+describe('handler lifecycle contract', () => {
+  // ----------------------------------------------------------
+  // handler.js contains the four lifecycle named exports
+  // ----------------------------------------------------------
+  it('handler.js contains lifecycle exports', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerJs = await readFile(
+      path.join(result.outputPath, 'handler.js'),
+      'utf-8'
+    );
+    expect(handlerJs).toContain('export function describe()');
+    expect(handlerJs).toContain('export async function init(');
+    expect(handlerJs).toContain('export async function execute(');
+    expect(handlerJs).toContain('export async function dispose(');
+  });
+
+  // ----------------------------------------------------------
+  // runtime.js is a pure export module — no top-level execution
+  // ----------------------------------------------------------
+  it('runtime.js does not execute at import time', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const runtimeJs = await readFile(
+      path.join(result.outputPath, 'runtime.js'),
+      'utf-8'
+    );
+    expect(runtimeJs).not.toContain('await loadProject');
+    expect(runtimeJs).toContain('export {');
+  });
+
+  // ----------------------------------------------------------
+  // run.js uses the handler lifecycle (init/execute/dispose)
+  // ----------------------------------------------------------
+  it('run.js uses handler lifecycle', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const runJs = await readFile(
+      path.join(result.outputPath, 'run.js'),
+      'utf-8'
+    );
+    expect(runJs).toContain(`from './handler.js'`);
+    expect(runJs).toContain('await init(');
+    expect(runJs).toContain('await execute(');
+    expect(runJs).toContain('await dispose(');
+  });
+
+  // ----------------------------------------------------------
+  // describe() returns introspection data when handler has params
+  // ----------------------------------------------------------
+  it('describe() returns introspection data for handler with params', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture(
+      {},
+      {
+        'main.rill':
+          '|greeting: string, name: string| { $greeting + " " + $name } => $run',
+      }
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerJs = await readFile(
+      path.join(result.outputPath, 'handler.js'),
+      'utf-8'
+    );
+    expect(handlerJs).toContain('"params"');
+    expect(handlerJs).toContain('greeting');
+    expect(handlerJs).toContain('name');
+  });
+
+  // ----------------------------------------------------------
+  // describe() returns null when main field has no handler name
+  // ----------------------------------------------------------
+  it('describe() returns null when no handler name in main field', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture({
+      main: 'main.rill',
+    });
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerJs = await readFile(
+      path.join(result.outputPath, 'handler.js'),
+      'utf-8'
+    );
+    expect(handlerJs).toContain('return null;');
   });
 });

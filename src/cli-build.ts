@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { buildAgent } from './build/build.js';
+import { buildPackage } from './build/build.js';
 import { detectHelpVersionFlag, VERSION, CLI_VERSION } from './cli-shared.js';
 
 const HELP_TEXT = `Usage: rill-build [options] [project-dir]
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
       : undefined;
 
   try {
-    const result = await buildAgent(projectDir, {
+    const result = await buildPackage(projectDir, {
       ...(outputDir !== undefined ? { outputDir } : {}),
     });
     process.stdout.write(`${result.outputPath}\n`);

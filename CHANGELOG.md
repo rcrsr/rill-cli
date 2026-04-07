@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Rename internal "agent" references to "package" in rill-build source, tests, and docs
+- `handler.js` exports 4 lifecycle functions (`describe`, `init`, `execute`, `dispose`) instead of a single default export
+- `runtime.js` is a pure export module with no top-level execution
+- `run.js` uses `init`/`execute`/`dispose` from handler.js
+- `rill-build` introspects handler parameters at build time and embeds `describe()` output
+
 ## [0.18.6] - 2026-04-06
 
 ### Added

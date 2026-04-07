@@ -8,9 +8,16 @@ import type { BuildFailure } from 'esbuild';
 import {
   loadProject,
   parseMainField,
+  introspectHandler,
   ConfigEnvError,
   ExtensionLoadError,
 } from '@rcrsr/rill-config';
+import {
+  parse,
+  execute as rillExecute,
+  createRuntimeContext,
+  isScriptCallable,
+} from '@rcrsr/rill';
 import { computeChecksum } from './checksum.js';
 
 // ============================================================
@@ -589,6 +596,31 @@ export async function buildPackage(
     );
   }
 
+  // Build-time introspection: extract handler signature for describe()
+  let introspectionJson: string | null = null;
+  if (parsedMain.handlerName !== undefined) {
+    try {
+      const introSource = readFileSync(
+        path.resolve(packageOutDir, path.basename(parsedMain.filePath)),
+        'utf-8'
+      );
+      const introAst = parse(introSource);
+      const introCtx = createRuntimeContext({ parseSource: parse });
+      await rillExecute(introAst, introCtx);
+      const introHandler = introCtx.variables.get(parsedMain.handlerName);
+      if (introHandler !== undefined && isScriptCallable(introHandler)) {
+        const intro = introspectHandler(introHandler);
+        introspectionJson = JSON.stringify({
+          name: packageName,
+          description: intro.description,
+          params: intro.params,
+        });
+      }
+    } catch {
+      // Introspection failed — describe() will return null at runtime
+    }
+  }
+
   // Step: Generate runtime.js (bundled), run.js and handler.js (thin wrappers)
   // Resolve @rcrsr/rill and @rcrsr/rill-config from both the build tool's
   // node_modules and the project's node_modules (covers all installation layouts)
@@ -604,7 +636,7 @@ export async function buildPackage(
   const runtimeSrcPath = path.join(packageOutDir, '_runtime.js');
   const runtimeDestPath = path.join(packageOutDir, 'runtime.js');
   try {
-    await writeFile(runtimeSrcPath, generateRuntimeSource(mainField), 'utf-8');
+    await writeFile(runtimeSrcPath, generateRuntimeSource(), 'utf-8');
     await esbuild({
       entryPoints: [runtimeSrcPath],
       bundle: true,
@@ -637,7 +669,7 @@ export async function buildPackage(
   try {
     await writeFile(
       path.join(packageOutDir, 'handler.js'),
-      generateHandlerSource(),
+      generateHandlerSource(mainField, introspectionJson),
       'utf-8'
     );
   } catch (err) {
@@ -657,19 +689,18 @@ export async function buildPackage(
 
 /**
  * Generate runtime.js source — the heavy bundled module.
- * Loads the rill project, resolves extensions, parses and executes the
- * script, and exports the handler closure + project for thin wrappers.
+ * Exports rill + rill-config utilities for handler.js to use.
  * This source gets bundled by esbuild to inline @rcrsr/rill and @rcrsr/rill-config.
  */
-function generateRuntimeSource(mainField: string): string {
-  return `
-import { readFileSync } from 'node:fs';
+function generateRuntimeSource(): string {
+  return `import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveConfigPath,
   loadProject,
   parseMainField,
+  interpolate,
   hasSessionVars,
   extractSessionVarNames,
   substituteSessionVars,
@@ -684,91 +715,121 @@ import {
 } from '@rcrsr/rill';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-process.chdir(__dirname);
 
-const configPath = resolveConfigPath({ cwd: __dirname });
-
-let project = await loadProject({ configPath, rillVersion: VERSION });
-
-if (hasSessionVars(project.config)) {
-  const names = extractSessionVarNames(project.config);
-  const vars = {};
-  for (const name of names) {
-    const val = process.env[name];
-    if (val !== undefined) vars[name] = val;
-  }
-  project = { ...project, config: substituteSessionVars(project.config, vars) };
-}
-
-const mainFieldValue = ${JSON.stringify(mainField)};
-const { filePath, handlerName } = parseMainField(mainFieldValue);
-const absolutePath = resolve(__dirname, filePath);
-const source = readFileSync(absolutePath, 'utf-8');
-const ast = parse(source);
-
-const ctx = createRuntimeContext({
-  ...project.resolverConfig,
-  parseSource: parse,
-  callbacks: {
-    onLog: (msg) => process.stdout.write(msg + '\\n'),
-  },
-});
-
-await execute(ast, ctx);
-
-let handler;
-if (handlerName !== undefined) {
-  handler = ctx.variables.get(handlerName);
-  if (handler === undefined || !isScriptCallable(handler)) {
-    throw new Error('Handler not found: $' + handlerName + ' is not a closure');
-  }
-}
-
-export { handler, project, ctx, invokeCallable };
-`.trimStart();
+export {
+  readFileSync, resolve, __dirname,
+  resolveConfigPath, loadProject, parseMainField,
+  interpolate, hasSessionVars, extractSessionVarNames, substituteSessionVars,
+  parse, execute, createRuntimeContext, invokeCallable, isScriptCallable, VERSION,
+};
+`;
 }
 
 /**
- * Generate run.js — thin CLI wrapper that imports from runtime.js.
+ * Generate run.js — thin CLI wrapper that uses the handler lifecycle.
  */
 function generateRunSource(): string {
   return `#!/usr/bin/env node
-import { handler, project, ctx, invokeCallable } from './runtime.js';
+import { init, execute, dispose } from './handler.js';
 
+await init({});
 try {
-  if (handler !== undefined) {
-    const result = await invokeCallable(handler, [], ctx);
-    if (result !== undefined && result !== '' && result !== false) {
-      process.stdout.write(JSON.stringify(result, null, 2) + '\\n');
-    }
-    process.exitCode = result === false || result === '' ? 1 : 0;
+  const result = await execute({ params: {} }, {});
+  if (result.result !== undefined && result.result !== '') {
+    process.stdout.write(JSON.stringify(result.result, null, 2) + '\\n');
   }
 } finally {
-  for (const dispose of project.disposes) {
-    try { await dispose(); } catch {}
-  }
+  await dispose();
 }
 `;
 }
 
 /**
- * Generate handler.js — exports a ComposedHandler for harness consumption.
+ * Generate handler.js — exports the handler lifecycle contract:
+ * describe(), init(context), execute(request, context), dispose().
  */
-function generateHandlerSource(): string {
-  return `import { handler, project, ctx, invokeCallable } from './runtime.js';
+function generateHandlerSource(
+  mainField: string,
+  introspectionJson: string | null
+): string {
+  const describeBody =
+    introspectionJson !== null
+      ? `return ${introspectionJson};`
+      : `return null;`;
 
-export default async function composedHandler(request, context) {
-  ctx.pipeValue = request.params ?? {};
-  if (context?.onLog) {
+  return `import {
+  readFileSync, resolve, __dirname,
+  resolveConfigPath, loadProject, parseMainField,
+  interpolate, hasSessionVars, extractSessionVarNames, substituteSessionVars,
+  parse, execute as rillExecute, createRuntimeContext, invokeCallable, isScriptCallable, VERSION,
+} from './runtime.js';
+
+let project;
+let handler;
+let ctx;
+
+export function describe() {
+  ${describeBody}
+}
+
+export async function init(context = {}) {
+  process.chdir(__dirname);
+  const configPath = resolveConfigPath({ cwd: __dirname });
+  project = await loadProject({ configPath, rillVersion: VERSION });
+
+  if (context.globalVars) {
+    project = { ...project, config: interpolate(project.config, context.globalVars) };
+  }
+
+  const mainFieldValue = ${JSON.stringify(mainField)};
+  const { filePath, handlerName } = parseMainField(mainFieldValue);
+  const absolutePath = resolve(__dirname, filePath);
+  const source = readFileSync(absolutePath, 'utf-8');
+  const ast = parse(source);
+
+  ctx = createRuntimeContext({
+    ...project.resolverConfig,
+    parseSource: parse,
+    callbacks: {
+      onLog: (msg) => process.stdout.write(msg + '\\n'),
+    },
+  });
+
+  if (context.ahiResolver) {
+    ctx.ahiResolver = context.ahiResolver;
+  }
+
+  await rillExecute(ast, ctx);
+
+  if (handlerName !== undefined) {
+    handler = ctx.variables.get(handlerName);
+    if (handler === undefined || !isScriptCallable(handler)) {
+      throw new Error('Handler not found: $' + handlerName + ' is not a closure');
+    }
+  }
+}
+
+export async function execute(request = {}, context = {}) {
+  const effectiveConfig = (context.sessionVars && hasSessionVars(project.config))
+    ? substituteSessionVars(project.config, context.sessionVars)
+    : project.config;
+  ctx.resolverConfig = { ...ctx.resolverConfig, config: effectiveConfig };
+
+  if (context.onLog) {
     ctx.callbacks = { ...ctx.callbacks, onLog: context.onLog };
   }
+
+  ctx.pipeValue = request.params ?? {};
+
   const result = await invokeCallable(handler, [], ctx);
   return { state: 'completed', result };
 }
 
 export async function dispose() {
-  for (const d of project.disposes) {
-    try { await d(); } catch {}
+  if (project) {
+    for (const d of project.disposes) {
+      try { await d(); } catch {}
+    }
   }
 }
 `;

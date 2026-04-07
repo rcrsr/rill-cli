@@ -600,3 +600,101 @@ export const extensionManifest = {
     );
   });
 });
+
+// ============================================================
+// HANDLER LIFECYCLE CONTRACT
+// ============================================================
+
+describe('handler lifecycle contract', () => {
+  // ----------------------------------------------------------
+  // handler.js contains the four lifecycle named exports
+  // ----------------------------------------------------------
+  it('handler.js contains lifecycle exports', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerJs = await readFile(
+      path.join(result.outputPath, 'handler.js'),
+      'utf-8'
+    );
+    expect(handlerJs).toContain('export function describe()');
+    expect(handlerJs).toContain('export async function init(');
+    expect(handlerJs).toContain('export async function execute(');
+    expect(handlerJs).toContain('export async function dispose(');
+  });
+
+  // ----------------------------------------------------------
+  // runtime.js is a pure export module — no top-level execution
+  // ----------------------------------------------------------
+  it('runtime.js does not execute at import time', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const runtimeJs = await readFile(
+      path.join(result.outputPath, 'runtime.js'),
+      'utf-8'
+    );
+    expect(runtimeJs).not.toContain('await loadProject');
+    expect(runtimeJs).toContain('export {');
+  });
+
+  // ----------------------------------------------------------
+  // run.js uses the handler lifecycle (init/execute/dispose)
+  // ----------------------------------------------------------
+  it('run.js uses handler lifecycle', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const runJs = await readFile(
+      path.join(result.outputPath, 'run.js'),
+      'utf-8'
+    );
+    expect(runJs).toContain(`from './handler.js'`);
+    expect(runJs).toContain('await init(');
+    expect(runJs).toContain('await execute(');
+    expect(runJs).toContain('await dispose(');
+  });
+
+  // ----------------------------------------------------------
+  // describe() returns introspection data when handler has params
+  // ----------------------------------------------------------
+  it('describe() returns introspection data for handler with params', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture(
+      {},
+      {
+        'main.rill':
+          '|greeting: string, name: string| { $greeting + " " + $name } => $run',
+      }
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerJs = await readFile(
+      path.join(result.outputPath, 'handler.js'),
+      'utf-8'
+    );
+    expect(handlerJs).toContain('"params"');
+    expect(handlerJs).toContain('greeting');
+    expect(handlerJs).toContain('name');
+  });
+
+  // ----------------------------------------------------------
+  // describe() returns null when main field has no handler name
+  // ----------------------------------------------------------
+  it('describe() returns null when no handler name in main field', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture({
+      main: 'main.rill',
+    });
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerJs = await readFile(
+      path.join(result.outputPath, 'handler.js'),
+      'utf-8'
+    );
+    expect(handlerJs).toContain('return null;');
+  });
+});

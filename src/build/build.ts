@@ -197,6 +197,49 @@ function isLocalExtension(mountSpecifier: string): boolean {
 }
 
 /**
+ * Resolve the version for an extension mount.
+ * For npm packages: walks up from the resolved entry to find the package.json
+ * version field. For local files: uses the project config's own version field.
+ * Returns '0.0.0' when the version cannot be determined.
+ */
+function resolveExtensionVersion(
+  mountSpecifier: string,
+  projectDir: string,
+  pkg: PackageBuildInput
+): string {
+  if (isLocalExtension(mountSpecifier)) {
+    const v = pkg.originalConfig['version'];
+    return typeof v === 'string' && v.length > 0 ? v : '0.0.0';
+  }
+  try {
+    const projectRequire = createRequire(
+      pathToFileURL(path.resolve(projectDir, 'package.json')).href
+    );
+    const entryPath = projectRequire.resolve(mountSpecifier);
+    let dir = path.dirname(entryPath);
+    while (dir !== path.dirname(dir)) {
+      const candidate = path.join(dir, 'package.json');
+      if (existsSync(candidate)) {
+        const raw = JSON.parse(readFileSync(candidate, 'utf-8')) as unknown;
+        if (
+          raw !== null &&
+          typeof raw === 'object' &&
+          'version' in raw &&
+          typeof (raw as Record<string, unknown>)['version'] === 'string'
+        ) {
+          return (raw as Record<string, string>)['version']!;
+        }
+        break;
+      }
+      dir = path.dirname(dir);
+    }
+  } catch {
+    // Best-effort — fall through to default
+  }
+  return '0.0.0';
+}
+
+/**
  * Build a single package's output files from a rill-config.json project directory.
  * Compiles ALL extensions (local TS and npm packages) via esbuild, copies .rill
  * files, and rewrites all mount paths to local ./extensions/*.js references.
@@ -206,7 +249,10 @@ async function buildPackageFiles(
   pkg: PackageBuildInput,
   projectDir: string,
   packageOutDir: string
-): Promise<{ writtenFiles: string[] }> {
+): Promise<{
+  writtenFiles: string[];
+  rewrittenMounts: Record<string, string>;
+}> {
   const writtenFiles: string[] = [];
 
   // Step: Copy entry .rill file (preserve original filename)
@@ -250,25 +296,71 @@ async function buildPackageFiles(
   }
 
   // Step: Bundle ALL extensions via esbuild (local TS and npm packages)
+  // Deduplicate: mounts sharing the same package identity share one .js file.
   const extensionsOutDir = path.join(packageOutDir, 'extensions');
   const rewrittenMounts: Record<string, string> = {};
+  const bundledByIdentity = new Map<string, string>(); // identity → relative output path
+
+  const usedFileNames = new Set<string>();
 
   for (const [alias, mountSpecifier] of Object.entries(pkg.extensions)) {
+    // Canonical identity: resolved absolute path for local files, specifier for npm
+    const identity = isLocalExtension(mountSpecifier)
+      ? path.resolve(projectDir, mountSpecifier)
+      : mountSpecifier;
+
+    const existing = bundledByIdentity.get(identity);
+    if (existing) {
+      rewrittenMounts[alias] = existing;
+      continue;
+    }
+
     await mkdir(extensionsOutDir, { recursive: true });
-    const safeName = alias.replace(/[^a-zA-Z0-9_-]/g, '-');
-    const destPath = path.join(extensionsOutDir, `${safeName}.js`);
+
+    // Derive file name from package identity, not mount alias.
+    // Local files: basename without extension. npm packages: sanitized specifier.
+    let baseName = isLocalExtension(mountSpecifier)
+      ? path.basename(identity).replace(/\.[^.]+$/, '')
+      : mountSpecifier;
+    const safeName = baseName.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const version = resolveExtensionVersion(mountSpecifier, projectDir, pkg);
+    if (
+      !version ||
+      version.includes('/') ||
+      version.includes('\\') ||
+      version.includes('..') ||
+      !/^[0-9A-Za-z._-]+$/.test(version)
+    ) {
+      throw new Error(
+        `Invalid extension version "${version}" for "${mountSpecifier}". ` +
+          'Version must be a safe filename component.'
+      );
+    }
+    // Disambiguate only when the final emitted filename would collide.
+    // Use a stable suffix derived from identity instead of an order-dependent counter.
+    let versionedName = `${safeName}@${version}`;
+    if (usedFileNames.has(versionedName)) {
+      let hash = 0;
+      for (const ch of identity) {
+        hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+      }
+      const stableSuffix = hash.toString(36).padStart(6, '0').slice(0, 6);
+      versionedName = `${safeName}-${stableSuffix}@${version}`;
+    }
+    usedFileNames.add(versionedName);
+
+    const destPath = path.join(extensionsOutDir, `${versionedName}.js`);
 
     if (isLocalExtension(mountSpecifier)) {
-      // Local file: resolve relative to project directory
-      const srcPath = path.resolve(projectDir, mountSpecifier);
-      await bundleExtensionToFile(srcPath, destPath, projectDir);
+      await bundleExtensionToFile(identity, destPath, projectDir);
     } else {
-      // npm package: esbuild resolves from node_modules
       await bundleExtensionToFile(mountSpecifier, destPath, projectDir);
     }
 
     writtenFiles.push(destPath);
-    rewrittenMounts[alias] = `./extensions/${safeName}.js`;
+    const relativePath = `./extensions/${versionedName}.js`;
+    bundledByIdentity.set(identity, relativePath);
+    rewrittenMounts[alias] = relativePath;
   }
 
   // Step: Write output rill-config.json with rewritten mount paths (without build section yet)
@@ -299,7 +391,7 @@ async function buildPackageFiles(
   // Note: rill-config.json is NOT added to writtenFiles here — it will be
   // rewritten with the build section after checksum computation.
 
-  return { writtenFiles };
+  return { writtenFiles, rewrittenMounts };
 }
 
 // ============================================================
@@ -502,11 +594,8 @@ export async function buildPackage(
   }
 
   // Step: Build package files (copy .rill, compile extensions, write initial rill-config.json)
-  const { writtenFiles } = await buildPackageFiles(
-    packageInput,
-    absProjectDir,
-    packageOutDir
-  );
+  const { writtenFiles, rewrittenMounts: extensionMountPaths } =
+    await buildPackageFiles(packageInput, absProjectDir, packageOutDir);
 
   // Collect files for checksum (package files only, rill-config.json excluded
   // because we rewrite it with the build section after computing the checksum)
@@ -557,19 +646,14 @@ export async function buildPackage(
       configVersion: '3',
     },
   };
-  // Re-apply extension mount rewrites — all extensions are bundled locally
-  const rewrittenMounts: Record<string, string> = {};
-  for (const [alias] of Object.entries(packageInput.extensions)) {
-    const safeName = alias.replace(/[^a-zA-Z0-9_-]/g, '-');
-    rewrittenMounts[alias] = `./extensions/${safeName}.js`;
-  }
-  if (Object.keys(rewrittenMounts).length > 0) {
+  // Re-apply extension mount rewrites — reuse paths computed during bundling
+  if (Object.keys(extensionMountPaths).length > 0) {
     const existingExtBlock = outputConfigWithBuild['extensions'] as
       | Record<string, unknown>
       | undefined;
     outputConfigWithBuild['extensions'] = {
       ...(existingExtBlock ?? {}),
-      mounts: rewrittenMounts,
+      mounts: extensionMountPaths,
     };
   }
   // Re-apply module path rewrites — all modules are copied locally

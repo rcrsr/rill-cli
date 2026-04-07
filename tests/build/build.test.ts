@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { rm, readFile, writeFile, mkdtemp } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildPackage } from '../../src/build/build.js';
@@ -249,17 +249,21 @@ export const extensionManifest = {
 
     const result = await buildPackage(projectDir, { outputDir });
 
-    // Compiled extension file must exist inside package dir
-    const compiledPath = path.join(result.outputPath, 'extensions', 'myExt.js');
+    // Compiled extension file must exist, named by package identity (basename) + version
+    const compiledPath = path.join(
+      result.outputPath,
+      'extensions',
+      'my-ext@0.1.0.js'
+    );
     expect(existsSync(compiledPath)).toBe(true);
 
-    // Output rill-config.json must have rewritten mount path
+    // Output rill-config.json must have rewritten mount path (identity-based name + version)
     const rillConfigPath = path.join(result.outputPath, 'rill-config.json');
     const raw = await readFile(rillConfigPath, 'utf-8');
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const ext = parsed['extensions'] as Record<string, unknown>;
     const mounts = ext['mounts'] as Record<string, string>;
-    expect(mounts['myExt']).toBe('./extensions/myExt.js');
+    expect(mounts['myExt']).toBe('./extensions/my-ext@0.1.0.js');
   });
 
   // ----------------------------------------------------------
@@ -570,9 +574,73 @@ export const extensionManifest = {
     const result = await buildPackage(projectDir, { outputDir });
 
     const extensionsDir = path.join(result.outputPath, 'extensions');
-    expect(existsSync(path.join(extensionsDir, 'extAlpha.js'))).toBe(true);
-    expect(existsSync(path.join(extensionsDir, 'extBeta.js'))).toBe(true);
-    expect(existsSync(path.join(extensionsDir, 'extGamma.js'))).toBe(true);
+    expect(existsSync(path.join(extensionsDir, 'ext-alpha@0.1.0.js'))).toBe(
+      true
+    );
+    expect(existsSync(path.join(extensionsDir, 'ext-beta@0.1.0.js'))).toBe(
+      true
+    );
+    expect(existsSync(path.join(extensionsDir, 'ext-gamma@0.1.0.js'))).toBe(
+      true
+    );
+  });
+
+  // ----------------------------------------------------------
+  // Two aliases mounting the same local source share one .js file
+  // ----------------------------------------------------------
+  it('deduplicates extensions when two aliases mount the same source', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    const extensionSrc = `
+export const extensionManifest = {
+  name: 'shared-ext',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: {} }),
+};
+`;
+    await writeFile(path.join(projectDir, 'shared.ts'), extensionSrc, 'utf-8');
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify(
+        {
+          name: 'dedup-package',
+          version: '0.1.0',
+          main: 'main.rill:run',
+          extensions: {
+            mounts: {
+              aliasA: './shared.ts',
+              aliasB: './shared.ts',
+            },
+          },
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    // Only one .js file should exist for the shared source
+    const extensionsDir = path.join(result.outputPath, 'extensions');
+    const files = readdirSync(extensionsDir);
+    expect(files).toEqual(['shared@0.1.0.js']);
+
+    // Both aliases must point to the same file in rill-config.json
+    const rillConfigPath = path.join(result.outputPath, 'rill-config.json');
+    const raw = await readFile(rillConfigPath, 'utf-8');
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const ext = parsed['extensions'] as Record<string, unknown>;
+    const mounts = ext['mounts'] as Record<string, string>;
+    expect(mounts['aliasA']).toBe('./extensions/shared@0.1.0.js');
+    expect(mounts['aliasB']).toBe('./extensions/shared@0.1.0.js');
   });
 
   // ----------------------------------------------------------
@@ -598,6 +666,122 @@ export const extensionManifest = {
         );
       }
     );
+  });
+});
+
+// ============================================================
+// VERSION SANITIZATION AND COLLISION DETECTION
+// ============================================================
+
+describe('buildPackage version sanitization and collision detection', () => {
+  // ----------------------------------------------------------
+  // Path traversal in version string → throws with clear message
+  // ----------------------------------------------------------
+  it('throws when extension version contains path traversal characters', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    // resolveExtensionVersion reads the version from rill-config.json for local
+    // extensions. A malicious version in that field must be rejected before it is
+    // used as a filename component.
+    const extensionSrc = `
+export const extensionManifest = {
+  name: 'bad-ext',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: {} }),
+};
+`;
+    await writeFile(path.join(projectDir, 'bad-ext.ts'), extensionSrc, 'utf-8');
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({
+        name: 'traversal-test',
+        version: '../../malicious',
+        main: 'main.rill:run',
+        extensions: { mounts: { badExt: './bad-ext.ts' } },
+      }),
+      'utf-8'
+    );
+
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toThrow(
+      'Invalid extension version'
+    );
+  });
+
+  // ----------------------------------------------------------
+  // Same-basename extensions at different paths use stable hash suffix
+  // ----------------------------------------------------------
+  it('disambiguates same-basename extensions with a stable hash suffix', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    const extSrc = (name: string) => `
+export const extensionManifest = {
+  name: '${name}',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: {} }),
+};
+`;
+
+    // Two extensions with the same basename 'ext' but in different subdirectories.
+    const { mkdir: mkdirNode } = await import('node:fs/promises');
+    await mkdirNode(path.join(projectDir, 'foo'), { recursive: true });
+    await mkdirNode(path.join(projectDir, 'bar'), { recursive: true });
+    await writeFile(
+      path.join(projectDir, 'foo', 'ext.ts'),
+      extSrc('ext-foo'),
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'bar', 'ext.ts'),
+      extSrc('ext-bar'),
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({
+        name: 'collision-test',
+        version: '0.1.0',
+        main: 'main.rill:run',
+        extensions: {
+          mounts: {
+            extFoo: './foo/ext.ts',
+            extBar: './bar/ext.ts',
+          },
+        },
+      }),
+      'utf-8'
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const extensionsDir = path.join(result.outputPath, 'extensions');
+    const files = readdirSync(extensionsDir).sort();
+
+    // Both files must exist and be distinct (hash suffix applied to the collision).
+    expect(files).toHaveLength(2);
+    // Both must end with @0.1.0.js and contain 'ext' in the stem.
+    expect(files.every((f) => f.endsWith('@0.1.0.js'))).toBe(true);
+    expect(files[0]).not.toBe(files[1]);
+
+    // Build is deterministic: running again must produce identical filenames.
+    const outputDir2 = await makeTmpDir();
+    const result2 = await buildPackage(projectDir, { outputDir: outputDir2 });
+    const extensionsDir2 = path.join(result2.outputPath, 'extensions');
+    const files2 = readdirSync(extensionsDir2).sort();
+    expect(files2).toEqual(files);
   });
 });
 

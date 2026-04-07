@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Extension output files use package identity instead of mount alias (`my-ext@0.1.0.js` not `myExt.js`)
+- Two mounts referencing the same package share one bundled `.js` file (deduplication)
+- Extension file names include package version for cross-agent pooling
+
+### Fixed
+
+- Final `rill-config.json` reuses dedup-aware mount paths instead of reconstructing from aliases
+
 ## [0.18.8] - 2026-04-06
 
 ### Fixed

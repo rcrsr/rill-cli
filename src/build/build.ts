@@ -624,12 +624,36 @@ export async function buildPackage(
   // Step: Generate runtime.js (bundled), run.js and handler.js (thin wrappers)
   // Resolve @rcrsr/rill and @rcrsr/rill-config from both the build tool's
   // node_modules and the project's node_modules (covers all installation layouts)
-  const buildNodeModules = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    '..',
-    '..',
-    'node_modules'
-  );
+  // Resolve the node_modules directory containing rill-cli's own dependencies.
+  // Uses createRequire to find @rcrsr/rill-config's entry point, then walks up
+  // to the enclosing node_modules. Works under pnpm hoisting where peer deps
+  // live multiple levels above dist/.
+  let buildNodeModules: string;
+  try {
+    const require = createRequire(import.meta.url);
+    const rillConfigEntry = require.resolve('@rcrsr/rill-config');
+    let dir = path.dirname(rillConfigEntry);
+    while (dir !== path.dirname(dir)) {
+      if (path.basename(dir) === 'node_modules') {
+        buildNodeModules = dir;
+        break;
+      }
+      dir = path.dirname(dir);
+    }
+    buildNodeModules ??= path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'node_modules'
+    );
+  } catch {
+    buildNodeModules = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'node_modules'
+    );
+  }
   const projectNodeModules = path.join(absProjectDir, 'node_modules');
 
   // runtime.js — bundled: rill + rill-config + project loading + handler resolution

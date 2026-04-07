@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.18.9] - 2026-04-06
+
 ### Changed
 
 - Extension output files use package identity instead of mount alias (`my-ext@0.1.0.js` not `myExt.js`)

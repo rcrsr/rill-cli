@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve `buildNodeModules` via `createRequire` for pnpm peer dep compatibility
+
 ## [0.18.7] - 2026-04-06
 
 ### Changed

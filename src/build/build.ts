@@ -39,6 +39,7 @@ export class BuildError extends Error {
 
 export interface BuildOptions {
   readonly outputDir?: string | undefined;
+  readonly introspect?: boolean | undefined;
 }
 
 export interface BuildResult {
@@ -230,6 +231,9 @@ async function buildPackageFiles(
   // Step: Copy module .rill files from modules directories
   const modulesMap = pkg.modules;
   for (const [alias, relPath] of Object.entries(modulesMap)) {
+    if (alias.includes('/') || alias.includes('\\') || alias.includes('..')) {
+      throw new BuildError(`Invalid module alias: ${alias}`, 'validation');
+    }
     const srcPath = path.resolve(projectDir, relPath);
     const destPath = path.join(packageOutDir, 'modules', `${alias}.rill`);
     if (!existsSync(srcPath)) {
@@ -597,8 +601,9 @@ export async function buildPackage(
   }
 
   // Build-time introspection: extract handler signature for describe()
+  const shouldIntrospect = options?.introspect !== false; // default true
   let introspectionJson: string | null = null;
-  if (parsedMain.handlerName !== undefined) {
+  if (shouldIntrospect && parsedMain.handlerName !== undefined) {
     try {
       const introSource = readFileSync(
         path.resolve(packageOutDir, path.basename(parsedMain.filePath)),
@@ -730,13 +735,17 @@ export {
  */
 function generateRunSource(): string {
   return `#!/usr/bin/env node
-import { init, execute, dispose } from './handler.js';
+import { describe, init, execute, dispose } from './handler.js';
 
 await init({});
 try {
-  const result = await execute({ params: {} }, {});
-  if (result.result !== undefined && result.result !== '') {
-    process.stdout.write(JSON.stringify(result.result, null, 2) + '\\n');
+  const desc = describe();
+  if (desc !== null) {
+    const result = await execute({ params: {} }, {});
+    if (result.result !== undefined && result.result !== '' && result.result !== false) {
+      process.stdout.write(JSON.stringify(result.result, null, 2) + '\\n');
+    }
+    process.exitCode = result.result === false || result.result === '' ? 1 : 0;
   }
 } finally {
   await dispose();
@@ -810,6 +819,9 @@ export async function init(context = {}) {
 }
 
 export async function execute(request = {}, context = {}) {
+  if (handler === undefined) {
+    return { state: 'completed', result: undefined };
+  }
   const effectiveConfig = (context.sessionVars && hasSessionVars(project.config))
     ? substituteSessionVars(project.config, context.sessionVars)
     : project.config;

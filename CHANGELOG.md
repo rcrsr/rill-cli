@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.18.7] - 2026-04-06
+
 ### Changed
 
 - Rename internal "agent" references to "package" in rill-build source, tests, and docs
@@ -53,7 +55,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.18.6...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.18.7...HEAD
+[0.18.7]: https://github.com/rcrsr/rill-cli/compare/v0.18.6...v0.18.7
 [0.18.6]: https://github.com/rcrsr/rill-cli/compare/v0.18.5...v0.18.6
 [0.18.5]: https://github.com/rcrsr/rill-cli/compare/v0.18.4...v0.18.5
 [0.18.4]: https://github.com/rcrsr/rill-cli/compare/v0.18.3...v0.18.4

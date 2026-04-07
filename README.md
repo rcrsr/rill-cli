@@ -146,7 +146,7 @@ rill-build [project-dir] [--output <dir>]
 **Output structure:**
 
 ```
-build/<agent-name>/
+build/<package-name>/
   main.rill              # entry script
   rill-config.json       # enriched with build section
   extensions/            # bundled extension JS files

@@ -171,10 +171,10 @@ async function bundleExtensionToFile(
 }
 
 // ============================================================
-// AGENT BUILDER (per-agent file operations)
+// PACKAGE BUILDER (per-package file operations)
 // ============================================================
 
-interface AgentBuildInput {
+interface PackageBuildInput {
   readonly name: string;
   readonly entry: string;
   readonly modules: Record<string, string>;
@@ -195,36 +195,36 @@ function isLocalExtension(mountSpecifier: string): boolean {
 }
 
 /**
- * Build a single agent's output files from a rill-config.json project directory.
+ * Build a single package's output files from a rill-config.json project directory.
  * Compiles ALL extensions (local TS and npm packages) via esbuild, copies .rill
  * files, and rewrites all mount paths to local ./extensions/*.js references.
  * Returns the written file paths (rill-config.json excluded — written separately).
  */
-async function buildAgentFiles(
-  agent: AgentBuildInput,
+async function buildPackageFiles(
+  pkg: PackageBuildInput,
   projectDir: string,
-  agentOutDir: string
+  packageOutDir: string
 ): Promise<{ writtenFiles: string[] }> {
   const writtenFiles: string[] = [];
 
   // Step: Copy entry .rill file (preserve original filename)
-  const entrySrcPath = path.resolve(projectDir, agent.entry);
+  const entrySrcPath = path.resolve(projectDir, pkg.entry);
   if (!existsSync(entrySrcPath)) {
     throw new BuildError(
       `Entry file not found: ${entrySrcPath}`,
       'compilation'
     );
   }
-  const entryBasename = path.basename(agent.entry);
-  const entryDestPath = path.join(agentOutDir, entryBasename);
+  const entryBasename = path.basename(pkg.entry);
+  const entryDestPath = path.join(packageOutDir, entryBasename);
   await copyFile(entrySrcPath, entryDestPath);
   writtenFiles.push(entryDestPath);
 
   // Step: Copy module .rill files from modules directories
-  const modulesMap = agent.modules;
+  const modulesMap = pkg.modules;
   for (const [alias, relPath] of Object.entries(modulesMap)) {
     const srcPath = path.resolve(projectDir, relPath);
-    const destPath = path.join(agentOutDir, 'modules', `${alias}.rill`);
+    const destPath = path.join(packageOutDir, 'modules', `${alias}.rill`);
     if (!existsSync(srcPath)) {
       throw new BuildError(
         `Module '${alias}' source not found: ${srcPath}`,
@@ -245,10 +245,10 @@ async function buildAgentFiles(
   }
 
   // Step: Bundle ALL extensions via esbuild (local TS and npm packages)
-  const extensionsOutDir = path.join(agentOutDir, 'extensions');
+  const extensionsOutDir = path.join(packageOutDir, 'extensions');
   const rewrittenMounts: Record<string, string> = {};
 
-  for (const [alias, mountSpecifier] of Object.entries(agent.extensions)) {
+  for (const [alias, mountSpecifier] of Object.entries(pkg.extensions)) {
     await mkdir(extensionsOutDir, { recursive: true });
     const safeName = alias.replace(/[^a-zA-Z0-9_-]/g, '-');
     const destPath = path.join(extensionsOutDir, `${safeName}.js`);
@@ -267,7 +267,7 @@ async function buildAgentFiles(
   }
 
   // Step: Write output rill-config.json with rewritten mount paths (without build section yet)
-  const outputConfig = { ...agent.originalConfig };
+  const outputConfig = { ...pkg.originalConfig };
   if (Object.keys(rewrittenMounts).length > 0) {
     const existingExtBlock = outputConfig['extensions'] as
       | Record<string, unknown>
@@ -279,13 +279,13 @@ async function buildAgentFiles(
   }
   // Rewrite modules paths to point to the copied ./modules/<alias>.rill files
   const rewrittenModules: Record<string, string> = {};
-  for (const [alias] of Object.entries(agent.modules)) {
+  for (const [alias] of Object.entries(pkg.modules)) {
     rewrittenModules[alias] = `./modules/${alias}.rill`;
   }
   if (Object.keys(rewrittenModules).length > 0) {
     outputConfig['modules'] = rewrittenModules;
   }
-  const rillConfigDestPath = path.join(agentOutDir, 'rill-config.json');
+  const rillConfigDestPath = path.join(packageOutDir, 'rill-config.json');
   await writeFile(
     rillConfigDestPath,
     JSON.stringify(outputConfig, null, 2),
@@ -298,7 +298,7 @@ async function buildAgentFiles(
 }
 
 // ============================================================
-// COMPILE AGENT
+// BUILD PACKAGE
 // ============================================================
 
 /**
@@ -318,10 +318,10 @@ async function buildAgentFiles(
  *
  * @param projectDir - Directory containing rill-config.json
  * @param options - Optional outputDir (default: 'build/')
- * @returns BuildResult with agent output path and checksum
+ * @returns BuildResult with package output path and checksum
  * @throws BuildError for file/compilation/bundling/validation failures
  */
-export async function buildAgent(
+export async function buildPackage(
   projectDir: string,
   options?: BuildOptions
 ): Promise<BuildResult> {
@@ -372,17 +372,17 @@ export async function buildAgent(
     );
   }
 
-  // Extract agent name and version from raw config
-  const agentName =
+  // Extract package name and version from raw config
+  const packageName =
     typeof rawConfigObj['name'] === 'string'
       ? rawConfigObj['name']
       : path.basename(absProjectDir);
   if (
-    agentName.includes('/') ||
-    agentName.includes('\\') ||
-    agentName.includes('..')
+    packageName.includes('/') ||
+    packageName.includes('\\') ||
+    packageName.includes('..')
   ) {
-    throw new BuildError(`Invalid agent name: ${agentName}`, 'validation');
+    throw new BuildError(`Invalid package name: ${packageName}`, 'validation');
   }
   if (
     typeof rawConfigObj['version'] !== 'string' ||
@@ -474,46 +474,46 @@ export async function buildAgent(
     );
   }
 
-  const agentInput: AgentBuildInput = {
-    name: agentName,
+  const packageInput: PackageBuildInput = {
+    name: packageName,
     entry: parsedMain.filePath,
     modules: modulesMap,
     extensions: extensionMounts,
     originalConfig: rawConfigObj,
   };
 
-  // Create agent output directory: <outputDir>/<agentName>/
-  // Only clean the agent subdirectory to preserve other agents' output.
-  const agentOutDir = path.join(absOutputDir, agentName);
+  // Create package output directory: <outputDir>/<packageName>/
+  // Only clean the package subdirectory to preserve other packages' output.
+  const packageOutDir = path.join(absOutputDir, packageName);
   try {
-    await rm(agentOutDir, { recursive: true, force: true });
-    await mkdir(agentOutDir, { recursive: true });
+    await rm(packageOutDir, { recursive: true, force: true });
+    await mkdir(packageOutDir, { recursive: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new BuildError(
-      `Cannot write to output directory ${agentOutDir}: ${msg}`,
+      `Cannot write to output directory ${packageOutDir}: ${msg}`,
       'bundling'
     );
   }
 
-  // Step: Build agent files (copy .rill, compile extensions, write initial rill-config.json)
-  const { writtenFiles } = await buildAgentFiles(
-    agentInput,
+  // Step: Build package files (copy .rill, compile extensions, write initial rill-config.json)
+  const { writtenFiles } = await buildPackageFiles(
+    packageInput,
     absProjectDir,
-    agentOutDir
+    packageOutDir
   );
 
-  // Collect files for checksum (agent files only, rill-config.json excluded
+  // Collect files for checksum (package files only, rill-config.json excluded
   // because we rewrite it with the build section after computing the checksum)
   const allWrittenFiles = [...writtenFiles];
 
   // Dry-run validation — loadProject() on completed output
-  const outputRillConfigPath = path.join(agentOutDir, 'rill-config.json');
+  const outputRillConfigPath = path.join(packageOutDir, 'rill-config.json');
   const rillVersion = readRillVersion();
 
   const originalCwd = process.cwd();
   try {
-    process.chdir(agentOutDir);
+    process.chdir(packageOutDir);
     const dryRunResult = await loadProject({
       configPath: outputRillConfigPath,
       rillVersion,
@@ -529,7 +529,7 @@ export async function buildAgent(
     ) {
       // Validation skipped: will be validated at runtime by the harness
     } else {
-      await rm(agentOutDir, { recursive: true, force: true }).catch(
+      await rm(packageOutDir, { recursive: true, force: true }).catch(
         () => undefined
       );
       const msg = err instanceof Error ? err.message : String(err);
@@ -545,7 +545,7 @@ export async function buildAgent(
 
   // Step: Rewrite rill-config.json with build metadata section
   const outputConfigWithBuild: Record<string, unknown> = {
-    ...agentInput.originalConfig,
+    ...packageInput.originalConfig,
     build: {
       checksum,
       rillVersion,
@@ -554,7 +554,7 @@ export async function buildAgent(
   };
   // Re-apply extension mount rewrites — all extensions are bundled locally
   const rewrittenMounts: Record<string, string> = {};
-  for (const [alias] of Object.entries(agentInput.extensions)) {
+  for (const [alias] of Object.entries(packageInput.extensions)) {
     const safeName = alias.replace(/[^a-zA-Z0-9_-]/g, '-');
     rewrittenMounts[alias] = `./extensions/${safeName}.js`;
   }
@@ -569,7 +569,7 @@ export async function buildAgent(
   }
   // Re-apply module path rewrites — all modules are copied locally
   const finalRewrittenModules: Record<string, string> = {};
-  for (const [alias] of Object.entries(agentInput.modules)) {
+  for (const [alias] of Object.entries(packageInput.modules)) {
     finalRewrittenModules[alias] = `./modules/${alias}.rill`;
   }
   if (Object.keys(finalRewrittenModules).length > 0) {
@@ -590,16 +590,19 @@ export async function buildAgent(
   }
 
   // Step: Generate runtime.js (bundled), run.js and handler.js (thin wrappers)
+  // Resolve @rcrsr/rill and @rcrsr/rill-config from both the build tool's
+  // node_modules and the project's node_modules (covers all installation layouts)
   const buildNodeModules = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     '..',
     '..',
     'node_modules'
   );
+  const projectNodeModules = path.join(absProjectDir, 'node_modules');
 
   // runtime.js — bundled: rill + rill-config + project loading + handler resolution
-  const runtimeSrcPath = path.join(agentOutDir, '_runtime.js');
-  const runtimeDestPath = path.join(agentOutDir, 'runtime.js');
+  const runtimeSrcPath = path.join(packageOutDir, '_runtime.js');
+  const runtimeDestPath = path.join(packageOutDir, 'runtime.js');
   try {
     await writeFile(runtimeSrcPath, generateRuntimeSource(mainField), 'utf-8');
     await esbuild({
@@ -609,7 +612,7 @@ export async function buildAgent(
       platform: 'node',
       outfile: runtimeDestPath,
       logLevel: 'silent',
-      nodePaths: [buildNodeModules],
+      nodePaths: [projectNodeModules, buildNodeModules],
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -621,7 +624,7 @@ export async function buildAgent(
   // run.js — thin CLI wrapper (not bundled, imports from ./runtime.js)
   try {
     await writeFile(
-      path.join(agentOutDir, 'run.js'),
+      path.join(packageOutDir, 'run.js'),
       generateRunSource(),
       'utf-8'
     );
@@ -633,7 +636,7 @@ export async function buildAgent(
   // handler.js — thin handler export (not bundled, imports from ./runtime.js)
   try {
     await writeFile(
-      path.join(agentOutDir, 'handler.js'),
+      path.join(packageOutDir, 'handler.js'),
       generateHandlerSource(),
       'utf-8'
     );
@@ -643,7 +646,7 @@ export async function buildAgent(
   }
 
   return {
-    outputPath: agentOutDir,
+    outputPath: packageOutDir,
     checksum,
   };
 }

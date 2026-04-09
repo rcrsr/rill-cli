@@ -329,4 +329,39 @@ describe('runScript', () => {
       expect(result.errorOutput).toContain('at 3:1');
     });
   });
+
+  describe('stream draining', () => {
+    it('drains a returned stream into a chunks array', async () => {
+      const source = [
+        '|| {',
+        '  1 -> yield',
+        '  2 -> yield',
+        '  3 -> yield',
+        '} :stream(number) => $gen',
+        '$gen()',
+      ].join('\n');
+      const result = await runTempScript(source, { format: 'json' });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toBe(JSON.stringify([1, 2, 3]));
+    });
+
+    it('drains a returned string stream', async () => {
+      const source = [
+        '|| {',
+        '  "a" -> yield',
+        '  "b" -> yield',
+        '} :stream(string) => $gen',
+        '$gen()',
+      ].join('\n');
+      const result = await runTempScript(source, { format: 'json' });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toBe(JSON.stringify(['a', 'b']));
+    });
+
+    it('returns non-stream results unchanged', async () => {
+      const result = await runTempScript('42', { format: 'json' });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toBe('42');
+    });
+  });
 });

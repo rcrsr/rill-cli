@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   resolveConfigPath: vi.fn(),
   loadProject: vi.fn(),
   runScript: vi.fn(),
+  drainStream: vi.fn(),
   parseMainField: vi.fn(),
   introspectHandler: vi.fn(),
   marshalCliArgs: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   substituteSessionVars: vi.fn(),
   invokeCallable: vi.fn(),
   isScriptCallable: vi.fn(),
+  isStream: vi.fn(),
   readFileSync: vi.fn(),
   parse: vi.fn(),
   execute: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock('../../src/run/runner.js', async (importActual) => {
   return {
     ...actual,
     runScript: mocks.runScript,
+    drainStream: mocks.drainStream,
   };
 });
 
@@ -57,6 +60,7 @@ vi.mock('@rcrsr/rill', async (importActual) => {
     ...actual,
     invokeCallable: mocks.invokeCallable,
     isScriptCallable: mocks.isScriptCallable,
+    isStream: mocks.isStream,
     parse: mocks.parse,
     execute: mocks.execute,
     createRuntimeContext: mocks.createRuntimeContext,
@@ -588,6 +592,7 @@ describe('main() loadProject flow', () => {
       mocks.parse.mockReturnValue({ type: 'Script', body: [] });
       mocks.execute.mockResolvedValue(undefined);
       mocks.isScriptCallable.mockReturnValue(true);
+      mocks.isStream.mockReturnValue(false);
       mocks.invokeCallable.mockResolvedValue('');
 
       const variables = new Map<string, unknown>();
@@ -719,6 +724,29 @@ describe('main() loadProject flow', () => {
 
       const args = mocks.invokeCallable.mock.calls[0]?.[1] as unknown[];
       expect(args).toEqual(['test', undefined]);
+    });
+
+    it('drains returned streams and outputs chunks', async () => {
+      mocks.loadProject.mockResolvedValue(makeHandlerProject());
+      mocks.introspectHandler.mockReturnValue({
+        description: undefined,
+        params: [],
+      });
+      mocks.marshalCliArgs.mockReturnValue({});
+
+      const fakeStream = { __rill_stream: true, done: false };
+      mocks.invokeCallable.mockResolvedValue(fakeStream);
+      mocks.isStream.mockReturnValue(true);
+      mocks.drainStream.mockResolvedValue(['chunk1', 'chunk2']);
+
+      await runMain([]);
+
+      expect(mocks.drainStream).toHaveBeenCalledWith(
+        fakeStream,
+        expect.anything()
+      );
+      expect(stdoutChunks.join('')).toContain('chunk1');
+      expect(stdoutChunks.join('')).toContain('chunk2');
     });
   });
 

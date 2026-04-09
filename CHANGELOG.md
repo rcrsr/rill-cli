@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Drain returned rill streams in handler and module modes, outputting collected chunks instead of metadata
+
 ## [0.18.9] - 2026-04-06
 
 ### Changed

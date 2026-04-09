@@ -331,7 +331,7 @@ describe('runScript', () => {
   });
 
   describe('stream draining', () => {
-    it('drains a returned stream into a chunks array', async () => {
+    it('streams chunks to stdout as they arrive', async () => {
       const source = [
         '|| {',
         '  1 -> yield',
@@ -340,12 +340,23 @@ describe('runScript', () => {
         '} :stream(number) => $gen',
         '$gen()',
       ].join('\n');
-      const result = await runTempScript(source, { format: 'json' });
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toBe(JSON.stringify([1, 2, 3]));
+      const stdoutChunks: string[] = [];
+      const origWrite = process.stdout.write.bind(process.stdout);
+      (process.stdout.write as unknown) = (chunk: string) => {
+        stdoutChunks.push(chunk);
+        return true;
+      };
+      try {
+        const result = await runTempScript(source);
+        expect(result.exitCode).toBe(0);
+        expect(result.output).toBeUndefined();
+        expect(stdoutChunks).toEqual(['1', '2', '3']);
+      } finally {
+        (process.stdout.write as unknown) = origWrite;
+      }
     });
 
-    it('drains a returned string stream', async () => {
+    it('streams string chunks to stdout', async () => {
       const source = [
         '|| {',
         '  "a" -> yield',
@@ -353,9 +364,19 @@ describe('runScript', () => {
         '} :stream(string) => $gen',
         '$gen()',
       ].join('\n');
-      const result = await runTempScript(source, { format: 'json' });
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toBe(JSON.stringify(['a', 'b']));
+      const stdoutChunks: string[] = [];
+      const origWrite = process.stdout.write.bind(process.stdout);
+      (process.stdout.write as unknown) = (chunk: string) => {
+        stdoutChunks.push(chunk);
+        return true;
+      };
+      try {
+        const result = await runTempScript(source);
+        expect(result.exitCode).toBe(0);
+        expect(stdoutChunks).toEqual(['a', 'b']);
+      } finally {
+        (process.stdout.write as unknown) = origWrite;
+      }
     });
 
     it('returns non-stream results unchanged', async () => {

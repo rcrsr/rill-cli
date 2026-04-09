@@ -33,7 +33,12 @@ import {
 } from '@rcrsr/rill-config';
 import { CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
 import { explainError } from './cli-explain.js';
-import { drainStream, formatOutput, runScript } from './run/runner.js';
+import {
+  createStreamWriter,
+  drainStream,
+  formatOutput,
+  runScript,
+} from './run/runner.js';
 import type { RunCliOptions } from './run/types.js';
 
 // ============================================================
@@ -372,10 +377,14 @@ export async function main(): Promise<void> {
     );
 
     let handlerResult: import('@rcrsr/rill').RillValue;
+    let streamed = false;
     try {
       handlerResult = await invokeCallable(handlerValue, positionalArgs, ctx);
       if (isStream(handlerResult)) {
-        handlerResult = await drainStream(handlerResult as RillStream, ctx);
+        streamed = true;
+        const writer = createStreamWriter(opts.format);
+        await drainStream(handlerResult as RillStream, ctx, writer.onChunk);
+        await writer.finalize();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -392,6 +401,7 @@ export async function main(): Promise<void> {
     }
 
     if (
+      !streamed &&
       handlerResult !== false &&
       handlerResult !== '' &&
       handlerResult !== undefined
@@ -399,7 +409,9 @@ export async function main(): Promise<void> {
       const output = formatOutput(handlerResult, opts.format);
       process.stdout.write(output + '\n');
     }
-    process.exit(handlerResult === false || handlerResult === '' ? 1 : 0);
+    process.exit(
+      !streamed && (handlerResult === false || handlerResult === '') ? 1 : 0
+    );
   }
 
   // Module mode: main field in config is required

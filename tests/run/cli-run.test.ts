@@ -737,13 +737,25 @@ describe('main() loadProject flow', () => {
       const fakeStream = { __rill_stream: true, done: false };
       mocks.invokeCallable.mockResolvedValue(fakeStream);
       mocks.isStream.mockReturnValue(true);
-      mocks.drainStream.mockResolvedValue(['chunk1', 'chunk2']);
+      mocks.drainStream.mockImplementation(
+        async (
+          _stream: unknown,
+          _ctx: unknown,
+          onChunk?: (v: unknown) => void
+        ) => {
+          for (const chunk of ['chunk1', 'chunk2']) {
+            if (onChunk) onChunk(chunk);
+          }
+          return ['chunk1', 'chunk2'];
+        }
+      );
 
       await runMain([]);
 
       expect(mocks.drainStream).toHaveBeenCalledWith(
         fakeStream,
-        expect.anything()
+        expect.anything(),
+        expect.any(Function)
       );
       expect(stdoutChunks.join('')).toContain('chunk1');
       expect(stdoutChunks.join('')).toContain('chunk2');

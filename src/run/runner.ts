@@ -89,13 +89,14 @@ export function buildModuleResolver(
 
 /**
  * Walk a RillStream linked list, collect all chunk values, then call dispose.
- * When onChunk is provided, each chunk is emitted immediately for streaming output.
- * Returns the collected chunks as an array.
+ * When onChunk is provided, each chunk is emitted immediately for streaming output
+ * and collection is skipped to avoid unbounded memory growth.
+ * Returns the collected chunks as an array (empty when onChunk is provided).
  */
 export async function drainStream(
   stream: RillStream,
   ctx: RuntimeContext,
-  onChunk?: (value: RillValue) => void
+  onChunk?: (value: RillValue) => void | Promise<void>
 ): Promise<RillValue[]> {
   const chunks: RillValue[] = [];
   let current: RillStream = stream;
@@ -103,8 +104,11 @@ export async function drainStream(
   try {
     while (!current.done) {
       if (current.value !== undefined) {
-        chunks.push(current.value);
-        if (onChunk) onChunk(current.value);
+        if (onChunk) {
+          await onChunk(current.value);
+        } else {
+          chunks.push(current.value);
+        }
       }
       const nextFn = current.next;
       if (!isCallable(nextFn as RillValue)) break;
@@ -120,6 +124,51 @@ export async function drainStream(
   }
 
   return chunks;
+}
+
+/** Write to stdout with backpressure handling. */
+function writeWithBackpressure(data: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.stdout.write(data)) {
+      resolve();
+    } else {
+      process.stdout.once('drain', resolve);
+    }
+  });
+}
+
+/**
+ * Create an onChunk callback that writes stream chunks to stdout,
+ * respecting the output format and handling backpressure.
+ */
+export function createStreamWriter(format: RunCliOptions['format']): {
+  onChunk: (value: RillValue) => Promise<void>;
+  finalize: () => Promise<void>;
+} {
+  if (format === 'json' || format === 'compact') {
+    let isFirst = true;
+    return {
+      async onChunk(value: RillValue) {
+        const json = JSON.stringify(toNative(value).value) ?? 'null';
+        if (isFirst) {
+          await writeWithBackpressure('[' + json);
+          isFirst = false;
+        } else {
+          await writeWithBackpressure(',' + json);
+        }
+      },
+      async finalize() {
+        await writeWithBackpressure(isFirst ? '[]' : ']');
+      },
+    };
+  }
+
+  return {
+    async onChunk(value: RillValue) {
+      await writeWithBackpressure(String(value));
+    },
+    async finalize() {},
+  };
 }
 
 // ============================================================
@@ -248,9 +297,9 @@ export async function runScript(
     const execResult = await execute(ast, ctx);
     result = execResult.result;
     if (isStream(result)) {
-      await drainStream(result as RillStream, ctx, (chunk) => {
-        process.stdout.write(String(chunk));
-      });
+      const writer = createStreamWriter(opts.format);
+      await drainStream(result as RillStream, ctx, writer.onChunk);
+      await writer.finalize();
       return { exitCode: 0 };
     }
   } catch (err: unknown) {

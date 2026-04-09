@@ -33,7 +33,12 @@ import {
 } from '@rcrsr/rill-config';
 import { CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
 import { explainError } from './cli-explain.js';
-import { drainStream, formatOutput, runScript } from './run/runner.js';
+import {
+  createStreamWriter,
+  drainStream,
+  formatOutput,
+  runScript,
+} from './run/runner.js';
 import type { RunCliOptions } from './run/types.js';
 
 // ============================================================
@@ -377,9 +382,9 @@ export async function main(): Promise<void> {
       handlerResult = await invokeCallable(handlerValue, positionalArgs, ctx);
       if (isStream(handlerResult)) {
         streamed = true;
-        await drainStream(handlerResult as RillStream, ctx, (chunk) => {
-          process.stdout.write(String(chunk));
-        });
+        const writer = createStreamWriter(opts.format);
+        await drainStream(handlerResult as RillStream, ctx, writer.onChunk);
+        await writer.finalize();
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

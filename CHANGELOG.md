@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.18.12] - 2026-04-09
+
 ### Added
 
 - Drain streams in generated build wrappers with backpressure-aware stdout writes

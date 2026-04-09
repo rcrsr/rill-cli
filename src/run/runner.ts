@@ -98,21 +98,23 @@ export async function drainStream(
   const chunks: RillValue[] = [];
   let current: RillStream = stream;
 
-  while (!current.done) {
-    if (current.value !== undefined) {
-      chunks.push(current.value);
+  try {
+    while (!current.done) {
+      if (current.value !== undefined) {
+        chunks.push(current.value);
+      }
+      const nextFn = current.next;
+      if (!isCallable(nextFn as RillValue)) break;
+      const next = await invokeCallable(nextFn as RillCallable, [], ctx);
+      if (!isStream(next as RillValue)) break;
+      current = next as RillStream;
     }
-    const nextFn = current.next;
-    if (!isCallable(nextFn as RillValue)) break;
-    const next = await invokeCallable(nextFn as RillCallable, [], ctx);
-    if (!isStream(next as RillValue)) break;
-    current = next as RillStream;
+  } finally {
+    const disposeFn = (stream as Record<string, unknown>)[
+      '__rill_stream_dispose'
+    ];
+    if (typeof disposeFn === 'function') disposeFn();
   }
-
-  const disposeFn = (stream as Record<string, unknown>)[
-    '__rill_stream_dispose'
-  ];
-  if (typeof disposeFn === 'function') disposeFn();
 
   return chunks;
 }

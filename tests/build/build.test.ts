@@ -866,6 +866,102 @@ describe('handler lifecycle contract', () => {
   });
 
   // ----------------------------------------------------------
+  // execute() drains streams with onChunk callback
+  // ----------------------------------------------------------
+  it('execute() calls onChunk incrementally for stream results and returns streamed: true', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture(
+      {},
+      {
+        'main.rill': `|| {
+  "a" -> yield
+  "b" -> yield
+  "c" -> yield
+  3
+}:stream(string):number => $run`,
+      }
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerPath = path.join(result.outputPath, 'handler.js');
+    const handler = (await import(handlerPath)) as {
+      init: (ctx?: Record<string, unknown>) => Promise<void>;
+      execute: (
+        req?: Record<string, unknown>,
+        ctx?: Record<string, unknown>
+      ) => Promise<{
+        state: string;
+        result: unknown;
+        streamed: boolean;
+      }>;
+      dispose: () => Promise<void>;
+    };
+
+    const savedCwd = process.cwd();
+    await handler.init({});
+    try {
+      const chunks: unknown[] = [];
+      const withChunk = await handler.execute(
+        { params: {} },
+        {
+          onChunk: (v: unknown) => {
+            chunks.push(v);
+          },
+        }
+      );
+      expect(chunks).toEqual(['a', 'b', 'c']);
+      expect(withChunk.streamed).toBe(true);
+      expect(withChunk.result).toBeUndefined();
+    } finally {
+      await handler.dispose();
+      process.chdir(savedCwd);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // execute() collects stream chunks into array without onChunk
+  // ----------------------------------------------------------
+  it('execute() returns collected chunk array when onChunk is not provided', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture(
+      {},
+      {
+        'main.rill': `|| {
+  "x" -> yield
+  "y" -> yield
+  2
+}:stream(string):number => $run`,
+      }
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerPath = path.join(result.outputPath, 'handler.js');
+    const handler = (await import(handlerPath)) as {
+      init: (ctx?: Record<string, unknown>) => Promise<void>;
+      execute: (
+        req?: Record<string, unknown>,
+        ctx?: Record<string, unknown>
+      ) => Promise<{
+        state: string;
+        result: unknown;
+        streamed: boolean;
+      }>;
+      dispose: () => Promise<void>;
+    };
+
+    const savedCwd = process.cwd();
+    await handler.init({});
+    try {
+      const withoutChunk = await handler.execute({ params: {} }, {});
+      expect(withoutChunk.result).toEqual(['x', 'y']);
+      expect(withoutChunk.streamed).toBe(false);
+    } finally {
+      await handler.dispose();
+      process.chdir(savedCwd);
+    }
+  });
+
+  // ----------------------------------------------------------
   // describe() returns null when main field has no handler name
   // ----------------------------------------------------------
   it('describe() returns null when no handler name in main field', async () => {

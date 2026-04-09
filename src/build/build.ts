@@ -955,7 +955,7 @@ export async function init(context = {}) {
 
 export async function execute(request = {}, context = {}) {
   if (handler === undefined) {
-    return { state: 'completed', result: undefined };
+    return { state: 'completed', result: undefined, streamed: false };
   }
   const effectiveConfig = (context.sessionVars && hasSessionVars(project.config))
     ? substituteSessionVars(project.config, context.sessionVars)
@@ -982,7 +982,7 @@ export async function execute(request = {}, context = {}) {
     });
     result = chunks;
   }
-  return { state: 'completed', result };
+  return { state: 'completed', result, streamed: false };
 }
 
 export async function dispose() {

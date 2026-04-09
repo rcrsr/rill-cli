@@ -372,10 +372,14 @@ export async function main(): Promise<void> {
     );
 
     let handlerResult: import('@rcrsr/rill').RillValue;
+    let streamed = false;
     try {
       handlerResult = await invokeCallable(handlerValue, positionalArgs, ctx);
       if (isStream(handlerResult)) {
-        handlerResult = await drainStream(handlerResult as RillStream, ctx);
+        streamed = true;
+        await drainStream(handlerResult as RillStream, ctx, (chunk) => {
+          process.stdout.write(String(chunk));
+        });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -392,6 +396,7 @@ export async function main(): Promise<void> {
     }
 
     if (
+      !streamed &&
       handlerResult !== false &&
       handlerResult !== '' &&
       handlerResult !== undefined
@@ -399,7 +404,9 @@ export async function main(): Promise<void> {
       const output = formatOutput(handlerResult, opts.format);
       process.stdout.write(output + '\n');
     }
-    process.exit(handlerResult === false || handlerResult === '' ? 1 : 0);
+    process.exit(
+      !streamed && (handlerResult === false || handlerResult === '') ? 1 : 0
+    );
   }
 
   // Module mode: main field in config is required

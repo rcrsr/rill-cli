@@ -89,11 +89,13 @@ export function buildModuleResolver(
 
 /**
  * Walk a RillStream linked list, collect all chunk values, then call dispose.
+ * When onChunk is provided, each chunk is emitted immediately for streaming output.
  * Returns the collected chunks as an array.
  */
 export async function drainStream(
   stream: RillStream,
-  ctx: RuntimeContext
+  ctx: RuntimeContext,
+  onChunk?: (value: RillValue) => void
 ): Promise<RillValue[]> {
   const chunks: RillValue[] = [];
   let current: RillStream = stream;
@@ -102,6 +104,7 @@ export async function drainStream(
     while (!current.done) {
       if (current.value !== undefined) {
         chunks.push(current.value);
+        if (onChunk) onChunk(current.value);
       }
       const nextFn = current.next;
       if (!isCallable(nextFn as RillValue)) break;
@@ -245,7 +248,10 @@ export async function runScript(
     const execResult = await execute(ast, ctx);
     result = execResult.result;
     if (isStream(result)) {
-      result = await drainStream(result as RillStream, ctx);
+      await drainStream(result as RillStream, ctx, (chunk) => {
+        process.stdout.write(String(chunk));
+      });
+      return { exitCode: 0 };
     }
   } catch (err: unknown) {
     if (err instanceof RillError) {

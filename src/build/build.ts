@@ -819,16 +819,38 @@ import {
   createRuntimeContext,
   invokeCallable,
   isScriptCallable,
+  isStream,
+  isCallable,
+  toNative,
   VERSION,
 } from '@rcrsr/rill';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+async function drainStream(stream, ctx, onChunk) {
+  let current = stream;
+  try {
+    while (!current.done) {
+      if (current.value !== undefined) {
+        if (onChunk) await onChunk(current.value);
+      }
+      const nextFn = current.next;
+      if (!isCallable(nextFn)) break;
+      const next = await invokeCallable(nextFn, [], ctx);
+      if (!isStream(next)) break;
+      current = next;
+    }
+  } finally {
+    const disposeFn = stream['__rill_stream_dispose'];
+    if (typeof disposeFn === 'function') disposeFn();
+  }
+}
+
 export {
   readFileSync, resolve, __dirname,
   resolveConfigPath, loadProject, parseMainField,
   interpolate, hasSessionVars, extractSessionVarNames, substituteSessionVars,
-  parse, execute, createRuntimeContext, invokeCallable, isScriptCallable, VERSION,
+  parse, execute, createRuntimeContext, invokeCallable, isScriptCallable, isStream, toNative, drainStream, VERSION,
 };
 `;
 }
@@ -840,12 +862,22 @@ function generateRunSource(): string {
   return `#!/usr/bin/env node
 import { describe, init, execute, dispose } from './handler.js';
 
+function writeWithBackpressure(data) {
+  return new Promise((resolve) => {
+    if (process.stdout.write(data)) resolve();
+    else process.stdout.once('drain', resolve);
+  });
+}
+
 await init({});
 try {
   const desc = describe();
   if (desc !== null) {
-    const result = await execute({ params: {} }, {});
-    if (result.result !== undefined && result.result !== '' && result.result !== false) {
+    const onChunk = async (chunk) => {
+      await writeWithBackpressure(String(chunk));
+    };
+    const result = await execute({ params: {} }, { onChunk });
+    if (!result.streamed && result.result !== undefined && result.result !== '' && result.result !== false) {
       process.stdout.write(JSON.stringify(result.result, null, 2) + '\\n');
     }
     process.exitCode = result.result === false || result.result === '' ? 1 : 0;
@@ -873,7 +905,7 @@ function generateHandlerSource(
   readFileSync, resolve, __dirname,
   resolveConfigPath, loadProject, parseMainField,
   interpolate, hasSessionVars, extractSessionVarNames, substituteSessionVars,
-  parse, execute as rillExecute, createRuntimeContext, invokeCallable, isScriptCallable, VERSION,
+  parse, execute as rillExecute, createRuntimeContext, invokeCallable, isScriptCallable, isStream, toNative, drainStream, VERSION,
 } from './runtime.js';
 
 let project;
@@ -936,7 +968,20 @@ export async function execute(request = {}, context = {}) {
 
   ctx.pipeValue = request.params ?? {};
 
-  const result = await invokeCallable(handler, [], ctx);
+  let result = await invokeCallable(handler, [], ctx);
+  if (isStream(result)) {
+    if (context.onChunk) {
+      await drainStream(result, ctx, async (chunk) => {
+        await context.onChunk(toNative(chunk).value);
+      });
+      return { state: 'completed', result: undefined, streamed: true };
+    }
+    const chunks = [];
+    await drainStream(result, ctx, (chunk) => {
+      chunks.push(toNative(chunk).value);
+    });
+    result = chunks;
+  }
   return { state: 'completed', result };
 }
 

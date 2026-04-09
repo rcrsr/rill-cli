@@ -13,8 +13,14 @@ import {
   moduleResolver,
   toNative,
   isTuple,
+  isStream,
+  isCallable,
+  invokeCallable,
   type RillValue,
   type RillTuple,
+  type RillStream,
+  type RillCallable,
+  type RuntimeContext,
   type RuntimeOptions,
   type SchemeResolver,
 } from '@rcrsr/rill';
@@ -75,6 +81,40 @@ export function buildModuleResolver(
     return moduleResolver(resource, { [resource]: filePath });
   };
   return resolver;
+}
+
+// ============================================================
+// STREAM DRAINING
+// ============================================================
+
+/**
+ * Walk a RillStream linked list, collect all chunk values, then call dispose.
+ * Returns the collected chunks as an array.
+ */
+export async function drainStream(
+  stream: RillStream,
+  ctx: RuntimeContext
+): Promise<RillValue[]> {
+  const chunks: RillValue[] = [];
+  let current: RillStream = stream;
+
+  while (!current.done) {
+    if (current.value !== undefined) {
+      chunks.push(current.value);
+    }
+    const nextFn = current.next;
+    if (!isCallable(nextFn as RillValue)) break;
+    const next = await invokeCallable(nextFn as RillCallable, [], ctx);
+    if (!isStream(next as RillValue)) break;
+    current = next as RillStream;
+  }
+
+  const disposeFn = (stream as Record<string, unknown>)[
+    '__rill_stream_dispose'
+  ];
+  if (typeof disposeFn === 'function') disposeFn();
+
+  return chunks;
 }
 
 // ============================================================
@@ -202,6 +242,9 @@ export async function runScript(
   try {
     const execResult = await execute(ast, ctx);
     result = execResult.result;
+    if (isStream(result)) {
+      result = await drainStream(result as RillStream, ctx);
+    }
   } catch (err: unknown) {
     if (err instanceof RillError) {
       const formatted =

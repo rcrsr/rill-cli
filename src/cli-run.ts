@@ -14,8 +14,10 @@ import {
   createRuntimeContext,
   invokeCallable,
   isScriptCallable,
+  isStream,
   VERSION,
   type RuntimeOptions,
+  type RillStream,
 } from '@rcrsr/rill';
 import {
   resolveConfigPath,
@@ -31,7 +33,7 @@ import {
 } from '@rcrsr/rill-config';
 import { CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
 import { explainError } from './cli-explain.js';
-import { formatOutput, runScript } from './run/runner.js';
+import { drainStream, formatOutput, runScript } from './run/runner.js';
 import type { RunCliOptions } from './run/types.js';
 
 // ============================================================
@@ -372,6 +374,9 @@ export async function main(): Promise<void> {
     let handlerResult: import('@rcrsr/rill').RillValue;
     try {
       handlerResult = await invokeCallable(handlerValue, positionalArgs, ctx);
+      if (isStream(handlerResult)) {
+        handlerResult = await drainStream(handlerResult as RillStream, ctx);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(message + '\n');

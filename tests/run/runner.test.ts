@@ -289,7 +289,7 @@ describe('runScript', () => {
 
     beforeEach(() => {
       _executeErrorOverride = new RuntimeError(
-        'RILL-R004',
+        'RILL-R005',
         'test frame error',
         undefined,
         {
@@ -305,7 +305,7 @@ describe('runScript', () => {
     it('suppresses all stack frames when maxStackDepth is 0', async () => {
       const result = await runTempScript('true', { maxStackDepth: 0 });
       expect(result.exitCode).toBe(1);
-      expect(result.errorOutput).toContain('RILL-R004');
+      expect(result.errorOutput).toContain('RILL-R005');
       expect(result.errorOutput).not.toContain('at 1:');
       expect(result.errorOutput).not.toContain('at 2:');
       expect(result.errorOutput).not.toContain('at 3:');

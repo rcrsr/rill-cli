@@ -1,0 +1,7 @@
+
+guard { "not a number" -> number } => $inv
+
+42 => $some_other 
+
+$inv + $some_other => $result
+

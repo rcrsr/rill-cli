@@ -70,7 +70,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     expect(hasStreamWarning(source, config)).toBe(true);
@@ -81,7 +81,7 @@ describe('STREAM_PRE_ITERATION', () => {
   it('does not warn when each on $s precedes $s()', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
-      $s -> each { $ }
+      $s -> seq({ $ })
       $s()
     `;
 
@@ -91,7 +91,7 @@ describe('STREAM_PRE_ITERATION', () => {
   it('does not warn when map on $s precedes $s()', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
-      $s -> map { $ * 2 }
+      $s -> fan({ $ * 2 })
       $s()
     `;
 
@@ -101,7 +101,7 @@ describe('STREAM_PRE_ITERATION', () => {
   it('does not warn when filter on $s precedes $s()', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
-      $s -> filter { ($ > 0) }
+      $s -> filter({ ($ > 0) })
       $s()
     `;
 
@@ -111,7 +111,7 @@ describe('STREAM_PRE_ITERATION', () => {
   it('does not warn when fold on $s precedes $s()', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
-      $s -> fold(0) { $@ + $ }
+      $s -> fold(0, { $@ + $ })
       $s()
     `;
 
@@ -122,7 +122,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $my_stream
       $my_stream()
-      $my_stream -> each { $ }
+      $my_stream -> seq({ $ })
     `;
 
     const messages = getDiagnostics(source, config);
@@ -137,7 +137,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     const diagnostics = getAllDiagnostics(source, config);
@@ -153,7 +153,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     // Enable another rule alongside STREAM_PRE_ITERATION
@@ -173,7 +173,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     const diagnostics = getAllDiagnostics(source, config);
@@ -187,7 +187,7 @@ describe('STREAM_PRE_ITERATION', () => {
   it('does not warn when stream variable is only iterated', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     expect(hasStreamWarning(source, config)).toBe(false);
@@ -206,7 +206,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       host_fn() => $s:stream
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     expect(hasStreamWarning(source, config)).toBe(true);
@@ -216,7 +216,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     const offConfig = createConfig({ STREAM_PRE_ITERATION: 'off' });
@@ -227,7 +227,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     const codes = getCodes(source, config);
@@ -238,7 +238,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream(string) => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     expect(hasStreamWarning(source, config)).toBe(true);
@@ -248,7 +248,7 @@ describe('STREAM_PRE_ITERATION', () => {
     const source = `
       |x| ($x -> yield) :stream() => $s
       $s()
-      $s -> each { $ }
+      $s -> seq({ $ })
     `;
 
     const messages = getDiagnostics(source, config);

@@ -1,0 +1,6 @@
+{
+  "name": "runtime-error",
+  "version": "1.0.0",
+  "description": "Demonstrates a runtime halt with an atom code (#TYPE_MISMATCH).",
+  "main": "main.rill"
+}

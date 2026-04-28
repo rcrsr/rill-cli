@@ -12,13 +12,14 @@ import type {
   ASTNode,
   ClosureNode,
   GroupedExprNode,
+  HostCallNode,
   PipeChainNode,
   PostfixExprNode,
   VariableNode,
-  EachExprNode,
 } from '@rcrsr/rill';
 import { extractContextLine } from './helpers.js';
 import { visitNode } from '../visitor.js';
+import { isCollectionOpCall, getCollectionOpBody } from '../collection-ops.js';
 
 // ============================================================
 // CLOSURE_BARE_DOLLAR RULE
@@ -87,16 +88,13 @@ export const CLOSURE_BARE_DOLLAR: ValidationRule = {
 function containsBareReference(node: ASTNode): boolean {
   let found = false;
   let scopeDepth = 0;
-  const scopeTypes = new Set([
-    'Closure',
-    'FilterExpr',
-    'MapExpr',
-    'EachExpr',
-  ]);
+  // Treat both Closure literals and collection-op HostCalls as scopes:
+  // inside `seq/fan/fold/filter/acc` the bare `$` is the iteration element,
+  // not the outer closure's pipe value.
   const ctx = {} as ValidationContext;
   visitNode(node, ctx, {
     enter(n: ASTNode) {
-      if (scopeTypes.has(n.type)) {
+      if (n.type === 'Closure' || isCollectionOpCall(n)) {
         scopeDepth++;
         return;
       }
@@ -106,7 +104,7 @@ function containsBareReference(node: ASTNode): boolean {
       }
     },
     exit(n: ASTNode) {
-      if (scopeTypes.has(n.type)) {
+      if (n.type === 'Closure' || isCollectionOpCall(n)) {
         scopeDepth--;
       }
     },
@@ -170,7 +168,9 @@ export const CLOSURE_BRACES: ValidationRule = {
         content &&
         (content.type === 'Conditional' ||
           content.type === 'WhileLoop' ||
-          content.type === 'DoWhileLoop');
+          content.type === 'DoWhileLoop' ||
+          content.type === 'GuardBlock' ||
+          content.type === 'RetryBlock');
 
       if (isComplex) {
         return [
@@ -199,66 +199,57 @@ export const CLOSURE_BRACES: ValidationRule = {
 // ============================================================
 
 /**
- * Detects closures created in loops that may suffer from late binding issues.
- * When creating closures inside loops, variables are captured by reference,
- * not by value. This causes all closures to share the final loop value.
+ * Detects closures created inside sequential collection bodies that may
+ * suffer from late binding issues. Closures capture variables by reference,
+ * so all closures created in a loop body share the final iteration value.
  *
- * Detection:
- * - Each loop body creates a Closure node
- * - Closure references loop variable ($) without explicit capture
+ * Targets the sequential callables `seq` and `acc`. (`fan`/`filter` execute
+ * in parallel, `fold` reduces to a single value, so late-binding pitfalls
+ * are less common there.)
  *
  * Solution: Explicit capture per iteration:
- *   [1, 2, 3] -> each {
+ *   [1, 2, 3] -> seq({
  *     $ => $item
  *     || { $item }
- *   }
- *
- * References:
- * - docs/guide-conventions.md:251-261
- * - docs/topic-closures.md: Late binding section
+ *   })
  */
 export const CLOSURE_LATE_BINDING: ValidationRule = {
   code: 'CLOSURE_LATE_BINDING',
   category: 'closures',
   severity: 'warning',
-  nodeTypes: ['EachExpr'],
+  nodeTypes: ['HostCall'],
 
   validate(node: ASTNode, context: ValidationContext): Diagnostic[] {
-    const eachNode = node as EachExprNode;
-    const body = eachNode.body;
+    if (!isCollectionOpCall(node)) return [];
+    if (node.name !== 'seq' && node.name !== 'acc') return [];
 
-    // For named parameter closures (|entry| { ... }), the body itself is a
-    // Closure. Look inside the inner block for nested closure creations,
-    // not the body closure itself.
-    const innerBody =
-      body.type === 'Closure' ? (body as ClosureNode).body : body;
+    const opCall = node as HostCallNode;
+    const arg = getCollectionOpBody(opCall);
+    if (!arg) return [];
+
+    // For closure form (|x|{...}) inspect closure.body; for bare-block form
+    // ({...}) inspect the Block directly.
+    const innerBody = arg.type === 'Closure' ? (arg as ClosureNode).body : arg;
 
     // Check if body contains a closure creation
     const hasClosureCreation = containsClosureCreation(innerBody);
+    if (!hasClosureCreation) return [];
 
-    if (hasClosureCreation) {
-      // Check if there's an explicit capture before the closure
-      const hasExplicitCapture = containsExplicitCapture(innerBody);
+    // Check if there's an explicit capture before the closure
+    const hasExplicitCapture = containsExplicitCapture(innerBody);
+    if (hasExplicitCapture) return [];
 
-      if (!hasExplicitCapture) {
-        return [
-          {
-            location: eachNode.span.start,
-            severity: 'warning',
-            code: 'CLOSURE_LATE_BINDING',
-            message:
-              'Capture loop variable explicitly for deferred closures: $ => $item',
-            context: extractContextLine(
-              eachNode.span.start.line,
-              context.source
-            ),
-            fix: null, // Auto-fix would require AST reconstruction
-          },
-        ];
-      }
-    }
-
-    return [];
+    return [
+      {
+        location: opCall.span.start,
+        severity: 'warning',
+        code: 'CLOSURE_LATE_BINDING',
+        message:
+          'Capture loop variable explicitly for deferred closures: $ => $item',
+        context: extractContextLine(opCall.span.start.line, context.source),
+        fix: null,
+      },
+    ];
   },
 };
 

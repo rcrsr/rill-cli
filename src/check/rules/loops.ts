@@ -299,7 +299,7 @@ export const PREFER_DO_WHILE: ValidationRule = {
           severity: 'info',
           code: 'PREFER_DO_WHILE',
           message:
-            'Consider do-while for retry patterns where body runs at least once: @ { body } ? (condition)',
+            'Consider do-while for retry patterns where body runs at least once: do { body } while (condition)',
           context: extractContextLine(node.span.start.line, context.source),
           fix: null, // Complex fix - requires restructuring to do-while
         },
@@ -360,9 +360,9 @@ export const USE_EACH: ValidationRule = {
           severity: 'info',
           code: 'USE_EACH',
           message:
-            "Use 'each' for collection iteration instead of while loops: collection -> each { body }",
+            "Use 'seq' for collection iteration instead of while loops: collection -> seq({ body })",
           context: extractContextLine(node.span.start.line, context.source),
-          fix: null, // Complex fix - requires restructuring to each
+          fix: null, // Complex fix - requires restructuring to seq
         },
       ];
     }

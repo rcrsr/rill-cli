@@ -56,6 +56,10 @@ Options:
   --format <mode>           Output format: human, json, compact (default: human)
   --verbose                 Show full error details (default: false)
   --max-stack-depth <n>     Error stack frame limit (default: 10)
+  --trace                   Always print the trace chain on halt errors
+  --no-trace                Suppress the trace chain on halt errors
+  --show-recovered          Print guard-caught frames on a successful result
+  --atom-only               JSON mode: emit only {atom, errorId} headers
   --create-bindings [dir]   Write bindings source to dir and exit (default: ./bindings)
   --explain <code>          Print error code documentation
   -h, --help                Print this help message and exit
@@ -73,6 +77,10 @@ const BASE_OPTIONS = {
   help: { type: 'boolean' as const },
   version: { type: 'boolean' as const },
   explain: { type: 'string' as const },
+  trace: { type: 'boolean' as const },
+  'no-trace': { type: 'boolean' as const },
+  'show-recovered': { type: 'boolean' as const },
+  'atom-only': { type: 'boolean' as const },
 };
 
 // ============================================================
@@ -143,6 +151,14 @@ export function parseCliArgs(
   const maxStackDepth =
     !isNaN(parsedDepth) && parsedDepth >= 0 ? parsedDepth : 10;
 
+  const traceFlag = values['trace'] === true;
+  const noTraceFlag = values['no-trace'] === true;
+  const trace: 'auto' | 'always' | 'never' = noTraceFlag
+    ? 'never'
+    : traceFlag
+      ? 'always'
+      : 'auto';
+
   return {
     scriptPath: undefined,
     scriptArgs,
@@ -153,6 +169,9 @@ export function parseCliArgs(
     maxStackDepth,
     explain: values['explain'] as string | undefined,
     createBindings,
+    trace,
+    showRecovered: values['show-recovered'] === true,
+    atomOnly: values['atom-only'] === true,
   };
 }
 

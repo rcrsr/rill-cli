@@ -11,12 +11,14 @@
 import {
   createRuntimeContext,
   execute,
+  isInvalid,
   parse,
   toNative,
   type ExecutionResult,
 } from '@rcrsr/rill';
 import {
   determineExitCode,
+  formatStatus,
   VERSION,
   CLI_VERSION,
   detectHelpVersionFlag,
@@ -120,6 +122,12 @@ async function main(): Promise<void> {
 
     if (command.mode === 'eval') {
       const result = await evaluateExpression(command.expression);
+
+      if (isInvalid(result.result)) {
+        process.stderr.write(formatStatus(result.result) + '\n');
+        process.exit(1);
+      }
+
       const nativeResult = toNative(result.result);
       const { code, message } = determineExitCode(nativeResult.value);
 

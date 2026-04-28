@@ -4,6 +4,8 @@
  */
 
 import type { SourceSpan, RillError, CallFrame } from '@rcrsr/rill';
+import { RuntimeError } from '@rcrsr/rill';
+import { viewFromRuntimeError, type HaltView } from './cli-error-from-halt.js';
 
 // ============================================================
 // PUBLIC TYPES
@@ -34,7 +36,12 @@ export interface EnrichedError {
   readonly sourceSnippet?: SourceSnippet | undefined;
   readonly suggestions?: string[] | undefined;
   readonly helpUrl?: string | undefined;
+  readonly halt?: HaltView | undefined;
+  readonly filePath?: string | undefined;
+  readonly source?: string | undefined;
 }
+
+export type { HaltView };
 
 // ============================================================
 // SOURCE SNIPPET EXTRACTION
@@ -75,9 +82,15 @@ export function extractSnippet(
     throw new RangeError('Span exceeds source bounds');
   }
 
-  // Calculate context range
+  // Calculate context range. Spans are half-open: an end at column 1 of a
+  // later line means "end of previous line," so do not mark that line as
+  // an error line (avoids a stray caret under a blank trailing line).
   const errorStartLine = span.start.line;
-  const errorEndLine = span.end.line;
+  const rawEndLine = span.end.line;
+  const errorEndLine =
+    rawEndLine > errorStartLine && span.end.column <= 1
+      ? rawEndLine - 1
+      : rawEndLine;
   const firstLine = Math.max(1, errorStartLine - contextLines);
   const lastLine = Math.min(totalLines, errorEndLine + contextLines);
 
@@ -90,6 +103,15 @@ export function extractSnippet(
       content: lines[lineNum - 1] ?? '', // Convert 1-based to 0-based index
       isErrorLine,
     });
+  }
+
+  // Trim trailing blank context lines (e.g., from a trailing newline at EOF).
+  while (
+    snippetLines.length > 0 &&
+    !snippetLines[snippetLines.length - 1]!.isErrorLine &&
+    snippetLines[snippetLines.length - 1]!.content === ''
+  ) {
+    snippetLines.pop();
   }
 
   return {
@@ -214,7 +236,8 @@ function levenshteinDistance(a: string, b: string): number {
 export function enrichError(
   error: RillError,
   source: string,
-  scope?: ScopeInfo
+  scope?: ScopeInfo,
+  filePath?: string
 ): EnrichedError {
   // EC-4: Null error
   if (!error) {
@@ -254,6 +277,11 @@ export function enrichError(
     }
   }
 
+  const halt =
+    error instanceof RuntimeError
+      ? (viewFromRuntimeError(error) ?? undefined)
+      : undefined;
+
   return {
     errorId: error.errorId,
     message: error.message.replace(/ at \d+:\d+$/, ''), // Strip location suffix
@@ -263,5 +291,8 @@ export function enrichError(
     sourceSnippet,
     suggestions,
     helpUrl: error.helpUrl,
+    halt,
+    filePath,
+    source,
   };
 }

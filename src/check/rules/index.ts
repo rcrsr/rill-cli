@@ -43,6 +43,14 @@ import {
   USE_DYNAMIC_IDENTIFIER,
   USE_UNTYPED_HOST_REF,
 } from './use-expressions.js';
+import {
+  GUARD_BARE,
+  RETRY_TRIVIAL,
+  ATOM_UNREGISTERED,
+  STATUS_PROBE_NO_FIELD,
+  PRESENCE_OVER_NULL_GUARD,
+  GUARD_OVER_TRY_CATCH,
+} from './errors.js';
 
 // ============================================================
 // RE-EXPORT INDIVIDUAL RULES
@@ -87,6 +95,14 @@ export {
   USE_DYNAMIC_IDENTIFIER,
   USE_UNTYPED_HOST_REF,
 } from './use-expressions.js';
+export {
+  GUARD_BARE,
+  RETRY_TRIVIAL,
+  ATOM_UNREGISTERED,
+  STATUS_PROBE_NO_FIELD,
+  PRESENCE_OVER_NULL_GUARD,
+  GUARD_OVER_TRY_CATCH,
+} from './errors.js';
 
 // ============================================================
 // RULE REGISTRY
@@ -152,4 +168,12 @@ export const VALIDATION_RULES: ValidationRule[] = [
   // UseExpr validation
   USE_DYNAMIC_IDENTIFIER,
   USE_UNTYPED_HOST_REF,
+
+  // Error-handling primitives (0.19.0)
+  GUARD_BARE,
+  RETRY_TRIVIAL,
+  ATOM_UNREGISTERED,
+  STATUS_PROBE_NO_FIELD,
+  PRESENCE_OVER_NULL_GUARD,
+  GUARD_OVER_TRY_CATCH,
 ];

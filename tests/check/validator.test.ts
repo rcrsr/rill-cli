@@ -311,7 +311,7 @@ describe('validateScript', () => {
     });
 
     it('validates script with loops', () => {
-      const source = 'list[1, 2, 3] -> each { $ * 2 }';
+      const source = 'list[1, 2, 3] -> seq({ $ * 2 })';
       const ast = parse(source);
       const config = createConfig();
 

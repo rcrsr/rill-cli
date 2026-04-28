@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-04-28
+
 ### Added
 
 - New lint rules for 0.19.0 error-handling primitives: `GUARD_BARE`, `RETRY_TRIVIAL`, `ATOM_UNREGISTERED`, `STATUS_PROBE_NO_FIELD`, `PRESENCE_OVER_NULL_GUARD`, `GUARD_OVER_TRY_CATCH`

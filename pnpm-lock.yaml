@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@rcrsr/rill':
-        specifier: link:../rill/packages/core
-        version: link:../rill/packages/core
+        specifier: ~0.19.0
+        version: 0.19.0
       '@rcrsr/rill-config':
-        specifier: link:../rill-config
-        version: link:../rill-config
+        specifier: ~0.19.0
+        version: 0.19.0(@rcrsr/rill@0.19.0)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -286,6 +286,16 @@ packages:
 
   '@oxc-project/types@0.122.0':
     resolution: {integrity: sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==}
+
+  '@rcrsr/rill-config@0.19.0':
+    resolution: {integrity: sha512-8ZAxyUUnFLJgkhkSUugunlXqHKfCa3HZL4734MopY8+mzEruJV3A9zFT1CM+7xtmdy0BUZ5Y07AznSG0Big0Vg==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@rcrsr/rill': ~0.19.0
+
+  '@rcrsr/rill@0.19.0':
+    resolution: {integrity: sha512-0oa34D3TVwwOjSy88ZyQJmwbT8CFClo8YgXb8daXyTqudAy/x+BCHxXWwSF944lsyizPLLPJDe4sDwknrgr9rg==}
+    engines: {node: '>=22.16.0'}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     resolution: {integrity: sha512-pv1y2Fv0JybcykuiiD3qBOBdz6RteYojRFY1d+b95WVuzx211CRh+ytI/+9iVyWQ6koTh5dawe4S/yRfOFjgaA==}
@@ -1173,6 +1183,13 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.122.0': {}
+
+  '@rcrsr/rill-config@0.19.0(@rcrsr/rill@0.19.0)':
+    dependencies:
+      '@rcrsr/rill': 0.19.0
+      semver: 7.7.4
+
+  '@rcrsr/rill@0.19.0': {}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true

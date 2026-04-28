@@ -93,8 +93,8 @@ describe('visitNode', () => {
     expect(nodeTypes.has('StringLiteral')).toBe(true);
   });
 
-  it('visits loop bodies', () => {
-    const source = 'list[1, 2, 3] -> each { $ * 2 }';
+  it('visits collection-op call bodies', () => {
+    const source = 'list[1, 2, 3] -> seq({ $ * 2 })';
     const context = createTestContext(source);
     const nodeTypes = new Set<string>();
 
@@ -107,7 +107,9 @@ describe('visitNode', () => {
 
     visitNode(context.ast, context, visitor);
 
-    expect(nodeTypes.has('EachExpr')).toBe(true);
+    // In 0.19.0 seq parses as a HostCall in pipe-target position; its
+    // bare-block argument lands as a Block primary reached via HostCall.args.
+    expect(nodeTypes.has('HostCall')).toBe(true);
     expect(nodeTypes.has('Block')).toBe(true);
     expect(nodeTypes.has('ListLiteral')).toBe(true);
   });

@@ -68,7 +68,7 @@ describe('rill-eval', () => {
         3
       );
       expect(
-        (await evaluateExpression('list[1, 2, 3] -> map |x|($x * 2)')).result
+        (await evaluateExpression('list[1, 2, 3] -> fan(|x|($x * 2))')).result
       ).toEqual([2, 4, 6]);
       expect((await evaluateExpression('dict[a: 1].a')).result).toBe(1);
     });

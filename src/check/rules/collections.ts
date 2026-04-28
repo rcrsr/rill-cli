@@ -1,6 +1,6 @@
 /**
  * Collection Operator Rules
- * Enforces conventions for each, map, fold, and filter operators.
+ * Enforces conventions for the collection callables seq, fan, fold, filter, acc.
  */
 
 import type {
@@ -10,16 +10,18 @@ import type {
 } from '../types.js';
 import type {
   ASTNode,
-  ClosureNode,
-  EachExprNode,
-  MapExprNode,
-  FoldExprNode,
-  FilterExprNode,
-  IteratorBody,
   BlockNode,
+  ClosureNode,
+  HostCallNode,
+  BodyNode,
 } from '@rcrsr/rill';
 import { extractContextLine } from './helpers.js';
 import { visitNode } from '../visitor.js';
+import {
+  isCollectionOpCall,
+  isParallelOp,
+  getCollectionOpBody,
+} from '../collection-ops.js';
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -62,13 +64,31 @@ function containsSideEffects(node: ASTNode): boolean {
 }
 
 /**
- * Check if a body is a simple method shorthand.
- * Body structure for .method shorthand is PostfixExpr with MethodCall as primary.
- * Examples: .upper, .len, .trim
+ * Unwrap a Block-with-single-Statement to the inner expression's head.
+ * In 0.19.0 collection-op bodies are always wrapped in `{...}`, so a literal
+ * `.empty` arrives as Block → Statement → PipeChain → PostfixExpr.
  */
-function isMethodShorthand(body: IteratorBody): boolean {
-  if (body.type !== 'PostfixExpr') return false;
-  return body.primary.type === 'MethodCall';
+function unwrapBlockToHead(body: BodyNode): ASTNode | null {
+  if (body.type !== 'Block') return body;
+  if (body.statements.length !== 1) return null;
+  const stmt = body.statements[0];
+  if (!stmt || stmt.type !== 'Statement') return null;
+  const expr = stmt.expression;
+  if (expr.type !== 'PipeChain') return null;
+  if (expr.pipes.length !== 0) return null;
+  return expr.head;
+}
+
+/**
+ * Check if a body is a method shorthand (`.upper`, `.empty`, etc).
+ * Matches both bare PostfixExpr and Block-wrapped shorthand.
+ */
+function isMethodShorthand(body: BodyNode): boolean {
+  const head = unwrapBlockToHead(body);
+  if (!head) return false;
+  if (head.type !== 'PostfixExpr') return false;
+  if (head.methods.length !== 0) return false;
+  return head.primary.type === 'MethodCall';
 }
 
 /**
@@ -76,9 +96,7 @@ function isMethodShorthand(body: IteratorBody): boolean {
  * Example: { $.upper() } when it could be .upper
  * Structure: Block -> Statement -> PipeChain -> PostfixExpr($) with methods
  */
-function isBlockWrappingMethod(
-  body: IteratorBody
-): body is BlockNode & { statements: Array<{ expression: ASTNode }> } {
+function isBlockWrappingMethod(body: BodyNode): boolean {
   if (body.type !== 'Block') return false;
   if (body.statements.length !== 1) return false;
 
@@ -107,27 +125,34 @@ function isBlockWrappingMethod(
 }
 
 /**
- * Get method name from iterator body.
- * Handles both PostfixExpr (shorthand) and BlockNode (wrapped) forms.
+ * Get method name from a closure body.
+ * Handles both PostfixExpr shorthand (raw or block-wrapped) and the verbose
+ * `{ $.method() }` block form.
  */
-function getMethodName(body: IteratorBody): string | null {
-  // Shorthand form: PostfixExpr with MethodCall primary
-  if (body.type === 'PostfixExpr' && body.primary.type === 'MethodCall') {
-    return body.primary.name;
+function getMethodName(body: BodyNode): string | null {
+  // Shorthand form: PostfixExpr with MethodCall primary (raw or block-wrapped)
+  const head = unwrapBlockToHead(body);
+  if (
+    head &&
+    head.type === 'PostfixExpr' &&
+    head.methods.length === 0 &&
+    head.primary.type === 'MethodCall'
+  ) {
+    return head.primary.name;
   }
 
   // Block form: $.method()
-  if (isBlockWrappingMethod(body)) {
+  if (isBlockWrappingMethod(body) && body.type === 'Block') {
     const stmt = body.statements[0];
     if (!stmt || stmt.type !== 'Statement') return null;
 
     const expr = stmt.expression;
     if (expr.type !== 'PipeChain') return null;
 
-    const head = expr.head;
-    if (head.type !== 'PostfixExpr') return null;
+    const head2 = expr.head;
+    if (head2.type !== 'PostfixExpr') return null;
 
-    const method = head.methods[0];
+    const method = head2.methods[0];
     if (method && method.type === 'MethodCall') {
       return method.name;
     }
@@ -136,46 +161,53 @@ function getMethodName(body: IteratorBody): string | null {
   return null;
 }
 
+/**
+ * Resolve the body to inspect for a collection-op call.
+ * - `seq({block})` — arg primary is a Block; we inspect that Block directly.
+ * - `seq(|x|(expr))` — arg primary is a Closure; we inspect closure.body.
+ * Both return values are valid `BodyNode` shapes.
+ */
+function resolveOpBody(node: HostCallNode): BodyNode | null {
+  const arg = getCollectionOpBody(node);
+  if (!arg) return null;
+  if (arg.type === 'Closure') return (arg as ClosureNode).body;
+  return arg as BlockNode;
+}
+
 // ============================================================
 // BREAK_IN_PARALLEL RULE
 // ============================================================
 
 /**
- * Validates that break is not used in parallel operators (map, filter).
+ * Validates that break is not used in parallel operators (`fan`, `filter`).
  *
- * Break is semantically invalid in parallel execution contexts:
- * - map: executes in parallel, no iteration order
- * - filter: parallel predicate evaluation
- *
- * Break is valid in sequential operators:
- * - each: sequential iteration with early termination
- * - fold: sequential reduction (though uncommon)
+ * Break is semantically invalid in parallel execution contexts. It is valid in
+ * sequential operators (`seq`, `acc`, `fold`).
  *
  * Error severity because this is semantically wrong, not just stylistic.
- *
- * References:
- * - docs/guide-conventions.md:90-149
- * - docs/topic-collections.md
  */
 export const BREAK_IN_PARALLEL: ValidationRule = {
   code: 'BREAK_IN_PARALLEL',
   category: 'collections',
   severity: 'error',
-  nodeTypes: ['MapExpr', 'FilterExpr'],
+  nodeTypes: ['HostCall'],
 
   validate(node: ASTNode, context: ValidationContext): Diagnostic[] {
-    const collectionExpr = node as MapExprNode | FilterExprNode;
-    const operatorName = node.type === 'MapExpr' ? 'map' : 'filter';
+    if (!isCollectionOpCall(node)) return [];
+    if (!isParallelOp(node.name)) return [];
 
-    if (containsBreak(collectionExpr.body)) {
+    const body = resolveOpBody(node);
+    if (!body) return [];
+
+    if (containsBreak(body)) {
       return [
         {
           location: node.span.start,
           severity: 'error',
           code: 'BREAK_IN_PARALLEL',
-          message: `Break not allowed in '${operatorName}' (parallel operator). Use 'each' for sequential iteration with break.`,
+          message: `Break not allowed in '${node.name}' (parallel operator). Use 'seq' for sequential iteration with break.`,
           context: extractContextLine(node.span.start.line, context.source),
-          fix: null, // Cannot auto-fix operator replacement
+          fix: null,
         },
       ];
     }
@@ -185,56 +217,34 @@ export const BREAK_IN_PARALLEL: ValidationRule = {
 };
 
 // ============================================================
-// PREFER_MAP RULE
+// PREFER_FAN RULE (formerly PREFER_MAP)
 // ============================================================
 
 /**
- * Suggests using map over each when no side effects are present.
+ * Suggests using `fan` over `seq` when no side effects are present.
  *
- * Map is semantically clearer for pure transformations:
- * - Signals no side effects (parallel execution)
- * - Better performance potential
- * - More functional style
+ * `fan` is semantically clearer for pure transformations: it signals no side
+ * effects and may execute in parallel.
  *
- * Detects each expressions where:
- * - Body doesn't reference accumulator ($@)
- * - No accumulator initialization
- * - Body doesn't contain side-effecting operations (host calls, logging)
- *
- * This is informational - both work, but map is clearer for pure transforms.
- *
- * References:
- * - docs/guide-conventions.md:90-149
+ * Detects `seq` calls whose closure body contains no side-effecting operations
+ * (host calls, logging). With 0.19.0, `seq` strictly has no accumulator
+ * (`acc` is a separate callable), so the legacy accumulator-detection branch
+ * is gone.
  */
 export const PREFER_MAP: ValidationRule = {
   code: 'PREFER_MAP',
   category: 'collections',
   severity: 'info',
-  nodeTypes: ['EachExpr'],
+  nodeTypes: ['HostCall'],
 
   validate(node: ASTNode, context: ValidationContext): Diagnostic[] {
-    const eachExpr = node as EachExprNode;
+    if (!isCollectionOpCall(node)) return [];
+    if (node.name !== 'seq') return [];
 
-    // If accumulator is present, each is correct choice
-    if (eachExpr.accumulator !== null) {
-      return [];
-    }
+    const body = resolveOpBody(node);
+    if (!body) return [];
 
-    // Check if body is a closure with accumulator parameter
-    if (eachExpr.body.type === 'Closure') {
-      const closure = eachExpr.body;
-      const hasAccumulator = closure.params.length > 1;
-      if (hasAccumulator) {
-        return [];
-      }
-    }
-
-    // Check for side effects: host calls (log, etc.) and closure calls ($fn())
-    const innerBody =
-      eachExpr.body.type === 'Closure'
-        ? (eachExpr.body as ClosureNode).body
-        : eachExpr.body;
-    if (containsSideEffects(innerBody)) {
+    if (containsSideEffects(body)) {
       return [];
     }
 
@@ -244,7 +254,7 @@ export const PREFER_MAP: ValidationRule = {
         severity: 'info',
         code: 'PREFER_MAP',
         message:
-          "Consider using 'map' instead of 'each' for pure transformations (no side effects)",
+          "Consider using 'fan' instead of 'seq' for pure transformations (no side effects)",
         context: extractContextLine(node.span.start.line, context.source),
         fix: null,
       },
@@ -257,32 +267,22 @@ export const PREFER_MAP: ValidationRule = {
 // ============================================================
 
 /**
- * Suggests using fold for final-only results, each(init) for running totals.
+ * Suggests `fold` for final-only results, `acc` for running totals.
  *
- * Semantic distinction:
- * - fold: returns final accumulated value only
- * - each(init): returns list of all intermediate results
+ * - `fold(init, {body})` returns final accumulated value only
+ * - `acc(init, {body})` returns list of all intermediate results
  *
- * Detects patterns that might benefit from one or the other:
- * - fold used when intermediate results might be needed
- * - each(init) used when only final result matters
- *
- * This is informational - helps users choose the right operator.
- *
- * References:
- * - docs/guide-conventions.md:90-149
- * - docs/topic-collections.md
+ * Informational placeholder - real implementation requires flow analysis.
  */
 export const FOLD_INTERMEDIATES: ValidationRule = {
   code: 'FOLD_INTERMEDIATES',
   category: 'collections',
   severity: 'info',
-  nodeTypes: ['EachExpr', 'FoldExpr'],
+  nodeTypes: ['HostCall'],
 
-  validate(_node: ASTNode, _context: ValidationContext): Diagnostic[] {
-    // This rule is informational and would require flow analysis
-    // to detect whether intermediate values are used.
-    // Placeholder for future implementation.
+  validate(node: ASTNode, _context: ValidationContext): Diagnostic[] {
+    if (!isCollectionOpCall(node)) return [];
+    // Reserved for future flow-analysis on seq/fold/acc.
     return [];
   },
 };
@@ -292,44 +292,37 @@ export const FOLD_INTERMEDIATES: ValidationRule = {
 // ============================================================
 
 /**
- * Validates that negation in filter uses grouped form.
+ * Validates that negation in `filter` uses grouped form.
  *
  * Grouped negation is clearer and prevents bugs:
- * - Correct: filter (!.empty)  -- grouped negation
- * - Wrong:   filter .empty     -- filters for empty elements (likely bug)
- *
- * The ungrouped form .empty would return truthy elements,
- * which is likely not intended when filtering.
- *
- * References:
- * - docs/guide-conventions.md:90-149
+ * - Correct: filter ({ !.empty })  -- grouped negation
+ * - Wrong:   filter ({ .empty })   -- filters for empty elements (likely bug)
  */
 export const FILTER_NEGATION: ValidationRule = {
   code: 'FILTER_NEGATION',
   category: 'collections',
   severity: 'warning',
-  nodeTypes: ['FilterExpr'],
+  nodeTypes: ['HostCall'],
 
   validate(node: ASTNode, context: ValidationContext): Diagnostic[] {
-    const filterExpr = node as FilterExprNode;
-    const body = filterExpr.body;
+    if (!isCollectionOpCall(node)) return [];
+    if (node.name !== 'filter') return [];
 
-    // Check if body is a simple method call (ungrouped)
+    const body = resolveOpBody(node);
+    if (!body) return [];
+
     if (isMethodShorthand(body)) {
       const methodName = getMethodName(body);
 
-      // Check if method is likely a negation-intended method
-      // Common methods that might indicate user wants to negate:
-      // .empty, .is_match, etc.
       if (methodName === 'empty') {
         return [
           {
             location: node.span.start,
             severity: 'warning',
             code: 'FILTER_NEGATION',
-            message: `Filter with '.${methodName}' likely unintended. Use grouped negation: 'filter (!.${methodName})' to filter non-${methodName} elements`,
+            message: `Filter with '.${methodName}' likely unintended. Use grouped negation: 'filter({ !.${methodName} })' to filter non-${methodName} elements`,
             context: extractContextLine(node.span.start.line, context.source),
-            fix: null, // Could generate fix wrapping in (!...)
+            fix: null,
           },
         ];
       }
@@ -346,30 +339,23 @@ export const FILTER_NEGATION: ValidationRule = {
 /**
  * Suggests using method shorthand over block form in collection operators.
  *
- * Method shorthand is more concise and clearer:
- * - Preferred: map .upper
- * - Verbose:   map { $.upper() }
+ * Block-wrapping a single method call is verbose:
+ * - Verbose:    fan({ $.upper() })
+ * - Preferred:  fan(.upper)  -- when supported
  *
- * Detects block forms that wrap a single method call and suggests shorthand.
- *
- * This is informational - both forms work identically.
- *
- * References:
- * - docs/guide-conventions.md:90-149
+ * Informational - both forms work identically.
  */
 export const METHOD_SHORTHAND: ValidationRule = {
   code: 'METHOD_SHORTHAND',
   category: 'collections',
   severity: 'info',
-  nodeTypes: ['EachExpr', 'MapExpr', 'FoldExpr', 'FilterExpr'],
+  nodeTypes: ['HostCall'],
 
   validate(node: ASTNode, context: ValidationContext): Diagnostic[] {
-    const collectionNode = node as
-      | EachExprNode
-      | MapExprNode
-      | FoldExprNode
-      | FilterExprNode;
-    const body = collectionNode.body;
+    if (!isCollectionOpCall(node)) return [];
+
+    const body = resolveOpBody(node);
+    if (!body) return [];
 
     if (isBlockWrappingMethod(body)) {
       const methodName = getMethodName(body);
@@ -382,7 +368,7 @@ export const METHOD_SHORTHAND: ValidationRule = {
             code: 'METHOD_SHORTHAND',
             message: `Prefer method shorthand '.${methodName}' over block form '{ $.${methodName}() }'`,
             context: extractContextLine(node.span.start.line, context.source),
-            fix: null, // Could generate fix replacing block with .method
+            fix: null,
           },
         ];
       }

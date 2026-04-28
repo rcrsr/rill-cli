@@ -15,6 +15,7 @@ import {
   isTuple,
   isStream,
   isCallable,
+  isInvalid,
   invokeCallable,
   type RillValue,
   type RillTuple,
@@ -27,9 +28,12 @@ import {
 import {
   ParseError,
   RillError,
+  RuntimeError,
   formatRillError,
   formatRillErrorJson,
 } from '@rcrsr/rill';
+import { formatError, formatStatus } from '../cli-shared.js';
+import { viewFromRuntimeError } from '../cli-error-from-halt.js';
 import type { RillConfigFile } from '@rcrsr/rill-config';
 import type { RunCliOptions } from './types.js';
 
@@ -177,8 +181,24 @@ export function createStreamWriter(format: RunCliOptions['format']): {
 
 function mapResultToRunResult(
   result: RillValue,
-  format: RunCliOptions['format']
+  opts: RunCliOptions,
+  source?: string
 ): RunResult {
+  // Invalid value (guard-recovered) returned to host: exit 1, render status.
+  if (isInvalid(result)) {
+    const formatted = formatStatus(
+      result,
+      {
+        format: opts.format === 'compact' ? 'human' : opts.format,
+        trace: opts.trace,
+        atomOnly: opts.atomOnly,
+      },
+      source,
+      opts.scriptPath
+    );
+    return { exitCode: 1, errorOutput: formatted };
+  }
+
   if (isTuple(result)) {
     const tuple = result as RillTuple;
     if (tuple.entries.length === 2) {
@@ -197,7 +217,7 @@ function mapResultToRunResult(
     return { exitCode: 1 };
   }
 
-  const formatted = formatOutput(result, format);
+  const formatted = formatOutput(result, opts.format);
   return { exitCode: 0, output: formatted };
 }
 
@@ -269,24 +289,39 @@ export async function runScript(
     ctx.pipeValue = opts.scriptArgs.join(' ');
   }
 
+  const formatOpts = {
+    format: opts.format,
+    verbose: opts.verbose,
+    includeCallStack: true,
+    maxCallStackDepth: opts.maxStackDepth,
+    trace: opts.trace,
+    showRecovered: opts.showRecovered,
+    atomOnly: opts.atomOnly,
+  };
+
+  const formatRillErr = (err: RillError): string => {
+    if (err instanceof RuntimeError && viewFromRuntimeError(err) !== null) {
+      return formatError(err, source, formatOpts, undefined, opts.scriptPath);
+    }
+    return opts.format === 'json'
+      ? formatRillErrorJson(err, {
+          maxStackDepth: opts.maxStackDepth,
+          filePath: opts.scriptPath!,
+        })
+      : formatRillError(err, {
+          verbose: opts.verbose,
+          maxStackDepth: opts.maxStackDepth,
+          filePath: opts.scriptPath!,
+          sources: { script: source },
+        });
+  };
+
   let ast: ReturnType<typeof parse>;
   try {
     ast = parse(source);
   } catch (err: unknown) {
     if (err instanceof ParseError) {
-      const formatted =
-        opts.format === 'json'
-          ? formatRillErrorJson(err, {
-              maxStackDepth: opts.maxStackDepth,
-              filePath: opts.scriptPath,
-            })
-          : formatRillError(err, {
-              verbose: opts.verbose,
-              maxStackDepth: opts.maxStackDepth,
-              filePath: opts.scriptPath,
-              sources: { script: source },
-            });
-      return { exitCode: 1, errorOutput: formatted };
+      return { exitCode: 1, errorOutput: formatRillErr(err) };
     }
     const message = err instanceof Error ? err.message : String(err);
     return { exitCode: 1, errorOutput: message };
@@ -304,19 +339,7 @@ export async function runScript(
     }
   } catch (err: unknown) {
     if (err instanceof RillError) {
-      const formatted =
-        opts.format === 'json'
-          ? formatRillErrorJson(err, {
-              maxStackDepth: opts.maxStackDepth,
-              filePath: opts.scriptPath,
-            })
-          : formatRillError(err, {
-              verbose: opts.verbose,
-              maxStackDepth: opts.maxStackDepth,
-              filePath: opts.scriptPath,
-              sources: { script: source },
-            });
-      return { exitCode: 1, errorOutput: formatted };
+      return { exitCode: 1, errorOutput: formatRillErr(err) };
     }
     const message = err instanceof Error ? err.message : String(err);
     return { exitCode: 1, errorOutput: message };
@@ -330,5 +353,5 @@ export async function runScript(
     }
   }
 
-  return mapResultToRunResult(result, opts.format);
+  return mapResultToRunResult(result, opts, source);
 }

@@ -10,14 +10,19 @@ const _require = createRequire(import.meta.url);
 const { version: CLI_VERSION } = _require('../package.json') as {
   version: string;
 };
-import type { NativeValue } from '@rcrsr/rill';
+import type { NativeValue, RillValue } from '@rcrsr/rill';
 import { ParseError, RuntimeError } from '@rcrsr/rill';
 import { LexerError } from '@rcrsr/rill';
-import { enrichError, type ScopeInfo } from './cli-error-enrichment.js';
+import {
+  enrichError,
+  type ScopeInfo,
+  type EnrichedError,
+} from './cli-error-enrichment.js';
 import {
   formatError as formatEnrichedError,
   type FormatOptions,
 } from './cli-error-formatter.js';
+import { viewFromInvalidValue } from './cli-error-from-halt.js';
 
 /**
  * Format error for stderr output
@@ -35,7 +40,8 @@ export function formatError(
   err: Error,
   source?: string,
   options?: Partial<FormatOptions>,
-  scope?: ScopeInfo
+  scope?: ScopeInfo,
+  filePath?: string
 ): string {
   // IC-12: Use enrichment pipeline when source is available and error is RillError
   if (
@@ -45,13 +51,8 @@ export function formatError(
       err instanceof RuntimeError)
   ) {
     try {
-      const enriched = enrichError(err, source, scope);
-      const formatOpts: FormatOptions = {
-        format: options?.format ?? 'human',
-        verbose: options?.verbose ?? false,
-        includeCallStack: options?.includeCallStack ?? false,
-        maxCallStackDepth: options?.maxCallStackDepth ?? 10,
-      };
+      const enriched = enrichError(err, source, scope, filePath);
+      const formatOpts: FormatOptions = buildFormatOptions(options);
       return formatEnrichedError(enriched, formatOpts);
     } catch {
       // If enrichment fails, fall back to simple formatting
@@ -97,6 +98,74 @@ export function formatError(
   }
 
   return err.message;
+}
+
+/**
+ * Build a FormatOptions object from a partial override, applying defaults.
+ */
+export function buildFormatOptions(
+  options?: Partial<FormatOptions>
+): FormatOptions {
+  const result: FormatOptions = {
+    format: options?.format ?? 'human',
+    verbose: options?.verbose ?? false,
+    includeCallStack: options?.includeCallStack ?? false,
+    maxCallStackDepth: options?.maxCallStackDepth ?? 10,
+    trace: options?.trace ?? 'auto',
+    showRecovered: options?.showRecovered ?? false,
+    atomOnly: options?.atomOnly ?? false,
+  };
+  return result;
+}
+
+/**
+ * Format the status sidecar of an invalid `RillValue` returned by a script.
+ *
+ * Used when a `guard`-recovered invalid threads through to the script
+ * result. There is no `RillError` to enrich, so we render the halt view
+ * directly with no source-snippet block.
+ */
+export function formatStatus(
+  value: RillValue,
+  options?: Partial<FormatOptions>,
+  source?: string,
+  filePath?: string
+): string {
+  const view = viewFromInvalidValue(value);
+  if (view === null) return '';
+  const opts = buildFormatOptions(options);
+
+  if (opts.format === 'json') {
+    if (opts.atomOnly === true) {
+      return JSON.stringify({ atom: view.atom, errorId: null }, null, 2);
+    }
+    return JSON.stringify(
+      {
+        atom: view.atom,
+        provider: view.provider,
+        message: view.message,
+        trace: view.trace.map((f) => ({
+          site: f.site,
+          kind: f.kind,
+          fn: f.fn,
+        })),
+      },
+      null,
+      2
+    );
+  }
+
+  // Synthesize an EnrichedError so the formatter renders the unified layout.
+  // No errorId exists for a recovered status, so leave it blank — the header
+  // becomes `error[#ATOM]: ...`.
+  const synthetic: EnrichedError = {
+    errorId: '',
+    message: view.message,
+    halt: view,
+    source,
+    filePath,
+  };
+  return formatEnrichedError(synthetic, opts);
 }
 
 /**

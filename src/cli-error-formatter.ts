@@ -4,7 +4,7 @@
  */
 
 import type { SourceSpan, CallFrame } from '@rcrsr/rill';
-import type { EnrichedError } from './cli-error-enrichment.js';
+import type { EnrichedError, HaltView } from './cli-error-enrichment.js';
 
 // ============================================================
 // PUBLIC TYPES
@@ -12,14 +12,28 @@ import type { EnrichedError } from './cli-error-enrichment.js';
 
 export type { CallFrame, EnrichedError };
 
+export type TraceMode = 'auto' | 'always' | 'never';
+
 /**
  * Format options for error output.
+ *
+ * `trace` controls when the trace block renders for halt-bearing errors:
+ * - `auto`: render only when status carries >= 2 frames (default)
+ * - `always`: render whenever a halt view is present
+ * - `never`: omit the block entirely
+ *
+ * `atomOnly` (JSON only) emits `{atom, errorId}` headers for CI consumers.
+ * `showRecovered` is a placeholder for the successful-result side path
+ * (rendering `guard-caught` frames on a recovered invalid value).
  */
 export interface FormatOptions {
   readonly format: 'human' | 'json' | 'compact';
   readonly verbose: boolean;
   readonly includeCallStack: boolean;
   readonly maxCallStackDepth: number;
+  readonly trace?: TraceMode | undefined;
+  readonly showRecovered?: boolean | undefined;
+  readonly atomOnly?: boolean | undefined;
 }
 
 // ============================================================
@@ -85,37 +99,76 @@ function formatErrorHuman(
 ): string {
   const lines: string[] = [];
 
-  // Header: error[RILL-XXXX]: message
-  lines.push(`error[${error.errorId}]: ${error.message}`);
+  // Unified header: error[:provider][ID[#ATOM]]: message
+  // Atom is omitted when it is just the underscore form of the error id
+  // (e.g., #RILL_R038 for RILL-R038), since it conveys nothing extra.
+  const message =
+    error.halt && error.halt.message !== ''
+      ? error.halt.message
+      : error.message;
+  const providerTag =
+    error.halt && error.halt.provider !== null ? `:${error.halt.provider}` : '';
+  const atomTag =
+    error.halt &&
+    error.halt.atom !== null &&
+    !atomMatchesId(error.halt.atom, error.errorId)
+      ? `${error.halt.atom}`
+      : '';
+  lines.push(`error${providerTag}[${error.errorId}${atomTag}]: ${message}`);
 
-  // Location: --> script.rill:5:10
-  if (error.span) {
-    const location = `${error.span.start.line}:${error.span.start.column}`;
-    lines.push(`  --> ${location}`);
-  }
+  // Halt path: trace frames carry precise origin locations and snippets.
+  // For uncaught top-level errors this is a single-frame trace; for guard-
+  // recovered invalids it's the full chain. Either way the trace replaces
+  // the span-based snippet block (which uses the broader error span).
+  // trace=never disables the trace-driven layout entirely (falls back to
+  // span+snippet, the legacy non-halt behavior). trace=auto/always use the
+  // trace when present.
+  const traceMode: TraceMode = options.trace ?? 'auto';
+  const useTrace =
+    traceMode !== 'never' &&
+    error.halt !== undefined &&
+    error.halt.trace.length > 0;
 
-  // Source snippet with caret underline
-  if (error.sourceSnippet && error.sourceSnippet.lines.length > 0) {
-    lines.push('   |');
-
-    // Calculate padding width for line numbers
-    const maxLineNumber = Math.max(
-      ...error.sourceSnippet.lines.map((l) => l.lineNumber)
+  if (useTrace) {
+    renderTraceBlock(
+      lines,
+      error.halt!,
+      error.source,
+      error.filePath,
+      traceMode
     );
-    const lineNumberWidth = String(maxLineNumber).length;
-
-    for (const line of error.sourceSnippet.lines) {
-      const lineNumStr = String(line.lineNumber).padStart(lineNumberWidth, ' ');
-      lines.push(` ${lineNumStr} | ${line.content}`);
-
-      // Add caret underline for error lines
-      if (line.isErrorLine && error.span) {
-        const caret = renderCaretUnderline(error.span, line.content);
-        const padding = ' '.repeat(lineNumberWidth);
-        lines.push(` ${padding} | ${caret}`);
-      }
+  } else {
+    // Location: --> [path:]line:col
+    if (error.span) {
+      const loc = `${error.span.start.line}:${error.span.start.column}`;
+      const prefix = error.filePath ? `${error.filePath}:` : '';
+      lines.push(`  --> ${prefix}${loc}`);
     }
-    lines.push('   |');
+
+    // Source snippet with caret underline
+    if (error.sourceSnippet && error.sourceSnippet.lines.length > 0) {
+      lines.push('   |');
+
+      const maxLineNumber = Math.max(
+        ...error.sourceSnippet.lines.map((l) => l.lineNumber)
+      );
+      const lineNumberWidth = String(maxLineNumber).length;
+
+      for (const line of error.sourceSnippet.lines) {
+        const lineNumStr = String(line.lineNumber).padStart(
+          lineNumberWidth,
+          ' '
+        );
+        lines.push(` ${lineNumStr} | ${line.content}`);
+
+        if (line.isErrorLine && error.span) {
+          const caret = renderCaretUnderline(error.span, line.content);
+          const padding = ' '.repeat(lineNumberWidth);
+          lines.push(` ${padding} | ${caret}`);
+        }
+      }
+      lines.push('   |');
+    }
   }
 
   // Suggestions: = help: Did you mean `$begin`?
@@ -158,6 +211,17 @@ function formatErrorHuman(
  * Format error in JSON format (LSP Diagnostic compatible).
  */
 function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
+  if (options.atomOnly === true) {
+    return JSON.stringify(
+      {
+        atom: error.halt?.atom ?? null,
+        errorId: error.errorId,
+      },
+      null,
+      2
+    );
+  }
+
   const diagnostic: {
     errorId: string;
     severity: number;
@@ -178,6 +242,15 @@ function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
       context?: string | undefined;
     }>;
     helpUrl?: string;
+    atom?: string | null;
+    provider?: string | null;
+    trace?: Array<{
+      site: string;
+      kind: string;
+      fn: string;
+      wrapped?: Record<string, unknown>;
+    }>;
+    raw?: Record<string, unknown>;
   } = {
     errorId: error.errorId,
     severity: 1, // Error severity in LSP (1 = Error, 2 = Warning, 3 = Information, 4 = Hint)
@@ -243,6 +316,31 @@ function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
     diagnostic.helpUrl = error.helpUrl;
   }
 
+  if (error.halt) {
+    diagnostic.atom = error.halt.atom;
+    diagnostic.provider = error.halt.provider;
+    diagnostic.trace = error.halt.trace.map((frame) => {
+      const wrapped = frame.wrapped as Record<string, unknown>;
+      const out: {
+        site: string;
+        kind: string;
+        fn: string;
+        wrapped?: Record<string, unknown>;
+      } = {
+        site: frame.site,
+        kind: frame.kind,
+        fn: frame.fn,
+      };
+      if (frame.kind === 'wrap' && Object.keys(wrapped).length > 0) {
+        out.wrapped = wrapped;
+      }
+      return out;
+    });
+    if (Object.keys(error.halt.raw).length > 0) {
+      diagnostic.raw = error.halt.raw as Record<string, unknown>;
+    }
+  }
+
   return JSON.stringify(diagnostic, null, 2);
 }
 
@@ -261,6 +359,151 @@ function formatErrorCompact(error: EnrichedError): string {
   }
 
   return parts.join(' ');
+}
+
+// ============================================================
+// HALT RENDERING
+// ============================================================
+
+function atomMatchesId(atom: string, errorId: string): boolean {
+  return atom === `#${errorId.replace(/-/g, '_')}`;
+}
+
+interface ParsedSite {
+  readonly path: string;
+  readonly line: number;
+  readonly column: number;
+}
+
+function parseSite(site: string): ParsedSite | null {
+  // Format: <path>:<line>[:<col>] — path may contain colons (`<script>`,
+  // Windows drive letters), so anchor on trailing numeric segments.
+  const withCol = /^(.+):(\d+):(\d+)$/.exec(site);
+  if (withCol) {
+    const line = Number.parseInt(withCol[2]!, 10);
+    const column = Number.parseInt(withCol[3]!, 10);
+    if (Number.isFinite(line) && line >= 1) {
+      return { path: withCol[1]!, line, column };
+    }
+  }
+  const noCol = /^(.+):(\d+)$/.exec(site);
+  if (noCol) {
+    const line = Number.parseInt(noCol[2]!, 10);
+    if (Number.isFinite(line) && line >= 1) {
+      return { path: noCol[1]!, line, column: 1 };
+    }
+  }
+  return null;
+}
+
+function renderTraceBlock(
+  lines: string[],
+  halt: HaltView,
+  source: string | undefined,
+  filePath: string | undefined,
+  traceMode: TraceMode
+): void {
+  // Origin (first frame) drives the --> line.
+  const first = parseSite(halt.trace[0]!.site);
+  if (first) {
+    const display =
+      filePath && (first.path === '<script>' || first.path === filePath)
+        ? `${filePath}:${first.line}:${first.column}`
+        : halt.trace[0]!.site;
+    lines.push(`  --> ${display}`);
+  }
+
+  const sourceLines = source !== undefined ? source.split('\n') : null;
+  // Single-frame default: inline snippet (legacy non-halt layout).
+  // Multi-frame or trace=always: numbered list with per-frame snippets.
+  const useNumberedBlock = traceMode === 'always' || halt.trace.length >= 2;
+
+  if (!useNumberedBlock) {
+    if (sourceLines && first) {
+      const isScript =
+        first.path === '<script>' ||
+        (filePath !== undefined && first.path === filePath);
+      if (isScript) {
+        renderInlineSnippet(lines, first, sourceLines);
+      }
+    }
+    return;
+  }
+
+  lines.push('   = trace:');
+  halt.trace.forEach((frame, idx) => {
+    const parsed = parseSite(frame.site);
+    const isScript =
+      parsed !== null &&
+      (parsed.path === '<script>' ||
+        (filePath !== undefined && parsed.path === filePath));
+    const display =
+      parsed && isScript && filePath
+        ? `${filePath}:${parsed.line}:${parsed.column}`
+        : frame.site;
+    lines.push(`     ${idx + 1}. ${display}`);
+    if (frame.kind === 'wrap' && Object.keys(frame.wrapped).length > 0) {
+      lines.push(`        wrapped: ${formatWrapped(frame.wrapped)}`);
+    }
+    if (sourceLines && parsed && isScript) {
+      renderFrameSnippet(lines, parsed, sourceLines, '        ');
+    }
+  });
+}
+
+function renderInlineSnippet(
+  lines: string[],
+  parsed: ParsedSite,
+  sourceLines: readonly string[]
+): void {
+  const content = sourceLines[parsed.line - 1];
+  if (content === undefined) return;
+  const lineNumStr = String(parsed.line);
+  const padding = ' '.repeat(lineNumStr.length);
+  const caretPad = ' '.repeat(Math.max(0, parsed.column - 1));
+  lines.push(`   |`);
+  lines.push(` ${lineNumStr} | ${content}`);
+  lines.push(` ${padding} | ${caretPad}^`);
+}
+
+function renderFrameSnippet(
+  lines: string[],
+  parsed: ParsedSite,
+  sourceLines: readonly string[],
+  indent: string
+): void {
+  const content = sourceLines[parsed.line - 1];
+  if (content === undefined) return;
+  const lineNumStr = String(parsed.line);
+  const padding = ' '.repeat(lineNumStr.length);
+  const caretPad = ' '.repeat(Math.max(0, parsed.column - 1));
+  lines.push(`${indent}${padding} |`);
+  lines.push(`${indent}${lineNumStr} | ${content}`);
+  lines.push(`${indent}${padding} | ${caretPad}^`);
+}
+
+function formatWrapped(wrapped: Readonly<Record<string, unknown>>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(wrapped)) {
+    parts.push(`${key}: ${stringifyWrappedValue(value)}`);
+  }
+  return `{ ${parts.join(', ')} }`;
+}
+
+function stringifyWrappedValue(value: unknown): string {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
+  if (typeof value === 'object' && '__rill_atom' in (value as object)) {
+    const name = (value as { name?: string }).name;
+    return name !== undefined ? `#${name}` : '<atom>';
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 // ============================================================
@@ -292,15 +535,16 @@ export function renderCaretUnderline(
     throw new RangeError('Span start must precede end');
   }
 
-  // Calculate the width of the underline
+  // Calculate the width of the underline. Multi-line spans underline through
+  // the end of the first line; the half-open end at column 1 of a later line
+  // is handled upstream (extractSnippet) by not marking that line as an
+  // error line, so this path won't render carets under a blank trailing row.
   const startColumn = span.start.column;
   let endColumn: number;
 
   if (span.start.line === span.end.line) {
-    // Single-line span: underline from start to end
     endColumn = span.end.column;
   } else {
-    // Multi-line span: underline to end of first line
     endColumn = lineContent.length;
   }
 

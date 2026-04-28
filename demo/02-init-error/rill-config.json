@@ -1,0 +1,6 @@
+{
+  "name": "init-error",
+  "version": "1.0.0",
+  "description": "Demonstrates a parse-time error surfaced before execution.",
+  "main": "main.rill"
+}

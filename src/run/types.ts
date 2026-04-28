@@ -18,4 +18,7 @@ export interface RunCliOptions {
   readonly maxStackDepth: number;
   readonly explain?: string | undefined;
   readonly createBindings?: string | undefined;
+  readonly trace?: 'auto' | 'always' | 'never';
+  readonly showRecovered?: boolean;
+  readonly atomOnly?: boolean;
 }

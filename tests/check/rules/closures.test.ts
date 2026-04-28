@@ -98,7 +98,7 @@ describe('CLOSURE_BARE_DOLLAR', () => {
   it('allows bare $ inside nested closures within stored closure', () => {
     const source = `
       || {
-        [1, 2, 3] -> filter { $ > 0 }
+        [1, 2, 3] -> filter({ $ > 0 })
       } => $fn
       true
     `;
@@ -110,8 +110,8 @@ describe('CLOSURE_BARE_DOLLAR', () => {
     const source = `
       || {
         [1, 2, 3]
-          -> filter { $ > 0 }
-          -> each { $.value }
+          -> filter({ $ > 0 })
+          -> seq({ $.value })
       } => $process
       true
     `;
@@ -160,6 +160,19 @@ describe('CLOSURE_BRACES', () => {
     expect(diagnostics[0]?.code).toBe('CLOSURE_BRACES');
     expect(diagnostics[0]?.severity).toBe('info');
   });
+
+  it('recommends braces for guard block in closure body', () => {
+    const messages = getDiagnostics('|x|(guard { $x }) => $fn', config);
+    expect(messages.some((m) => m.includes('braces for complex'))).toBe(true);
+  });
+
+  it('recommends braces for retry block in closure body', () => {
+    const messages = getDiagnostics(
+      '|x|(retry<limit: 3> { $x }) => $fn',
+      config
+    );
+    expect(messages.some((m) => m.includes('braces for complex'))).toBe(true);
+  });
 });
 
 // ============================================================
@@ -172,24 +185,24 @@ describe('CLOSURE_LATE_BINDING', () => {
     CLOSURE_BRACES: 'off',
   });
 
-  it('accepts each loops without closure creation', () => {
-    expect(hasViolations('list[1, 2, 3] -> each { $ * 2 }', config)).toBe(
+  it('accepts seq calls without closure creation', () => {
+    expect(hasViolations('list[1, 2, 3] -> seq({ $ * 2 })', config)).toBe(
       false
     );
   });
 
   it('accepts closures with explicit capture', () => {
     const source = `
-      list[1, 2, 3] -> each {
+      list[1, 2, 3] -> seq({
         $ => $item
         ||{ $item }
-      }
+      })
     `;
     expect(hasViolations(source, config)).toBe(false);
   });
 
   it('warns on closure creation without explicit capture', () => {
-    const source = 'list[1, 2, 3] -> each { ||{ $ } }';
+    const source = 'list[1, 2, 3] -> seq({ ||{ $ } })';
 
     const messages = getDiagnostics(source, config);
     expect(messages.length).toBeGreaterThan(0);
@@ -198,7 +211,7 @@ describe('CLOSURE_LATE_BINDING', () => {
   });
 
   it('has correct severity and code', () => {
-    const source = 'list[1, 2, 3] -> each { ||{ $ } }';
+    const source = 'list[1, 2, 3] -> seq({ ||{ $ } })';
     const ast = parse(source);
     const diagnostics = validateScript(ast, source, config);
 
@@ -208,12 +221,12 @@ describe('CLOSURE_LATE_BINDING', () => {
   });
 
   it('accepts each with named parameter and no nested closures', () => {
-    const source = `list[1, 2, 3] -> each |x| { $x * 2 }`;
+    const source = `list[1, 2, 3] -> seq(|x|{ $x * 2 })`;
     expect(hasViolations(source, config)).toBe(false);
   });
 
   it('warns on nested closure inside named parameter each', () => {
-    const source = `list[1, 2, 3] -> each |x| { || { $x } }`;
+    const source = `list[1, 2, 3] -> seq(|x|{ || { $x } })`;
     expect(hasViolations(source, config)).toBe(true);
   });
 });

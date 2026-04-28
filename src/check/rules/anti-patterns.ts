@@ -16,10 +16,6 @@ import type {
   ClosureNode,
   ConditionalNode,
   GroupedExprNode,
-  EachExprNode,
-  MapExprNode,
-  FilterExprNode,
-  FoldExprNode,
   PipeChainNode,
   PostfixExprNode,
   ScriptNode,
@@ -31,6 +27,7 @@ import type {
 } from '@rcrsr/rill';
 import { extractContextLine } from './helpers.js';
 import { visitNode } from '../visitor.js';
+import { isCollectionOpCall, getCollectionOpBody } from '../collection-ops.js';
 
 // ============================================================
 // AVOID_REASSIGNMENT RULE
@@ -326,39 +323,25 @@ export const LOOP_OUTER_CAPTURE: ValidationRule = {
   code: 'LOOP_OUTER_CAPTURE',
   category: 'anti-patterns',
   severity: 'warning',
-  nodeTypes: [
-    'EachExpr',
-    'MapExpr',
-    'FilterExpr',
-    'FoldExpr',
-    'WhileLoop',
-    'DoWhileLoop',
-  ],
+  nodeTypes: ['HostCall', 'WhileLoop', 'DoWhileLoop'],
 
   validate(node: ASTNode, context: ValidationContext): Diagnostic[] {
     const diagnostics: Diagnostic[] = [];
 
-    // Get the loop body based on node type
+    // Get the loop body based on node type. Collection-op HostCall nodes
+    // (seq/fan/fold/filter/acc) carry the body as a Closure or Block arg.
     let body: ASTNode | null = null;
-    switch (node.type) {
-      case 'EachExpr':
-        body = (node as EachExprNode).body;
-        break;
-      case 'MapExpr':
-        body = (node as MapExprNode).body;
-        break;
-      case 'FilterExpr':
-        body = (node as FilterExprNode).body;
-        break;
-      case 'FoldExpr':
-        body = (node as FoldExprNode).body;
-        break;
-      case 'WhileLoop':
-        body = (node as WhileLoopNode).body;
-        break;
-      case 'DoWhileLoop':
-        body = (node as DoWhileLoopNode).body;
-        break;
+    if (isCollectionOpCall(node)) {
+      const arg = getCollectionOpBody(node);
+      body = arg
+        ? arg.type === 'Closure'
+          ? (arg as ClosureNode).body
+          : arg
+        : null;
+    } else if (node.type === 'WhileLoop') {
+      body = (node as WhileLoopNode).body;
+    } else if (node.type === 'DoWhileLoop') {
+      body = (node as DoWhileLoopNode).body;
     }
 
     if (!body) return diagnostics;
@@ -551,14 +534,6 @@ function getParenNestingDepth(node: ASTNode): number {
 // STREAM_PRE_ITERATION RULE
 // ============================================================
 
-/** Collection operator node types that consume a stream via iteration */
-const ITERATION_NODE_TYPES = new Set([
-  'EachExpr',
-  'MapExpr',
-  'FilterExpr',
-  'FoldExpr',
-]);
-
 /**
  * Warns when a stream variable is invoked before any iteration consumes it.
  * Invoking a stream closure ($s()) before iterating ($s -> each { ... })
@@ -749,7 +724,7 @@ function collectStreamUsages(
         return;
       }
 
-      // Detect iteration: $s -> each/map/filter/fold
+      // Detect iteration: $s -> seq/fan/fold/filter/acc
       if (n.type === 'PipeChain') {
         const chain = n as PipeChainNode;
         const varName = getPipeHeadVariableName(chain);
@@ -758,9 +733,9 @@ function collectStreamUsages(
           streamVars.has(varName) &&
           !firstIteration.has(varName)
         ) {
-          // Check if any pipe target is an iteration operator
+          // Check if any pipe target is a collection-op call
           for (const pipe of chain.pipes) {
-            if (ITERATION_NODE_TYPES.has(pipe.type)) {
+            if (isCollectionOpCall(pipe)) {
               firstIteration.set(varName, pipe);
               break;
             }

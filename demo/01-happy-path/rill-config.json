@@ -1,0 +1,6 @@
+{
+  "name": "happy-path",
+  "version": "1.0.0",
+  "description": "End-to-end happy path: pipes, collection ops, return value.",
+  "main": "main.rill"
+}

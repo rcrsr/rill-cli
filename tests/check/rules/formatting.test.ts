@@ -286,7 +286,7 @@ describe('SPACING_BRACES', () => {
 
   it('accepts properly spaced braces', () => {
     expect(hasViolations('{ $x + 1 }', config)).toBe(false);
-    expect(hasViolations('list[1, 2, 3] -> each { $ * 2 }', config)).toBe(
+    expect(hasViolations('list[1, 2, 3] -> seq({ $ * 2 })', config)).toBe(
       false
     );
   });

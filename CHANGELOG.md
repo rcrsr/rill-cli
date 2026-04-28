@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- New lint rules for 0.19.0 error-handling primitives: `GUARD_BARE`, `RETRY_TRIVIAL`, `ATOM_UNREGISTERED`, `STATUS_PROBE_NO_FIELD`, `PRESENCE_OVER_NULL_GUARD`, `GUARD_OVER_TRY_CATCH`
+- CLI flags `--trace`, `--no-trace`, `--show-recovered`, `--atom-only` for error output control
+- Human error envelope unified across uncaught and guard-recovered halts: `error[:provider][ID[#ATOM]]: message` header, `--> path:line:col` location, source snippets per trace frame, and origin-first trace chain. Atom is suppressed when it is the underscore form of the error id (e.g., `#RILL_R038` for `RILL-R038`); `<script>` site placeholders are substituted with the active filename
+- JSON error shape gains `atom`, `errorId`, `provider`, `trace[]`, `raw` fields
+
+### Fixed
+
+- Caret underline no longer appears under blank trailing lines for half-open spans that end at column 1 of a later line
+- Trailing blank context lines (from a final newline at EOF) trimmed from snippet output
+- `rill-run` and `rill-eval` detect invalid `RillValue` returned by guard-recovered scripts and exit non-zero with a formatted status
+
+### Changed
+
+- Collection-op rules `PREFER_MAP`, `BREAK_IN_PARALLEL`, `FOLD_INTERMEDIATES`, `FILTER_NEGATION`, `METHOD_SHORTHAND` rewritten against the `HostCall` AST (`seq` / `fan` / `fold` / `filter` / `acc`); messages reference 0.19.0 syntax
+- `CLOSURE_LATE_BINDING` and `CLOSURE_BARE_DOLLAR` migrated to the new collection-op shape
+- Peer-dependency range for `@rcrsr/rill` and `@rcrsr/rill-config` is now `~0.19.0`
+
 ## [0.18.12] - 2026-04-09
 
 ### Added

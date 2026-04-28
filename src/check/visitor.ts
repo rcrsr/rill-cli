@@ -34,7 +34,7 @@ export interface RuleVisitor {
 
 /**
  * Recursively visit AST nodes with enter/exit callbacks.
- * Handles all 46 node types from ASTNode union.
+ * Handles every node type in the ASTNode discriminated union.
  *
  * Traversal order:
  * 1. visitor.enter(node)
@@ -256,26 +256,30 @@ export function visitNode(
       }
       break;
 
-    case 'EachExpr':
+    case 'GuardBlock':
       visitNode(node.body, context, visitor);
-      if (node.accumulator) {
-        visitNode(node.accumulator, context, visitor);
+      if (node.onCodes) {
+        for (const code of node.onCodes) {
+          visitNode(code, context, visitor);
+        }
       }
       break;
 
-    case 'MapExpr':
+    case 'RetryBlock':
       visitNode(node.body, context, visitor);
-      break;
-
-    case 'FoldExpr':
-      visitNode(node.body, context, visitor);
-      if (node.accumulator) {
-        visitNode(node.accumulator, context, visitor);
+      if (node.onCodes) {
+        for (const code of node.onCodes) {
+          visitNode(code, context, visitor);
+        }
       }
       break;
 
-    case 'FilterExpr':
-      visitNode(node.body, context, visitor);
+    case 'AtomLiteral':
+      // Leaf node - no children
+      break;
+
+    case 'StatusProbe':
+      visitNode(node.target, context, visitor);
       break;
 
     case 'Destructure':
@@ -306,10 +310,6 @@ export function visitNode(
       for (const element of node.elements) {
         visitNode(element, context, visitor);
       }
-      break;
-
-    case 'Convert':
-      // Leaf node - typeRef is not an ASTNode
       break;
 
     case 'TypeAssertion':

@@ -90,15 +90,18 @@ rill-check --fix script.rill       # auto-fix
 | `--fix` | Apply automatic fixes |
 | `--format text\|json` | Output format (default: text) |
 | `--verbose` | Include rule category in JSON output |
+| `--min-severity error\|warning\|info` | Severity threshold for non-zero exit (default: error) |
 
 **Exit codes:**
 
 | Code | Meaning |
 |------|---------|
-| 0 | No issues |
-| 1 | Diagnostics reported |
-| 2 | File not found |
-| 3 | Parse error |
+| 0 | No diagnostics at or above `--min-severity` (default: error) |
+| 1 | Diagnostics at or above `--min-severity`, or CLI usage error |
+| 2 | File not found or path is a directory |
+| 3 | Parse error in source |
+
+Diagnostics below the threshold still print so the user sees them; only the exit code is gated. Example: a file with one `info`-level advisory exits 0 by default but exits 1 under `--min-severity info`.
 
 **Configuration:** Place `.rill-check.json` in the project root:
 

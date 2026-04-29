@@ -1,0 +1,10 @@
+{
+  "name": "contract-test-dt",
+  "version": "1.0.0",
+  "main": "main.rill",
+  "extensions": {
+    "mounts": {
+      "dt": "@rcrsr/rill-ext-datetime"
+    }
+  }
+}

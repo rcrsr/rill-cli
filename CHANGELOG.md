@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - `rill-check --min-severity <error|warning|info>` flag controls the severity threshold for non-zero exit. Default is `error`, so `info` advisories (e.g. `PREFER_MAP`, `SPACING_BRACES`) and `warning` diagnostics no longer fail CI by default. Diagnostics below the threshold still print to stdout so the user sees them; only the exit code is gated. Pass `--min-severity info` to restore the pre-fix strict behavior
+- New `rill-describe` CLI binary with three subcommands: `project` (default), `handler`, and `builtins`. `project [--mount <name>]` reads `rill-config.json` via `loadProject` and walks `project.extTree` to emit per-mount callable trees with full `params`, `returnType`, and `annotations`. `handler` parses `main: "file.rill:name"`, executes the script, and emits the captured handler's signature with closure-level annotations. `builtins` walks `ctx.functions` and `ctx.typeMethodDicts` from a fresh runtime context. All subcommands accept `--strict` (exit 1 if any callable has `returnType: any`); `project` and `handler` accept `--config <path>` to override the default `./rill-config.json` lookup
+- `@rcrsr/rill-ext-datetime` added as devDependency for `rill-describe project` mode tests
 
 ### Changed
 

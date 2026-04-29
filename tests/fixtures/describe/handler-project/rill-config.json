@@ -1,0 +1,5 @@
+{
+  "name": "describe-test-handler",
+  "version": "1.0.0",
+  "main": "main.rill:greet"
+}

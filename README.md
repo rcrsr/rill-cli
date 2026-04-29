@@ -17,6 +17,7 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 | `rill-check` | Static analysis and lint validation |
 | `rill-run` | Config-driven execution with extensions and modules |
 | `rill-build` | Compile a rill project into a self-contained output directory |
+| `rill-describe` | Describe rill callables as a JSON contract (project, handler, or builtins) |
 
 ## Install
 
@@ -160,6 +161,55 @@ build/<package-name>/
 ```
 
 The `build` section in the output `rill-config.json` contains a SHA-256 checksum, rill runtime version, and config version.
+
+### rill-describe
+
+Describe rill callables as a JSON contract. Three subcommands cover the distinct surfaces a project exposes: extension surface (`project`), the project's own handler (`handler`), and the rill runtime itself (`builtins`).
+
+```bash
+rill-describe project                          # all extension mounts (default)
+rill-describe project --mount <name>           # restrict output to a single mount
+rill-describe handler                          # the project's published handler
+rill-describe builtins                         # rill runtime callables (no config needed)
+```
+
+When no subcommand is given, `project` is assumed.
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+|------------|---------|
+| `project` | Walk `project.extTree` and emit per-mount callable trees |
+| `handler` | Resolve `main: "file.rill:name"`, execute the script, and emit the handler signature |
+| `builtins` | Walk `ctx.functions` and `ctx.typeMethodDicts` |
+
+**Options (project):**
+
+| Flag | Description |
+|------|-------------|
+| `--mount <name>` | Limit output to a single mount |
+| `--strict` | Exit 1 if any callable has `returnType: any` |
+| `--config <path>` | Config file path (default: `./rill-config.json`) |
+
+**Options (handler):**
+
+| Flag | Description |
+|------|-------------|
+| `--strict` | Exit 1 if any callable has `returnType: any` |
+| `--config <path>` | Config file path (default: `./rill-config.json`) |
+
+**Options (builtins):**
+
+| Flag | Description |
+|------|-------------|
+| `--strict` | Exit 1 if any callable has `returnType: any` |
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Contract emitted |
+| 1 | Config error, unknown mount, missing handler, or `--strict` violation |
 
 ## Documentation
 

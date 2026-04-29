@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `rill-check --min-severity <error|warning|info>` flag controls the severity threshold for non-zero exit. Default is `error`, so `info` advisories (e.g. `PREFER_MAP`, `SPACING_BRACES`) and `warning` diagnostics no longer fail CI by default. Diagnostics below the threshold still print to stdout so the user sees them; only the exit code is gated. Pass `--min-severity info` to restore the pre-fix strict behavior
+
+### Changed
+
+- **Breaking:** `rill-check` default exit code semantics — previously any diagnostic (including `info`) caused exit 1. Now only diagnostics at or above the `--min-severity` threshold (default `error`) fail. 53 of 78 lint rules emit `info` severity, so the prior default treated advisory output as a build failure. Existing CI scripts that relied on `info`/`warning`-level failures must add `--min-severity info` (or `warning`) to opt back in
+
 ## [0.19.0] - 2026-04-28
 
 ### Added

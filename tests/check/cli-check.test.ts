@@ -100,6 +100,7 @@ describe('parseCheckArgs', () => {
         fix: false,
         verbose: false,
         format: 'text',
+        minSeverity: 'error',
       });
     });
 
@@ -111,6 +112,7 @@ describe('parseCheckArgs', () => {
         fix: true,
         verbose: false,
         format: 'text',
+        minSeverity: 'error',
       });
     });
 
@@ -122,6 +124,7 @@ describe('parseCheckArgs', () => {
         fix: false,
         verbose: true,
         format: 'text',
+        minSeverity: 'error',
       });
     });
 
@@ -133,6 +136,7 @@ describe('parseCheckArgs', () => {
         fix: false,
         verbose: false,
         format: 'text',
+        minSeverity: 'error',
       });
     });
 
@@ -144,6 +148,7 @@ describe('parseCheckArgs', () => {
         fix: false,
         verbose: false,
         format: 'json',
+        minSeverity: 'error',
       });
     });
 
@@ -161,6 +166,7 @@ describe('parseCheckArgs', () => {
         fix: true,
         verbose: true,
         format: 'json',
+        minSeverity: 'error',
       });
     });
 
@@ -172,6 +178,7 @@ describe('parseCheckArgs', () => {
         fix: true,
         verbose: true,
         format: 'text',
+        minSeverity: 'error',
       });
     });
 
@@ -183,6 +190,7 @@ describe('parseCheckArgs', () => {
         fix: false,
         verbose: false,
         format: 'text',
+        minSeverity: 'error',
       });
     });
   });

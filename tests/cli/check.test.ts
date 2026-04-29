@@ -158,6 +158,7 @@ describe('rill-check CLI', () => {
         fix: false,
         verbose: false,
         format: 'text',
+        minSeverity: 'error',
       });
     });
 
@@ -795,6 +796,197 @@ dict[itemList: list[1, 2, 3]] => $data2
       const output = formatDiagnostics(script, diagnostics, 'json', true);
       const parsed = JSON.parse(output);
       expect(parsed).toHaveProperty('file');
+    });
+  });
+
+  // ============================================================
+  // --min-severity FLAG: SEVERITY-AWARE EXIT CODE
+  // ============================================================
+  //
+  // Default exit code is gated by --min-severity (default: error).
+  // Diagnostics below the threshold still print but do not fail the
+  // process. Regression for retro 2.2: info-level advisories no
+  // longer force exit 1, so CI orchestrators can rely on the exit
+  // code without grepping stderr.
+
+  describe('--min-severity flag', () => {
+    // Source samples chosen to deterministically trigger a single rule
+    // at each severity tier in the bundled VALIDATION_RULES set.
+    const INFO_SOURCE = '[1, 2, 3] -> seq |x|($x * 2)\n'; // SPACING_BRACES (info)
+    const WARNING_SOURCE = '"ext:foo" => $name\nuse<$name>\n'; // USE_DYNAMIC_IDENTIFIER (warning)
+    const ERROR_SOURCE = '42 => $myCamelCase\n'; // NAMING_SNAKE_CASE (error)
+
+    describe('parser', () => {
+      it('defaults minSeverity to "error" when flag is omitted', () => {
+        const args = parseCheckArgs(['main.rill']);
+        expect(args.mode).toBe('check');
+        if (args.mode === 'check') {
+          expect(args.minSeverity).toBe('error');
+        }
+      });
+
+      it('parses --min-severity error', () => {
+        const args = parseCheckArgs(['--min-severity', 'error', 'main.rill']);
+        if (args.mode === 'check') {
+          expect(args.minSeverity).toBe('error');
+        }
+      });
+
+      it('parses --min-severity warning', () => {
+        const args = parseCheckArgs(['--min-severity', 'warning', 'main.rill']);
+        if (args.mode === 'check') {
+          expect(args.minSeverity).toBe('warning');
+        }
+      });
+
+      it('parses --min-severity info', () => {
+        const args = parseCheckArgs(['--min-severity', 'info', 'main.rill']);
+        if (args.mode === 'check') {
+          expect(args.minSeverity).toBe('info');
+        }
+      });
+
+      it('throws on missing --min-severity value', () => {
+        expect(() => parseCheckArgs(['--min-severity'])).toThrow(
+          /--min-severity requires argument/
+        );
+      });
+
+      it('throws when --min-severity value is another flag', () => {
+        expect(() => parseCheckArgs(['--min-severity', '--fix'])).toThrow(
+          /--min-severity requires argument/
+        );
+      });
+
+      it('throws on invalid --min-severity value', () => {
+        expect(() =>
+          parseCheckArgs(['--min-severity', 'critical', 'main.rill'])
+        ).toThrow(/Invalid --min-severity/);
+      });
+
+      it('does not treat the --min-severity value as the file argument', () => {
+        const args = parseCheckArgs(['--min-severity', 'warning', 'main.rill']);
+        if (args.mode === 'check') {
+          expect(args.file).toBe('main.rill');
+          expect(args.minSeverity).toBe('warning');
+        }
+      });
+    });
+
+    describe('default behavior (--min-severity error)', () => {
+      it('regression for retro 2.2: info-only file exits 0', async () => {
+        const script = await writeFile('info-only.rill', INFO_SOURCE);
+        const result = await execCheck([script]);
+        expect(result.exitCode).toBe(0);
+        // Diagnostic still prints so the user sees the advisory.
+        expect(result.stdout).toContain('info:');
+        expect(result.stdout).toContain('SPACING_BRACES');
+      });
+
+      it('warning-only file exits 0', async () => {
+        const script = await writeFile('warning-only.rill', WARNING_SOURCE);
+        const result = await execCheck([script]);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('warning:');
+        expect(result.stdout).toContain('USE_DYNAMIC_IDENTIFIER');
+      });
+
+      it('error-bearing file exits 1', async () => {
+        const script = await writeFile('error.rill', ERROR_SOURCE);
+        const result = await execCheck([script]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).toContain('error:');
+        expect(result.stdout).toContain('NAMING_SNAKE_CASE');
+      });
+    });
+
+    describe('--min-severity warning', () => {
+      it('info-only file exits 0', async () => {
+        const script = await writeFile('info-only-w.rill', INFO_SOURCE);
+        const result = await execCheck(['--min-severity', 'warning', script]);
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('SPACING_BRACES');
+      });
+
+      it('warning-only file exits 1', async () => {
+        const script = await writeFile('warning-only-w.rill', WARNING_SOURCE);
+        const result = await execCheck(['--min-severity', 'warning', script]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).toContain('USE_DYNAMIC_IDENTIFIER');
+      });
+
+      it('error-bearing file exits 1', async () => {
+        const script = await writeFile('error-w.rill', ERROR_SOURCE);
+        const result = await execCheck(['--min-severity', 'warning', script]);
+        expect(result.exitCode).toBe(1);
+      });
+    });
+
+    describe('--min-severity info (preserves pre-fix strict behavior)', () => {
+      it('info-only file exits 1', async () => {
+        const script = await writeFile('info-strict.rill', INFO_SOURCE);
+        const result = await execCheck(['--min-severity', 'info', script]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).toContain('SPACING_BRACES');
+      });
+
+      it('warning-only file exits 1', async () => {
+        const script = await writeFile('warning-strict.rill', WARNING_SOURCE);
+        const result = await execCheck(['--min-severity', 'info', script]);
+        expect(result.exitCode).toBe(1);
+      });
+
+      it('error-bearing file exits 1', async () => {
+        const script = await writeFile('error-strict.rill', ERROR_SOURCE);
+        const result = await execCheck(['--min-severity', 'info', script]);
+        expect(result.exitCode).toBe(1);
+      });
+
+      it('clean file exits 0', async () => {
+        const script = await writeFile('clean.rill', '"hello"\n');
+        const result = await execCheck(['--min-severity', 'info', script]);
+        expect(result.exitCode).toBe(0);
+      });
+    });
+
+    describe('JSON format integration', () => {
+      it('--format json with default min-severity emits envelope and exits 0 for info-only', async () => {
+        const script = await writeFile('info-json.rill', INFO_SOURCE);
+        const result = await execCheck(['--format', 'json', script]);
+        expect(result.exitCode).toBe(0);
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.summary.info).toBe(1);
+        expect(parsed.summary.errors).toBe(0);
+      });
+
+      it('--format json --min-severity info emits envelope and exits 1 for info-only', async () => {
+        const script = await writeFile('info-json-strict.rill', INFO_SOURCE);
+        const result = await execCheck([
+          '--format',
+          'json',
+          '--min-severity',
+          'info',
+          script,
+        ]);
+        expect(result.exitCode).toBe(1);
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.summary.info).toBe(1);
+      });
+    });
+
+    describe('CLI errors', () => {
+      it('exits 1 with helpful message on invalid --min-severity value', async () => {
+        const script = await writeFile('any.rill', '"hello"\n');
+        const result = await execCheck(['--min-severity', 'critical', script]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Invalid --min-severity');
+      });
+
+      it('exits 1 with helpful message when --min-severity is missing a value', async () => {
+        const result = await execCheck(['--min-severity']);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('--min-severity requires argument');
+      });
     });
   });
 });

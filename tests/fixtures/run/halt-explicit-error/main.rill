@@ -1,0 +1,3 @@
+|| {
+  error "deliberate halt for diagnostic test"
+}:string => $run

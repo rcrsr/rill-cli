@@ -36,6 +36,7 @@ import { explainError } from './cli-explain.js';
 import {
   createStreamWriter,
   drainStream,
+  formatHandlerError,
   formatOutput,
   runScript,
 } from './run/runner.js';
@@ -328,12 +329,14 @@ export async function main(): Promise<void> {
       process.exit(1);
     }
 
+    const formatErr = (err: unknown): string =>
+      formatHandlerError(err, source, absolutePath, opts);
+
     let ast: ReturnType<typeof parse>;
     try {
       ast = parse(source);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(message + '\n');
+      process.stderr.write(formatErr(err) + '\n');
       process.exit(1);
     }
 
@@ -353,8 +356,7 @@ export async function main(): Promise<void> {
     try {
       await execute(ast, ctx);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(message + '\n');
+      process.stderr.write(formatErr(err) + '\n');
       process.exit(1);
     }
 
@@ -406,8 +408,7 @@ export async function main(): Promise<void> {
         await writer.finalize();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(message + '\n');
+      process.stderr.write(formatErr(err) + '\n');
       process.exit(1);
     } finally {
       for (const dispose of project.disposes) {

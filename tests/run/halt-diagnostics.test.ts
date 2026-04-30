@@ -18,11 +18,11 @@
  *    which previously emitted bare "runtime halt" regardless of flags.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runScript } from '../../src/run/runner.js';
 import type { RunCliOptions } from '../../src/run/types.js';
@@ -53,7 +53,11 @@ function makeOpts(overrides: Partial<RunCliOptions>): RunCliOptions {
 }
 
 async function runHalt(optsOverrides: Partial<RunCliOptions> = {}) {
-  const scriptPath = path.join(os.tmpdir(), `rill-halt-${Date.now()}.rill`);
+  // mkdtempSync gives a per-call unique directory so concurrent or
+  // same-millisecond invocations cannot collide on the script path.
+  // The fixed filename inside the dir keeps assertions stable.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rill-halt-'));
+  const scriptPath = path.join(tmpDir, 'main.rill');
   fs.writeFileSync(scriptPath, HALT_SCRIPT, 'utf-8');
   try {
     const config: RillConfigFile = { modules: {} };
@@ -64,7 +68,9 @@ async function runHalt(optsOverrides: Partial<RunCliOptions> = {}) {
       []
     );
   } finally {
-    fs.unlinkSync(scriptPath);
+    // Tolerate ENOENT in case a prior step removed the file or the dir
+    // was already cleaned up (e.g. cross-test races on shared tmpdirs).
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
@@ -76,6 +82,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const RILL_RUN_BINARY = path.join(PROJECT_ROOT, 'dist', 'cli-run.js');
 const FIXTURES = path.join(PROJECT_ROOT, 'tests', 'fixtures', 'run');
+
+// Ensure dist/cli-run.js exists before handler-mode tests spawn it.
+// `pnpm test` does not run build first, so a clean checkout would
+// otherwise fail with ENOENT. tsbuildinfo can claim the project is
+// up-to-date even when emitted JS is missing (manual deletion, dirty
+// dist, etc.), so use --force to guarantee re-emission. Builds once.
+beforeAll(() => {
+  if (!fs.existsSync(RILL_RUN_BINARY)) {
+    execSync('pnpm exec tsc --build --force', {
+      cwd: PROJECT_ROOT,
+      stdio: 'inherit',
+    });
+  }
+}, 60_000);
 
 function spawnRillRun(
   fixtureDir: string,

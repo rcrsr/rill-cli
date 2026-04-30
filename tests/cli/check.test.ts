@@ -810,9 +810,12 @@ dict[itemList: list[1, 2, 3]] => $data2
   // code without grepping stderr.
 
   describe('--min-severity flag', () => {
-    // Source samples chosen to deterministically trigger a single rule
-    // at each severity tier in the bundled VALIDATION_RULES set.
-    const INFO_SOURCE = '[1, 2, 3] -> seq |x|($x * 2)\n'; // SPACING_BRACES (info)
+    // Source samples chosen to deterministically trigger exactly one
+    // diagnostic at each severity tier in the bundled VALIDATION_RULES
+    // set. Each rule code is asserted explicitly, so a future rule
+    // change will fail the suite loudly rather than silently accept
+    // some other diagnostic at the same severity.
+    const INFO_SOURCE = '5+3\n'; // SPACING_OPERATOR (info)
     const WARNING_SOURCE = '"ext:foo" => $name\nuse<$name>\n'; // USE_DYNAMIC_IDENTIFIER (warning)
     const ERROR_SOURCE = '42 => $myCamelCase\n'; // NAMING_SNAKE_CASE (error)
 
@@ -880,7 +883,7 @@ dict[itemList: list[1, 2, 3]] => $data2
         expect(result.exitCode).toBe(0);
         // Diagnostic still prints so the user sees the advisory.
         expect(result.stdout).toContain('info:');
-        expect(result.stdout).toContain('SPACING_BRACES');
+        expect(result.stdout).toContain('SPACING_OPERATOR');
       });
 
       it('warning-only file exits 0', async () => {
@@ -905,7 +908,7 @@ dict[itemList: list[1, 2, 3]] => $data2
         const script = await writeFile('info-only-w.rill', INFO_SOURCE);
         const result = await execCheck(['--min-severity', 'warning', script]);
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('SPACING_BRACES');
+        expect(result.stdout).toContain('SPACING_OPERATOR');
       });
 
       it('warning-only file exits 1', async () => {
@@ -927,7 +930,7 @@ dict[itemList: list[1, 2, 3]] => $data2
         const script = await writeFile('info-strict.rill', INFO_SOURCE);
         const result = await execCheck(['--min-severity', 'info', script]);
         expect(result.exitCode).toBe(1);
-        expect(result.stdout).toContain('SPACING_BRACES');
+        expect(result.stdout).toContain('SPACING_OPERATOR');
       });
 
       it('warning-only file exits 1', async () => {

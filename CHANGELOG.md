@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `rill-run` handler mode now surfaces the full halt envelope (atom, message, source location, snippet, trace) instead of bare `runtime halt`. The handler-mode catch around `invokeCallable` previously took `err.message` from a `RuntimeHaltSignal` (whose default message is the literal string `runtime halt`) and wrote it raw, ignoring `--verbose`, `--trace`, `--format json`, `--format compact`, and `--atom-only`. Module mode was unaffected because `execute()` converts halts to `RuntimeError` before the catch runs
+
 ## [0.19.0] - 2026-04-28
 
 ### Added

@@ -29,6 +29,7 @@ import {
   ParseError,
   RillError,
   RuntimeError,
+  RuntimeHaltSignal,
   formatRillError,
   formatRillErrorJson,
 } from '@rcrsr/rill';
@@ -45,6 +46,107 @@ export interface RunResult {
   readonly exitCode: number;
   readonly output?: string | undefined;
   readonly errorOutput?: string | undefined;
+}
+
+// ============================================================
+// ERROR FORMATTING (shared by module mode and handler mode)
+// ============================================================
+
+/**
+ * Format a RillError for stderr output, preserving atom code, message,
+ * source-aware snippet, and trace chain across human / json / compact
+ * formats.
+ *
+ * RuntimeError instances carrying a halt view route through the
+ * enriched formatError path (snippet + trace block). Other RillError
+ * subclasses fall back to formatRillError / formatRillErrorJson.
+ */
+export function formatRillErrorOutput(
+  err: RillError,
+  source: string,
+  scriptPath: string,
+  opts: Pick<
+    RunCliOptions,
+    | 'format'
+    | 'verbose'
+    | 'maxStackDepth'
+    | 'trace'
+    | 'showRecovered'
+    | 'atomOnly'
+  >
+): string {
+  const formatOpts = {
+    format: opts.format,
+    verbose: opts.verbose,
+    includeCallStack: true,
+    maxCallStackDepth: opts.maxStackDepth,
+    trace: opts.trace,
+    showRecovered: opts.showRecovered,
+    atomOnly: opts.atomOnly,
+  };
+
+  if (err instanceof RuntimeError && viewFromRuntimeError(err) !== null) {
+    return formatError(err, source, formatOpts, undefined, scriptPath);
+  }
+  return opts.format === 'json'
+    ? formatRillErrorJson(err, {
+        maxStackDepth: opts.maxStackDepth,
+        filePath: scriptPath,
+      })
+    : formatRillError(err, {
+        verbose: opts.verbose,
+        maxStackDepth: opts.maxStackDepth,
+        filePath: scriptPath,
+        sources: { script: source },
+      });
+}
+
+/**
+ * Format any error thrown by handler-mode evaluation: RuntimeHaltSignal
+ * (raw halts that escape invokeCallable without RuntimeError wrapping),
+ * RillError instances, or arbitrary Error subclasses.
+ *
+ * Module mode never sees RuntimeHaltSignal because execute() converts
+ * escaping halts to RuntimeError. Handler mode invokes closures via
+ * invokeCallable directly, so halts surface as RuntimeHaltSignal whose
+ * default Error message is the literal string "runtime halt"; this
+ * helper extracts the halt view from signal.value and renders the same
+ * envelope module mode produces.
+ */
+export function formatHandlerError(
+  err: unknown,
+  source: string,
+  scriptPath: string,
+  opts: Pick<
+    RunCliOptions,
+    | 'format'
+    | 'verbose'
+    | 'maxStackDepth'
+    | 'trace'
+    | 'showRecovered'
+    | 'atomOnly'
+  >
+): string {
+  if (err instanceof RuntimeHaltSignal) {
+    return formatStatus(
+      err.value,
+      {
+        format: opts.format === 'compact' ? 'human' : opts.format,
+        verbose: opts.verbose,
+        trace: opts.trace,
+        showRecovered: opts.showRecovered,
+        atomOnly: opts.atomOnly,
+        maxCallStackDepth: opts.maxStackDepth,
+        includeCallStack: true,
+      },
+      source,
+      scriptPath
+    );
+  }
+  if (err instanceof RillError) {
+    return formatRillErrorOutput(err, source, scriptPath, opts);
+  }
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ============================================================
@@ -289,39 +391,15 @@ export async function runScript(
     ctx.pipeValue = opts.scriptArgs.join(' ');
   }
 
-  const formatOpts = {
-    format: opts.format,
-    verbose: opts.verbose,
-    includeCallStack: true,
-    maxCallStackDepth: opts.maxStackDepth,
-    trace: opts.trace,
-    showRecovered: opts.showRecovered,
-    atomOnly: opts.atomOnly,
-  };
-
-  const formatRillErr = (err: RillError): string => {
-    if (err instanceof RuntimeError && viewFromRuntimeError(err) !== null) {
-      return formatError(err, source, formatOpts, undefined, opts.scriptPath);
-    }
-    return opts.format === 'json'
-      ? formatRillErrorJson(err, {
-          maxStackDepth: opts.maxStackDepth,
-          filePath: opts.scriptPath!,
-        })
-      : formatRillError(err, {
-          verbose: opts.verbose,
-          maxStackDepth: opts.maxStackDepth,
-          filePath: opts.scriptPath!,
-          sources: { script: source },
-        });
-  };
+  const formatErr = (err: RillError): string =>
+    formatRillErrorOutput(err, source, opts.scriptPath!, opts);
 
   let ast: ReturnType<typeof parse>;
   try {
     ast = parse(source);
   } catch (err: unknown) {
     if (err instanceof ParseError) {
-      return { exitCode: 1, errorOutput: formatRillErr(err) };
+      return { exitCode: 1, errorOutput: formatErr(err) };
     }
     const message = err instanceof Error ? err.message : String(err);
     return { exitCode: 1, errorOutput: message };
@@ -339,7 +417,7 @@ export async function runScript(
     }
   } catch (err: unknown) {
     if (err instanceof RillError) {
-      return { exitCode: 1, errorOutput: formatRillErr(err) };
+      return { exitCode: 1, errorOutput: formatErr(err) };
     }
     const message = err instanceof Error ? err.message : String(err);
     return { exitCode: 1, errorOutput: message };

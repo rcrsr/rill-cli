@@ -82,6 +82,43 @@ function readRillVersion(): string {
 }
 
 /**
+ * Inline `_require("...package.json")` / `__require("...package.json")` calls
+ * left by esbuild's CJS-to-ESM shim by replacing them with the literal JSON
+ * contents. Both single- and double-underscore shim names are covered so the
+ * downstream CJS scan sees no leftover package.json references when inlining
+ * ran. Returns the (possibly-modified) bundled string.
+ */
+export function inlinePackageJsonRequires(
+  bundled: string,
+  sourcePkgJson: string
+): string {
+  return bundled.replace(
+    /\b_{1,2}require\("[^"]*package\.json"\)/g,
+    sourcePkgJson
+  );
+}
+
+/**
+ * Find any remaining `_require("X")` / `__require("X")` shim calls left in a
+ * bundled extension. esbuild emits these when bundling CJS source to ESM and
+ * cannot statically resolve a `require()` call. Each such call throws
+ * `Dynamic require of "X" is not supported` at runtime. No target is
+ * intrinsically safe — package.json references are only safe after the inline
+ * step above has replaced them with literal JSON.
+ *
+ * Returns sorted, distinct require targets. Empty array means the bundle is
+ * free of dynamic-require shims.
+ */
+export function findOffendingDynamicRequires(bundled: string): string[] {
+  const matches = bundled.matchAll(/\b_{1,2}require\("([^"]+)"\)/g);
+  const offending = new Set<string>();
+  for (const match of matches) {
+    offending.add(match[1]!);
+  }
+  return [...offending].sort();
+}
+
+/**
  * Bundle an extension source (local file or npm package) to ESM via esbuild.
  * For local files, srcPath is a file path. For npm packages, srcPath is the
  * package specifier (e.g., '@rcrsr/rill-ext-openai') and esbuild resolves it.
@@ -139,37 +176,23 @@ async function bundleExtensionToFile(
       absWorkingDir: projectDir,
     });
 
-    // Post-process: read bundled output for inline patching and CJS detection.
+    // Post-process: read bundled output, inline package.json _require shims
+    // (when sourcePkgJson is available), then scan for any remaining CJS
+    // dynamic-require shims that would throw at runtime.
     let bundled = readFileSync(destPath, 'utf-8');
 
-    // Inline _require("...package.json") left by esbuild's CJS-to-ESM shim.
-    // createRequire wraps can't be intercepted by plugins.
     if (sourcePkgJson !== undefined) {
-      const before = bundled;
-      bundled = bundled.replace(
-        /_require\("[^"]*package\.json"\)/g,
-        sourcePkgJson
-      );
-      if (bundled !== before) {
+      const inlined = inlinePackageJsonRequires(bundled, sourcePkgJson);
+      if (inlined !== bundled) {
+        bundled = inlined;
         await writeFile(destPath, bundled, 'utf-8');
       }
     }
 
-    // Detect any remaining CJS require shims esbuild emits when bundling CJS
-    // source to ESM. These throw "Dynamic require of X is not supported" at
-    // runtime. Package.json references are excluded — already handled above.
-    const requireMatches = bundled.matchAll(/\b_{1,2}require\("([^"]+)"\)/g);
-    const offending = new Set<string>();
-    for (const match of requireMatches) {
-      const target = match[1]!;
-      if (!target.endsWith('package.json')) {
-        offending.add(target);
-      }
-    }
-    if (offending.size > 0) {
-      const targets = [...offending].sort().join(', ');
+    const offending = findOffendingDynamicRequires(bundled);
+    if (offending.length > 0) {
       throw new BuildError(
-        `${srcPath} contains CJS dynamic require calls that are not portable to ESM: ${targets}. ` +
+        `${srcPath} contains CJS dynamic require calls that are not portable to ESM: ${offending.join(', ')}. ` +
           `The extension must be republished as ESM-native (replace require("X") with ESM imports such as 'import X from "node:X"').`,
         'compilation'
       );

@@ -3,8 +3,12 @@ import { rm, readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildPackage } from '../../src/build/build.js';
-import { BuildError } from '../../src/build/build.js';
+import {
+  buildPackage,
+  BuildError,
+  inlinePackageJsonRequires,
+  findOffendingDynamicRequires,
+} from '../../src/build/build.js';
 
 // ============================================================
 // MINIMAL FIXTURE
@@ -1081,5 +1085,119 @@ describe('handler lifecycle contract', () => {
       'utf-8'
     );
     expect(handlerJs).toContain('return null;');
+  });
+});
+
+// ============================================================
+// CJS DYNAMIC-REQUIRE DETECTION (post-process helpers)
+// ============================================================
+//
+// These tests pin the inline + scan helpers in isolation. The
+// integration paths through buildPackage are covered by the
+// extension-bundling tests above; here we exercise the inline
+// rescue case (a bundle containing a `_require("...package.json")`
+// shim is healed by the inline step and the subsequent scan finds
+// no offenders) which would otherwise be hard to reproduce through
+// esbuild alone.
+
+describe('inlinePackageJsonRequires', () => {
+  const PKG_JSON = '{"name":"fake","version":"1.2.3"}';
+
+  it('replaces _require("./package.json") with the supplied JSON literal', () => {
+    const bundled = 'var pkg = _require("./node_modules/fake/package.json");';
+    const out = inlinePackageJsonRequires(bundled, PKG_JSON);
+    expect(out).toBe(`var pkg = ${PKG_JSON};`);
+  });
+
+  it('replaces __require("./package.json") (double underscore) too', () => {
+    const bundled = 'var pkg = __require("./node_modules/fake/package.json");';
+    const out = inlinePackageJsonRequires(bundled, PKG_JSON);
+    expect(out).toBe(`var pkg = ${PKG_JSON};`);
+  });
+
+  it('replaces all occurrences in a bundle', () => {
+    const bundled = [
+      'var a = _require("./a/package.json");',
+      'var b = __require("./b/package.json");',
+    ].join('\n');
+    const out = inlinePackageJsonRequires(bundled, PKG_JSON);
+    expect(out).toContain(`var a = ${PKG_JSON};`);
+    expect(out).toContain(`var b = ${PKG_JSON};`);
+    expect(out).not.toMatch(/_require\("/);
+  });
+
+  it('leaves non-package.json _require calls untouched', () => {
+    const bundled = 'var p = _require("process");';
+    const out = inlinePackageJsonRequires(bundled, PKG_JSON);
+    expect(out).toBe(bundled);
+  });
+
+  it('does not match _require when prefixed with another word character', () => {
+    // Word-boundary anchor: `foo_require(...)` is a different identifier.
+    const bundled = 'var x = foo_require("./package.json");';
+    const out = inlinePackageJsonRequires(bundled, PKG_JSON);
+    expect(out).toBe(bundled);
+  });
+});
+
+describe('findOffendingDynamicRequires', () => {
+  it('returns an empty array for a clean bundle (no shim calls)', () => {
+    const bundled = 'export const x = 42;\nimport y from "node:process";';
+    expect(findOffendingDynamicRequires(bundled)).toEqual([]);
+  });
+
+  it('returns the offending target for a single _require("process") call', () => {
+    const bundled = 'var proc = _require("process");';
+    expect(findOffendingDynamicRequires(bundled)).toEqual(['process']);
+  });
+
+  it('matches __require (double underscore) form', () => {
+    const bundled = 'var fs = __require("fs");';
+    expect(findOffendingDynamicRequires(bundled)).toEqual(['fs']);
+  });
+
+  it('returns sorted, distinct targets across multiple calls', () => {
+    const bundled = [
+      'var p = _require("process");',
+      'var f = __require("fs");',
+      'var p2 = _require("process");', // duplicate
+    ].join('\n');
+    expect(findOffendingDynamicRequires(bundled)).toEqual(['fs', 'process']);
+  });
+
+  it('flags package.json references when they were not inlined', () => {
+    // Local extensions skip the inline step (sourcePkgJson is undefined),
+    // so any leftover _require("...package.json") is still a runtime bomb
+    // and must be reported.
+    const bundled = 'var pkg = _require("./node_modules/foo/package.json");';
+    expect(findOffendingDynamicRequires(bundled)).toEqual([
+      './node_modules/foo/package.json',
+    ]);
+  });
+
+  it('returns empty after inlinePackageJsonRequires has rescued a package.json shim', () => {
+    // Regression guard: inline + scan must compose so that a bundle which
+    // would otherwise fail at runtime is healed end-to-end.
+    const original =
+      'var pkg = _require("./node_modules/foo/package.json"); var p = pkg.name;';
+    const inlined = inlinePackageJsonRequires(
+      original,
+      '{"name":"foo","version":"1.0.0"}'
+    );
+    expect(findOffendingDynamicRequires(inlined)).toEqual([]);
+  });
+
+  it('still flags non-package.json shims after inline runs', () => {
+    // Inline only rescues package.json calls; a coexisting require("process")
+    // must still be reported.
+    const original = [
+      'var pkg = _require("./node_modules/foo/package.json");',
+      'var proc = _require("process");',
+    ].join('\n');
+    const inlined = inlinePackageJsonRequires(
+      original,
+      '{"name":"foo","version":"1.0.0"}'
+    );
+    expect(findOffendingDynamicRequires(inlined)).toEqual(['process']);
   });
 });

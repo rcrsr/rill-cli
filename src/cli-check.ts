@@ -6,7 +6,7 @@
  * Validates Rill source files against linting rules.
  */
 
-import type { Diagnostic } from './check/index.js';
+import type { Diagnostic, Severity } from './check/index.js';
 import {
   VALIDATION_RULES,
   loadConfig,
@@ -16,6 +16,16 @@ import {
 } from './check/index.js';
 import { parseWithRecovery } from '@rcrsr/rill';
 import { VERSION, CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
+
+/** Severity threshold for failing exit code. */
+export type MinSeverity = Severity;
+
+/** Numeric ranking used to compare diagnostic severity to a threshold. */
+const SEVERITY_RANK: Record<Severity, number> = {
+  info: 0,
+  warning: 1,
+  error: 2,
+};
 
 /**
  * Parsed command-line arguments for rill-check
@@ -27,6 +37,7 @@ export type ParsedCheckArgs =
       fix: boolean;
       verbose: boolean;
       format: 'text' | 'json';
+      minSeverity: MinSeverity;
     }
   | { mode: 'help' | 'version' };
 
@@ -61,6 +72,24 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     }
   }
 
+  // Extract --min-severity flag (default: error)
+  let minSeverity: MinSeverity = 'error';
+  const minSeverityIndex = argv.indexOf('--min-severity');
+  if (minSeverityIndex !== -1) {
+    const value = argv[minSeverityIndex + 1];
+    if (!value || value.startsWith('-')) {
+      throw new Error(
+        '--min-severity requires argument: error, warning, or info'
+      );
+    }
+    if (value !== 'error' && value !== 'warning' && value !== 'info') {
+      throw new Error(
+        `Invalid --min-severity: ${value}. Expected error, warning, or info`
+      );
+    }
+    minSeverity = value;
+  }
+
   // Check for unknown flags
   const knownFlags = new Set([
     '--help',
@@ -70,6 +99,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     '--fix',
     '--verbose',
     '--format',
+    '--min-severity',
   ]);
 
   for (let i = 0; i < argv.length; i++) {
@@ -81,9 +111,12 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
       continue;
     }
 
-    // Skip format value argument
-    if (i > 0 && argv[i - 1] === '--format') {
-      continue;
+    // Skip value arguments for flags that take values
+    if (i > 0) {
+      const prev = argv[i - 1];
+      if (prev === '--format' || prev === '--min-severity') {
+        continue;
+      }
     }
 
     // Check if unknown flag
@@ -100,9 +133,9 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
 
     // Skip flags
     if (arg.startsWith('-')) {
-      // Skip --format and its value
-      if (arg === '--format') {
-        i++; // Skip next argument (the format value)
+      // Skip flags that take values
+      if (arg === '--format' || arg === '--min-severity') {
+        i++; // Skip next argument (the value)
       }
       continue;
     }
@@ -116,7 +149,18 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     throw new Error('Missing file argument');
   }
 
-  return { mode: 'check', file, fix, verbose, format };
+  return { mode: 'check', file, fix, verbose, format, minSeverity };
+}
+
+/**
+ * Returns true when the diagnostic's severity meets or exceeds the threshold.
+ * Severity ranks: info < warning < error.
+ */
+export function meetsSeverityThreshold(
+  diagnostic: Diagnostic,
+  min: MinSeverity
+): boolean {
+  return SEVERITY_RANK[diagnostic.severity] >= SEVERITY_RANK[min];
 }
 
 // ============================================================
@@ -263,11 +307,19 @@ async function main(): Promise<void> {
 Usage: rill-check [options] <file>
 
 Options:
-  --fix           Apply automatic fixes
-  --format <fmt>  Output format: text (default) or json
-  --verbose       Include category and documentation references
-  -h, --help      Show this help message
-  -v, --version   Show version number`);
+  --fix                    Apply automatic fixes
+  --format <fmt>           Output format: text (default) or json
+  --verbose                Include category and documentation references
+  --min-severity <level>   Severity threshold for non-zero exit:
+                           error (default), warning, or info
+  -h, --help               Show this help message
+  -v, --version            Show version number
+
+Exit codes:
+  0   No diagnostics at or above --min-severity (default: error)
+  1   Diagnostics at or above --min-severity, or CLI usage error
+  2   File not found or path is a directory
+  3   Parse error in source`);
       process.exit(0);
     }
 
@@ -406,7 +458,7 @@ Options:
 
     // Format and output diagnostics
     if (diagnostics.length === 0) {
-      // No errors - success
+      // No diagnostics - success
       if (args.format === 'json') {
         console.log(
           JSON.stringify(
@@ -423,17 +475,23 @@ Options:
         console.log('No issues found');
       }
       process.exit(0);
-    } else {
-      // Output diagnostics
-      const output = formatDiagnostics(
-        args.file,
-        diagnostics,
-        args.format,
-        args.verbose
-      );
-      console.log(output);
-      process.exit(1);
     }
+
+    // Output all diagnostics regardless of severity (still useful info).
+    // Exit code is gated by --min-severity threshold so info-level
+    // advisories (e.g. PREFER_MAP, SPACING_BRACES) don't fail CI.
+    const output = formatDiagnostics(
+      args.file,
+      diagnostics,
+      args.format,
+      args.verbose
+    );
+    console.log(output);
+
+    const failingCount = diagnostics.filter((d) =>
+      meetsSeverityThreshold(d, args.minSeverity)
+    ).length;
+    process.exit(failingCount > 0 ? 1 : 0);
   } catch (err) {
     // Handle unexpected errors
     if (err instanceof Error) {

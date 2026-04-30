@@ -139,10 +139,12 @@ async function bundleExtensionToFile(
       absWorkingDir: projectDir,
     });
 
-    // Post-process: inline _require("...package.json") left by esbuild's
-    // CJS-to-ESM shim. createRequire wraps can't be intercepted by plugins.
+    // Post-process: read bundled output for inline patching and CJS detection.
+    let bundled = readFileSync(destPath, 'utf-8');
+
+    // Inline _require("...package.json") left by esbuild's CJS-to-ESM shim.
+    // createRequire wraps can't be intercepted by plugins.
     if (sourcePkgJson !== undefined) {
-      let bundled = readFileSync(destPath, 'utf-8');
       const before = bundled;
       bundled = bundled.replace(
         /_require\("[^"]*package\.json"\)/g,
@@ -152,7 +154,28 @@ async function bundleExtensionToFile(
         await writeFile(destPath, bundled, 'utf-8');
       }
     }
+
+    // Detect any remaining CJS require shims esbuild emits when bundling CJS
+    // source to ESM. These throw "Dynamic require of X is not supported" at
+    // runtime. Package.json references are excluded — already handled above.
+    const requireMatches = bundled.matchAll(/\b_{1,2}require\("([^"]+)"\)/g);
+    const offending = new Set<string>();
+    for (const match of requireMatches) {
+      const target = match[1]!;
+      if (!target.endsWith('package.json')) {
+        offending.add(target);
+      }
+    }
+    if (offending.size > 0) {
+      const targets = [...offending].sort().join(', ');
+      throw new BuildError(
+        `${srcPath} contains CJS dynamic require calls that are not portable to ESM: ${targets}. ` +
+          `The extension must be republished as ESM-native (replace require("X") with ESM imports such as 'import X from "node:X"').`,
+        'compilation'
+      );
+    }
   } catch (err) {
+    if (err instanceof BuildError) throw err;
     const failure = err as BuildFailure;
     if (Array.isArray(failure.errors) && failure.errors.length > 0) {
       const first = failure.errors[0]!;

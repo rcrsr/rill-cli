@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `rill-build` now detects CJS dynamic `require()` calls left in compiled extension bundles and fails the build with an actionable `BuildError` instead of letting them surface at runtime as `Dynamic require of "X" is not supported`. esbuild emits a `__require`/`_require` shim when bundling CJS source to ESM (e.g. an extension that uses `require("process")`); the shim throws on first invocation. After the existing `package.json` inline post-process in `bundleExtensionToFile`, the bundled output is scanned for any remaining `_{1,2}require(...)` calls and the build aborts with the source path and offending require targets named in the error message
+
 ### Added
 
 - `rill-check --min-severity <error|warning|info>` flag controls the severity threshold for non-zero exit. Default is `error`, so `info` advisories (e.g. `PREFER_MAP`, `SPACING_BRACES`) and `warning` diagnostics no longer fail CI by default. Diagnostics below the threshold still print to stdout so the user sees them; only the exit code is gated. Pass `--min-severity info` to restore the pre-fix strict behavior

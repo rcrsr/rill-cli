@@ -318,6 +318,60 @@ export const extensionManifest = {
     expect(typeof build['rillVersion']).toBe('string');
     expect((build['rillVersion'] as string).length).toBeGreaterThan(0);
   });
+
+  // ----------------------------------------------------------
+  // Regression: clean ESM-only extensions must not trigger the
+  // CJS-require detection added in bundleExtensionToFile. A pure
+  // ESM source produces no _require("X") / __require("X") shim
+  // calls in the bundle, so buildPackage must complete without
+  // throwing a BuildError(_, 'compilation').
+  // ----------------------------------------------------------
+  it('clean ESM-only TS extension does not trigger CJS-require detection', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    const extensionSrc = `
+export const extensionManifest = {
+  name: 'esm-only-ext',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: {} }),
+};
+`;
+    await writeFile(
+      path.join(projectDir, 'esm-only-ext.ts'),
+      extensionSrc,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify(
+        {
+          name: 'esm-only-package',
+          version: '0.1.0',
+          main: 'main.rill:run',
+          extensions: { mounts: { esmOnlyExt: './esm-only-ext.ts' } },
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const compiledPath = path.join(
+      result.outputPath,
+      'extensions',
+      'esm-only-ext@0.1.0.js'
+    );
+    expect(existsSync(compiledPath)).toBe(true);
+  });
 });
 
 // ============================================================
@@ -419,6 +473,57 @@ describe('buildPackage error cases', () => {
           e.message.includes('Extension source not found')
         );
       }
+    );
+  });
+
+  // ----------------------------------------------------------
+  // Regression: CJS dynamic require calls leaked through esbuild ESM bundling
+  // must fail the build with an actionable BuildError (phase 'compilation').
+  // esbuild emits __require("X") shims when bundling CJS-style require() calls
+  // into ESM output; detection catches these and rejects non-portable extensions.
+  // ----------------------------------------------------------
+  it('throws BuildError phase compilation when extension uses CJS require()', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    // TS extension that calls require('process') at module scope.
+    // TypeScript does not know about require in ESM context, so we declare it.
+    const badExtensionSrc = `
+declare function require(name: string): unknown;
+const proc = require('process');
+
+export const extensionManifest = {
+  name: 'bad-cjs-ext',
+  version: '0.1.0',
+  exports: {},
+  factory: async () => ({ value: proc }),
+};
+`;
+
+    const extPath = 'bad-cjs-ext.ts';
+    await writeFile(path.join(projectDir, extPath), badExtensionSrc, 'utf-8');
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({
+        name: 'test',
+        version: '0.1.0',
+        main: 'main.rill:run',
+        extensions: { mounts: { badExt: `./${extPath}` } },
+      }),
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
+      (e: unknown): e is BuildError =>
+        e instanceof BuildError &&
+        e.phase === 'compilation' &&
+        e.message.includes('process') &&
+        e.message.includes('require')
     );
   });
 

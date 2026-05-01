@@ -1,0 +1,2 @@
+^(description: "Greet a user by name")
+|name: string, count: number = 1| { $name } => $greet

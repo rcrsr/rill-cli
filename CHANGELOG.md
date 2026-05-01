@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Breaking:** `rill-check` default exit code semantics — previously any diagnostic (including `info`) caused exit 1. Now only diagnostics at or above the `--min-severity` threshold (default `error`) fail. 53 of 78 lint rules emit `info` severity, so the prior default treated advisory output as a build failure. Existing CI scripts that relied on `info`/`warning`-level failures must add `--min-severity info` (or `warning`) to opt back in
+- `NAMING_SNAKE_CASE` rule treats quoted-string dict keys as an intentional escape for foreign API keys the user does not own (Gmail's `maxResults`, Stripe's `payment_intent`, etc.). Bare-identifier keys (`[maxResults: 10]`) still fire; quoted keys (`["maxResults": 10]`) are now accepted. Uses the `keyForm: 'string'` AST flag from rill ≥0.19.2 to distinguish the two forms. Bumps `@rcrsr/rill` peer-dep range from `~0.19.0` to `~0.19.2`. Violations on dict keys now include a hint pointing at the escape: `For foreign API keys you don't own, use the quoted-key form: ["maxResults": ...]`
 
 ### Fixed
 

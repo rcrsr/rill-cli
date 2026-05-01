@@ -385,6 +385,12 @@ export function visitNode(
       }
       break;
 
+    case 'PassBlock':
+      // Visit the angle-bracket options dict and the body block.
+      visitNode(node.options, context, visitor);
+      visitNode(node.body, context, visitor);
+      break;
+
     default: {
       // Exhaustive check: if we reach here, a node type is missing
       const _exhaustive: never = node;

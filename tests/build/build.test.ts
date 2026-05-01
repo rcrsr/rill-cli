@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { rm, readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -1199,5 +1200,87 @@ describe('findOffendingDynamicRequires', () => {
       '{"name":"foo","version":"1.0.0"}'
     );
     expect(findOffendingDynamicRequires(inlined)).toEqual(['process']);
+  });
+
+  it('returns empty when __require is wired via createRequire(import.meta.url)', () => {
+    const bundled = [
+      'import { createRequire } from "node:module";',
+      'var __require = /* @__PURE__ */ createRequire(import.meta.url);',
+      '__require("buffer");',
+      '__require("process");',
+    ].join('\n');
+    expect(findOffendingDynamicRequires(bundled)).toEqual([]);
+  });
+
+  it('still flags __require calls when wired to a throw-shim (no createRequire)', () => {
+    const bundled = [
+      'var __require = (() => { throw new Error("Dynamic require not supported"); })();',
+      '__require("process");',
+    ].join('\n');
+    expect(findOffendingDynamicRequires(bundled)).toEqual(['process']);
+  });
+
+  it('returns empty when wiring is present but no __require calls exist', () => {
+    const bundled =
+      'import { createRequire } from "node:module";\nvar __require = createRequire(import.meta.url);';
+    expect(findOffendingDynamicRequires(bundled)).toEqual([]);
+  });
+
+  it('still flags __require throw-shim even when bare require = createRequire(...) exists elsewhere', () => {
+    // Regression guard: REQUIRE_WIRING must require _{1,2} prefix on the
+    // assignment target. A bundle that has an unwired __require throw-shim
+    // alongside an unrelated `var require = createRequire(import.meta.url)`
+    // assignment must NOT be suppressed — the __require calls are still bombs.
+    const bundled = [
+      'var __require = (() => { throw new Error("Dynamic require not supported"); })();',
+      'var require = /* @__PURE__ */ createRequire(import.meta.url);',
+      '__require("process");',
+    ].join('\n');
+    expect(findOffendingDynamicRequires(bundled)).toEqual(['process']);
+  });
+});
+
+// ============================================================
+// INTEGRATION: createRequire wiring discriminator (build pipeline)
+// ============================================================
+
+describe('buildPackage — createRequire wiring discriminator', () => {
+  // Regression guard: a local JS extension that uses createRequire(import.meta.url)
+  // to call require('buffer') at runtime must NOT be rejected by the CJS-require
+  // detection. The REQUIRE_WIRING discriminator must suppress the offender list.
+  it('does not throw when local JS extension uses createRequire(import.meta.url) wiring', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    // Fixture: plain ESM JS that wires require via createRequire(import.meta.url).
+    // The build pipeline bundles it; esbuild preserves the wiring pattern.
+    const fixtureDir = fileURLToPath(
+      new URL('fixtures/esm-with-createrequire/', import.meta.url)
+    );
+    const fixtureSrc = path.join(fixtureDir, 'index.js');
+
+    await writeFile(
+      path.join(projectDir, 'main.rill'),
+      MINIMAL_RILL_SCRIPT,
+      'utf-8'
+    );
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify(
+        {
+          name: 'createrequire-wiring-test',
+          version: '0.1.0',
+          main: 'main.rill:run',
+          extensions: { mounts: { crExt: fixtureSrc } },
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+
+    await expect(
+      buildPackage(projectDir, { outputDir })
+    ).resolves.toBeDefined();
   });
 });

@@ -99,15 +99,30 @@ export function inlinePackageJsonRequires(
 }
 
 /**
+ * Matches the esbuild-emitted `var __require = createRequire(import.meta.url)`
+ * wiring line (and single-underscore variants). When this wiring is present,
+ * all `__require("X")` calls in the bundle are resolved by Node at runtime and
+ * are therefore safe — not offenders.
+ */
+const REQUIRE_WIRING =
+  /\b_{1,2}require\b\s*=\s*[^;]*createRequire\s*\(\s*import\.meta\.url\s*\)/;
+
+/**
  * Find any remaining `_require("X")` / `__require("X")` shim calls left in a
  * bundled extension. esbuild emits these when bundling CJS source to ESM and
  * cannot statically resolve a `require()` call. Each such call throws
- * `Dynamic require of "X" is not supported` at runtime. No target is
- * intrinsically safe — package.json references are only safe after the inline
- * step above has replaced them with literal JSON.
+ * `Dynamic require of "X" is not supported` at runtime.
+ *
+ * A target is considered safe — and the whole offender list suppressed — in
+ * two cases:
+ *   1. The inline step above has replaced all package.json references with
+ *      literal JSON, leaving no `_require`/`__require` calls in the bundle.
+ *   2. The bundle wires `_require` or `__require` via
+ *      `createRequire(import.meta.url)` (detected by `REQUIRE_WIRING`), so
+ *      Node resolves all remaining calls at runtime.
  *
  * Returns sorted, distinct require targets. Empty array means the bundle is
- * free of dynamic-require shims.
+ * free of dynamic-require shims (or all calls are safely wired).
  */
 export function findOffendingDynamicRequires(bundled: string): string[] {
   const matches = bundled.matchAll(/\b_{1,2}require\("([^"]+)"\)/g);
@@ -115,6 +130,8 @@ export function findOffendingDynamicRequires(bundled: string): string[] {
   for (const match of matches) {
     offending.add(match[1]!);
   }
+  if (offending.size === 0) return [];
+  if (REQUIRE_WIRING.test(bundled)) return [];
   return [...offending].sort();
 }
 

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `rill-build`: `findOffendingDynamicRequires` returns `[]` when the bundled output wires `__require` via `createRequire(import.meta.url)`, exempting ESM-native extensions that inline CJS deps (e.g. `yaml`) from the false-positive CJS dynamic-require build error
+- `rill-describe` loads `.env` via `dotenvConfig({ quiet: true })` at startup, matching `rill-run` behavior. Projects that rely on `.env` for extension config no longer require manual env sourcing before running `rill-describe`
+
 ## [0.19.1] - 2026-04-30
 
 ### Added

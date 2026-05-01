@@ -13,6 +13,7 @@
 
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { config as dotenvConfig } from 'dotenv';
 import {
   isCallable,
   isDict,
@@ -656,6 +657,7 @@ function runBuiltins(args: BuiltinsArgs): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  dotenvConfig({ quiet: true });
   const argv = process.argv.slice(2);
   const parsed = parseArgs(argv);
 

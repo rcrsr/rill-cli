@@ -63,7 +63,7 @@ const SUBCOMMANDS: ReadonlySet<string> = new Set([
   'builtins',
 ]);
 
-const USAGE_LINE = 'Usage: rill-describe <command> [options]';
+const USAGE_LINE = 'Usage: rill-describe [project|handler|builtins] [options]';
 
 function fail(message: string): never {
   process.stderr.write(`Error: ${message}\n`);
@@ -267,6 +267,22 @@ interface CallableEntry {
 
 type ContractTree = CallableEntry | { [key: string]: ContractTree };
 
+/**
+ * Discriminate a CallableEntry from a nested ContractTree dict. Checks
+ * the full CallableEntry shape (boolean isProperty + array params +
+ * presence of returnType) rather than `'isProperty' in tree` alone, so
+ * a user dict that coincidentally has an `isProperty` key cannot be
+ * mistaken for a callable and short-circuit the traversal.
+ */
+function isCallableEntry(tree: ContractTree): tree is CallableEntry {
+  const t = tree as Partial<CallableEntry>;
+  return (
+    typeof t.isProperty === 'boolean' &&
+    Array.isArray(t.params) &&
+    'returnType' in t
+  );
+}
+
 function buildTree(
   value: RillValue,
   visited: WeakSet<object>
@@ -326,9 +342,8 @@ function collectAnyReturnCallables(
   currentPath: string,
   results: string[]
 ): void {
-  if ('isProperty' in tree) {
-    const entry = tree as CallableEntry;
-    const structure = entry.returnType as { kind?: string } | null;
+  if (isCallableEntry(tree)) {
+    const structure = tree.returnType as { kind?: string } | null;
     if (
       structure !== null &&
       typeof structure === 'object' &&

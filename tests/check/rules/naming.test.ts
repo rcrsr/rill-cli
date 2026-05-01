@@ -235,6 +235,52 @@ describe('NAMING_SNAKE_CASE', () => {
         "Dict key 'isActive' should use snake_case"
       );
     });
+
+    // ----------------------------------------------------------
+    // Quoted-string keys are an intentional escape for foreign API
+    // keys (Gmail's `maxResults`, Stripe's `payment_intent`, etc.).
+    // The `keyForm: 'string'` AST flag from rill ≥0.19.2 distinguishes
+    // these from bare-identifier keys.
+    // ----------------------------------------------------------
+    it('accepts quoted-string keys with non-snake-case content', () => {
+      // The retro-cited Gmail case: dict["maxResults": 10]
+      expect(hasViolations('dict["maxResults": 10]')).toBe(false);
+      expect(hasViolations('dict["userName": "Alice"]')).toBe(false);
+      expect(hasViolations('dict["UserName": "Alice"]')).toBe(false);
+    });
+
+    it('accepts mixed quoted (foreign) and bare snake_case keys', () => {
+      expect(hasViolations('dict[user_name: "Alice", "maxResults": 10]')).toBe(
+        false
+      );
+    });
+
+    it('still rejects bare-identifier camelCase keys', () => {
+      // Regression guard: the escape only applies to quoted form.
+      const messages = getDiagnostics('dict[maxResults: 10]');
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain(
+        "Dict key 'maxResults' should use snake_case"
+      );
+    });
+
+    it('rejects mixed bare camelCase even when sibling is quoted', () => {
+      const messages = getDiagnostics(
+        'dict["maxResults": 10, pageToken: "abc"]'
+      );
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain(
+        "Dict key 'pageToken' should use snake_case"
+      );
+    });
+
+    it('error message hints at the quoted-key escape', () => {
+      const messages = getDiagnostics('dict[maxResults: 10]');
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toContain(
+        'For foreign API keys you don\'t own, use the quoted-key form: ["maxResults": ...]'
+      );
+    });
   });
 
   describe('captured variables', () => {

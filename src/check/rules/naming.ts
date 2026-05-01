@@ -77,9 +77,11 @@ function createNamingDiagnostic(
   name: string,
   kind: string,
   context: ValidationContext,
-  fix: Fix | null
+  fix: Fix | null,
+  hint: string = ''
 ): Diagnostic {
-  const message = `${kind} '${name}' should use snake_case (e.g., '${toSnakeCase(name)}')`;
+  const base = `${kind} '${name}' should use snake_case (e.g., '${toSnakeCase(name)}')`;
+  const message = hint !== '' ? `${base}. ${hint}` : base;
 
   return {
     location,
@@ -105,6 +107,11 @@ function createNamingDiagnostic(
  *
  * Exceptions:
  * - Single-letter names are valid (common for loop variables)
+ * - Quoted-string dict keys (`["maxResults": 10]`) are treated as an
+ *   intentional escape for foreign API keys the user does not own
+ *   (Gmail's `maxResults`, Stripe's `payment_intent`, etc.). The
+ *   `keyForm: 'string'` AST flag (rill ≥0.19.2) distinguishes these
+ *   from bare-identifier keys (`[maxResults: 10]`) which still fire.
  *
  * References:
  * - docs/guide-conventions.md:10-53
@@ -145,6 +152,15 @@ export const NAMING_SNAKE_CASE: ValidationRule = {
           return [];
         }
 
+        // Quoted-string keys (`["maxResults": v]`) are an intentional
+        // escape for foreign API keys. Bare-identifier keys
+        // (`[maxResults: v]`) still fire. The `keyForm` flag is
+        // present from rill ≥0.19.2; treat absent values
+        // conservatively (lint).
+        if (entryNode.keyForm === 'string') {
+          return [];
+        }
+
         if (!isSnakeCase(key)) {
           const fix = this.fix?.(node, context) ?? null;
           return [
@@ -153,7 +169,8 @@ export const NAMING_SNAKE_CASE: ValidationRule = {
               key,
               'Dict key',
               context,
-              fix
+              fix,
+              `For foreign API keys you don't own, use the quoted-key form: ["${key}": ...]`
             ),
           ];
         }

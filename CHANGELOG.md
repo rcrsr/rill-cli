@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.2] - 2026-04-30
+
 ### Fixed
 
 - `rill-build`: `findOffendingDynamicRequires` returns `[]` when the bundled output wires `__require` via `createRequire(import.meta.url)`, exempting ESM-native extensions that inline CJS deps (e.g. `yaml`) from the false-positive CJS dynamic-require build error
@@ -137,7 +139,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.2...HEAD
+[0.19.2]: https://github.com/rcrsr/rill-cli/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/rcrsr/rill-cli/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/rcrsr/rill-cli/compare/v0.18.12...v0.19.0
 [0.18.12]: https://github.com/rcrsr/rill-cli/compare/v0.18.11...v0.18.12

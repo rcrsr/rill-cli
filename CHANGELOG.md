@@ -6,9 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-
-- `rill-build` now detects CJS dynamic `require()` calls left in compiled extension bundles and fails the build with an actionable `BuildError` instead of letting them surface at runtime as `Dynamic require of "X" is not supported`. esbuild emits a `__require`/`_require` shim when bundling CJS source to ESM (e.g. an extension that uses `require("process")`); the shim throws on first invocation. After the existing `package.json` inline post-process in `bundleExtensionToFile`, the bundled output is scanned for any remaining `_{1,2}require(...)` calls and the build aborts with the source path and offending require targets named in the error message
+## [0.19.1] - 2026-04-30
 
 ### Added
 
@@ -25,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - `rill-run` handler mode now surfaces the full halt envelope (atom, message, source location, snippet, trace) instead of bare `runtime halt`. The handler-mode catch around `invokeCallable` previously took `err.message` from a `RuntimeHaltSignal` (whose default message is the literal string `runtime halt`) and wrote it raw, ignoring `--verbose`, `--trace`, `--format json`, `--format compact`, and `--atom-only`. Module mode was unaffected because `execute()` converts halts to `RuntimeError` before the catch runs
+- `rill-build` now detects CJS dynamic `require()` calls left in compiled extension bundles and fails the build with an actionable `BuildError` instead of letting them surface at runtime as `Dynamic require of "X" is not supported`. esbuild emits a `__require`/`_require` shim when bundling CJS source to ESM (e.g. an extension that uses `require("process")`); the shim throws on first invocation. After the existing `package.json` inline post-process in `bundleExtensionToFile`, the bundled output is scanned for any remaining `_{1,2}require(...)` calls and the build aborts with the source path and offending require targets named in the error message
 
 ## [0.19.0] - 2026-04-28
 
@@ -133,7 +132,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.18.8...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/rcrsr/rill-cli/compare/v0.19.0...v0.19.1
+[0.19.0]: https://github.com/rcrsr/rill-cli/compare/v0.18.12...v0.19.0
+[0.18.12]: https://github.com/rcrsr/rill-cli/compare/v0.18.11...v0.18.12
+[0.18.11]: https://github.com/rcrsr/rill-cli/compare/v0.18.10...v0.18.11
+[0.18.10]: https://github.com/rcrsr/rill-cli/compare/v0.18.9...v0.18.10
+[0.18.9]: https://github.com/rcrsr/rill-cli/compare/v0.18.8...v0.18.9
 [0.18.8]: https://github.com/rcrsr/rill-cli/compare/v0.18.7...v0.18.8
 [0.18.7]: https://github.com/rcrsr/rill-cli/compare/v0.18.6...v0.18.7
 [0.18.6]: https://github.com/rcrsr/rill-cli/compare/v0.18.5...v0.18.6

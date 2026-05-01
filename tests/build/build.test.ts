@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { rm, readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -1224,6 +1225,19 @@ describe('findOffendingDynamicRequires', () => {
       'import { createRequire } from "node:module";\nvar __require = createRequire(import.meta.url);';
     expect(findOffendingDynamicRequires(bundled)).toEqual([]);
   });
+
+  it('still flags __require throw-shim even when bare require = createRequire(...) exists elsewhere', () => {
+    // Regression guard: REQUIRE_WIRING must require _{1,2} prefix on the
+    // assignment target. A bundle that has an unwired __require throw-shim
+    // alongside an unrelated `var require = createRequire(import.meta.url)`
+    // assignment must NOT be suppressed — the __require calls are still bombs.
+    const bundled = [
+      'var __require = (() => { throw new Error("Dynamic require not supported"); })();',
+      'var require = /* @__PURE__ */ createRequire(import.meta.url);',
+      '__require("process");',
+    ].join('\n');
+    expect(findOffendingDynamicRequires(bundled)).toEqual(['process']);
+  });
 });
 
 // ============================================================
@@ -1240,10 +1254,9 @@ describe('buildPackage — createRequire wiring discriminator', () => {
 
     // Fixture: plain ESM JS that wires require via createRequire(import.meta.url).
     // The build pipeline bundles it; esbuild preserves the wiring pattern.
-    const fixtureDir = new URL(
-      'fixtures/esm-with-createrequire',
-      import.meta.url
-    ).pathname;
+    const fixtureDir = fileURLToPath(
+      new URL('fixtures/esm-with-createrequire/', import.meta.url)
+    );
     const fixtureSrc = path.join(fixtureDir, 'index.js');
 
     await writeFile(

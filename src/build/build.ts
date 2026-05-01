@@ -99,6 +99,15 @@ export function inlinePackageJsonRequires(
 }
 
 /**
+ * Matches the esbuild-emitted `var __require = createRequire(import.meta.url)`
+ * wiring line (and single-underscore variants). When this wiring is present,
+ * all `__require("X")` calls in the bundle are resolved by Node at runtime and
+ * are therefore safe — not offenders.
+ */
+const REQUIRE_WIRING =
+  /\b(?:__|_)?require\s*=\s*[^;]*createRequire\s*\(\s*import\.meta\.url\s*\)/;
+
+/**
  * Find any remaining `_require("X")` / `__require("X")` shim calls left in a
  * bundled extension. esbuild emits these when bundling CJS source to ESM and
  * cannot statically resolve a `require()` call. Each such call throws
@@ -115,6 +124,8 @@ export function findOffendingDynamicRequires(bundled: string): string[] {
   for (const match of matches) {
     offending.add(match[1]!);
   }
+  if (offending.size === 0) return [];
+  if (REQUIRE_WIRING.test(bundled)) return [];
   return [...offending].sort();
 }
 

@@ -210,9 +210,25 @@ export async function run(argv: string[]): Promise<number> {
       const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
       const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
       installedVersion = pkgJson.version;
-    } catch {
-      // If we can't read the installed package.json, proceed without a version.
-      // applyMountEdit will still record whatever value we compute below.
+    } catch (err) {
+      // npm install succeeded but the installed package.json is unreadable or invalid.
+      // Refuse to record an unversioned mount when the rest of the workflow assumes
+      // versioned specifiers — surface the read failure instead of silently masking it.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `✗ Failed to read installed package metadata at ${installedPkgJsonPath}: ${msg}\n`
+      );
+      process.stderr.write(
+        '  npm install completed but the package may be corrupt. Re-run install or inspect .rill/npm/.\n'
+      );
+      return 1;
+    }
+
+    if (installedVersion === undefined || installedVersion === '') {
+      process.stderr.write(
+        `✗ Installed package.json at ${installedPkgJsonPath} has no version field\n`
+      );
+      return 1;
     }
   }
 

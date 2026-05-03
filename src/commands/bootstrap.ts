@@ -11,7 +11,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { CLI_VERSION } from '../cli-shared.js';
 
 // ============================================================
 // HELP TEXT
@@ -30,7 +29,6 @@ Creates:
 Options:
   --force     Overwrite existing scaffolded files
   --help      Show this help message
-  --version   Print version
 `;
 
 // ============================================================
@@ -53,18 +51,12 @@ export async function run(argv: string[]): Promise<number> {
     options: {
       force: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
-      version: { type: 'boolean', default: false },
     },
     strict: false,
   });
 
   if (values['help'] === true) {
     process.stdout.write(USAGE);
-    return 0;
-  }
-
-  if (values['version'] === true) {
-    process.stdout.write(`${CLI_VERSION}\n`);
     return 0;
   }
 

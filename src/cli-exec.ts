@@ -12,8 +12,6 @@ import type { ExecutionResult } from '@rcrsr/rill';
 import {
   formatError,
   determineExitCode,
-  VERSION,
-  CLI_VERSION,
   detectHelpVersionFlag,
 } from './cli-shared.js';
 import { explainError } from './cli-explain.js';
@@ -31,7 +29,7 @@ export type ParsedArgs =
       maxStackDepth: number;
     }
   | { mode: 'eval'; expression: string }
-  | { mode: 'help' | 'version' }
+  | { mode: 'help' }
   | { mode: 'explain'; errorId: string };
 
 /**
@@ -41,10 +39,10 @@ export type ParsedArgs =
  * @returns Parsed command object
  */
 export function parseArgs(argv: string[]): ParsedArgs {
-  // Check for --help or --version flags in any position
+  // Check for --help flag in any position. --version is handled by the dispatcher.
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    return helpVersionFlag;
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    return { mode: 'help' };
   }
 
   // Check for --explain flag (IC-11)
@@ -101,8 +99,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const knownFlags = [
     '--help',
     '-h',
-    '--version',
-    '-v',
     '--explain',
     '--format',
     '--verbose',
@@ -254,7 +250,6 @@ export async function main(argv: string[]): Promise<number> {
   rill exec <script.rill> [args...]  Execute a Rill script file
   rill exec -                        Read script from stdin
   rill exec --help                   Show this help message
-  rill exec --version                Show version information
   rill exec --explain RILL-XXXX      Show error documentation
 
 Options:
@@ -273,11 +268,6 @@ Examples:
   rill exec --explain RILL-R009
   echo "log(\\"hello\\")" | rill exec -`);
         return 0;
-
-      case 'version': {
-        console.log(`rill-exec ${CLI_VERSION} (rill ${VERSION})`);
-        return 0;
-      }
 
       case 'explain': {
         // AC-16: Handle --explain command

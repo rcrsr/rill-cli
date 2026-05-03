@@ -12,7 +12,7 @@
 
 import { parseArgs } from 'node:util';
 import { printHelp } from './commands/help.js';
-import { CLI_VERSION } from './cli-shared.js';
+import { CLI_VERSION, VERSION } from './cli-shared.js';
 import { run as bootstrapRun } from './commands/bootstrap.js';
 import { run as installRun } from './commands/install.js';
 import { run as uninstallRun } from './commands/uninstall.js';
@@ -67,14 +67,16 @@ export async function main(argv: string[]): Promise<number> {
 
   const subcommand = positionals[0];
 
-  // Top-level --version / --help only fires when no subcommand follows.
-  // When a subcommand is present, --help/--version belong to the subcommand
-  // so `rill <cmd> --help` and `rill help <cmd>` produce identical output (FR-EXT-8).
+  // --version / -v is a single CLI-wide flag handled by the dispatcher,
+  // regardless of whether a subcommand follows.
+  if (argv.includes('--version') || argv.includes('-v')) {
+    process.stdout.write(`rill-cli ${CLI_VERSION} (runtime ${VERSION})\n`);
+    return 0;
+  }
+
+  // No subcommand → show top-level help.
+  // `rill <cmd> --help` and `rill help <cmd>` still produce identical output (FR-EXT-8).
   if (subcommand === undefined) {
-    if (argv.includes('--version') || argv.includes('-v')) {
-      process.stdout.write(CLI_VERSION + '\n');
-      return 0;
-    }
     printHelp(process.stdout);
     return 0;
   }
@@ -127,5 +129,11 @@ const shouldRunMain =
   !process.env['VITEST_WORKER_ID'];
 
 if (shouldRunMain) {
-  void main(process.argv.slice(2)).then((code) => process.exit(code));
+  main(process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Fatal: ${msg}\n`);
+      process.exit(1);
+    });
 }

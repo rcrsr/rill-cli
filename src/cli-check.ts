@@ -14,7 +14,7 @@ import {
   applyFixes,
 } from './check/index.js';
 import { parseWithRecovery } from '@rcrsr/rill';
-import { VERSION, CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
+import { detectHelpVersionFlag } from './cli-shared.js';
 
 /** Severity threshold for failing exit code. */
 export type MinSeverity = Severity;
@@ -38,7 +38,7 @@ export type ParsedCheckArgs =
       format: 'text' | 'json';
       minSeverity: MinSeverity;
     }
-  | { mode: 'help' | 'version' };
+  | { mode: 'help' };
 
 /**
  * Parse command-line arguments for rill-check
@@ -47,10 +47,10 @@ export type ParsedCheckArgs =
  * @returns Parsed command object
  */
 export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
-  // Check for --help or --version flags in any position
+  // Check for --help flag in any position. --version is handled by the dispatcher.
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    return helpVersionFlag;
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    return { mode: 'help' };
   }
 
   // Extract flags
@@ -93,8 +93,6 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
   const knownFlags = new Set([
     '--help',
     '-h',
-    '--version',
-    '-v',
     '--fix',
     '--verbose',
     '--format',
@@ -312,19 +310,12 @@ Options:
   --min-severity <level>   Severity threshold for non-zero exit:
                            error (default), warning, or info
   -h, --help               Show this help message
-  -v, --version            Show version number
 
 Exit codes:
   0   No diagnostics at or above --min-severity (default: error)
   1   Diagnostics at or above --min-severity, or CLI usage error
   2   File not found or path is a directory
   3   Parse error in source`);
-      return 0;
-    }
-
-    // Handle version mode
-    if (args.mode === 'version') {
-      console.log(`rill-check ${CLI_VERSION} (rill ${VERSION})`);
       return 0;
     }
 

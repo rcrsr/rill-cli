@@ -18,7 +18,7 @@ const HELP_LINES: readonly string[] = [
   'describe             Print callable contracts (handler signatures)',
   'eval <expr>          Evaluate a rill expression and print the result',
   'exec <file>          Execute a rill script file or stdin input',
-  'run <handler>        Execute a handler against the loaded project',
+  'run [project-dir]    Execute the project entry from rill-config.json',
   '',
   "Run 'rill help <command>' or 'rill <command> --help' for details.",
 ];

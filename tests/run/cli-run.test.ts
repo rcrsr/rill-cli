@@ -248,50 +248,6 @@ describe('parseCliArgs', () => {
     });
   });
 
-  describe('--version flag', () => {
-    it('exits 0 and prints rill-run version when --version is provided', () => {
-      vi.spyOn(process, 'exit').mockImplementation((_code) => {
-        throw new Error('process.exit called');
-      });
-
-      let stdout = '';
-      const origStdout = process.stdout.write.bind(process.stdout);
-      (process.stdout.write as unknown) = (chunk: string) => {
-        stdout += chunk;
-        return true;
-      };
-
-      try {
-        expect(() => parseCliArgs(['--version'])).toThrow(
-          'process.exit called'
-        );
-        expect(stdout).toContain('rill-run');
-      } finally {
-        (process.stdout.write as unknown) = origStdout;
-      }
-    });
-
-    it('exits 0 and prints rill-run version when -v is provided', () => {
-      vi.spyOn(process, 'exit').mockImplementation((_code) => {
-        throw new Error('process.exit called');
-      });
-
-      let stdout = '';
-      const origStdout = process.stdout.write.bind(process.stdout);
-      (process.stdout.write as unknown) = (chunk: string) => {
-        stdout += chunk;
-        return true;
-      };
-
-      try {
-        expect(() => parseCliArgs(['-v'])).toThrow('process.exit called');
-        expect(stdout).toContain('rill-run');
-      } finally {
-        (process.stdout.write as unknown) = origStdout;
-      }
-    });
-  });
-
   describe('--create-bindings flag', () => {
     it('sets createBindings to default dir when --create-bindings has no value', () => {
       expect(parseCliArgs(['--create-bindings']).createBindings).toBe(

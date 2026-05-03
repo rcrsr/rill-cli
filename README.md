@@ -22,7 +22,7 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 | `rill describe` | Print callable contracts (handler signatures) |
 | `rill eval <expr>` | Evaluate a rill expression and print the result |
 | `rill exec <file>` | Execute a rill script file or stdin input |
-| `rill run <handler>` | Execute a handler against the loaded project |
+| `rill run [project-dir]` | Execute the project entry from rill-config.json |
 
 Run `rill help <command>` or `rill <command> --help` for details.
 
@@ -210,7 +210,7 @@ Rule states: `"on"` (enabled), `"off"` (disabled), `"warn"` (downgrade to warnin
 Config-driven execution. Loads extensions and settings from `rill-config.json`, then runs a script or named handler.
 
 ```bash
-rill run [--config <path>] [args...]
+rill run [project-dir] [--config <path>] [handler-args...]
 ```
 
 **Module mode:** When `main` points to a script file, `rill run` executes it. Positional arguments forward as `$`.

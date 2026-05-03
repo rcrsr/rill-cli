@@ -1,5 +1,5 @@
 import { buildPackage } from './build/build.js';
-import { detectHelpVersionFlag, VERSION, CLI_VERSION } from './cli-shared.js';
+import { detectHelpVersionFlag } from './cli-shared.js';
 
 const HELP_TEXT = `Usage: rill build [options] [project-dir]
 
@@ -9,24 +9,17 @@ Arguments:
 Options:
   --output <dir>            Output directory (default: build/)
   -h, --help                Show this help message
-  -v, --version             Show version information
 `;
 
 export async function main(argv: string[]): Promise<number> {
   const helpVersion = detectHelpVersionFlag(argv);
-  if (helpVersion !== null) {
-    if (helpVersion.mode === 'help') {
-      process.stdout.write(HELP_TEXT);
-      return 0;
-    }
-    if (helpVersion.mode === 'version') {
-      process.stdout.write(`rill-build ${CLI_VERSION} (rill ${VERSION})\n`);
-      return 0;
-    }
+  if (helpVersion !== null && helpVersion.mode === 'help') {
+    process.stdout.write(HELP_TEXT);
+    return 0;
   }
 
   // Reject unknown flags
-  const knownFlags = new Set(['--output', '--help', '-h', '--version', '-v']);
+  const knownFlags = new Set(['--output', '--help', '-h']);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg && arg.startsWith('-')) {

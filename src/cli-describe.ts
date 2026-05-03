@@ -29,7 +29,7 @@ import {
   parseMainField,
   ConfigError,
 } from '@rcrsr/rill-config';
-import { detectHelpVersionFlag, VERSION, CLI_VERSION } from './cli-shared.js';
+import { detectHelpVersionFlag, VERSION } from './cli-shared.js';
 import { resolvePrefix } from './commands/prefix.js';
 
 // ---------------------------------------------------------------------------
@@ -86,10 +86,10 @@ function fail(message: string): never {
   throw new DescribeArgError(`Error: ${message}\n${USAGE_LINE}`);
 }
 
-function parseArgs(argv: string[]): ParsedArgs | { mode: 'help' | 'version' } {
+function parseArgs(argv: string[]): ParsedArgs | { mode: 'help' } {
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    return helpVersionFlag;
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    return { mode: 'help' };
   }
 
   // Resolve subcommand from argv[0]. Default to 'project' when the first
@@ -218,12 +218,7 @@ Options (builtins):
 
 Global:
   -h, --help        Show this help
-  -v, --version     Show version
 `);
-}
-
-function showVersion(): void {
-  process.stdout.write(`rill-describe ${CLI_VERSION} (rill ${VERSION})\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -675,7 +670,7 @@ function runBuiltins(args: BuiltinsArgs): number {
 export async function main(argv: string[]): Promise<number> {
   dotenvConfig({ quiet: true });
 
-  let parsed: ParsedArgs | { mode: 'help' | 'version' };
+  let parsed: ParsedArgs | { mode: 'help' };
   try {
     parsed = parseArgs(argv);
   } catch (err) {
@@ -688,11 +683,7 @@ export async function main(argv: string[]): Promise<number> {
 
   try {
     if ('mode' in parsed) {
-      if (parsed.mode === 'help') {
-        showHelp();
-        return 0;
-      }
-      showVersion();
+      showHelp();
       return 0;
     }
 

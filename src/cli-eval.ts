@@ -2,9 +2,8 @@
  * Rill CLI - Evaluate rill expressions
  *
  * Usage:
- *   rill-eval '"hello".len'
- *   rill-eval --help
- *   rill-eval --version
+ *   rill eval '"hello".len'
+ *   rill eval --help
  */
 
 import {
@@ -18,8 +17,6 @@ import {
 import {
   determineExitCode,
   formatStatus,
-  VERSION,
-  CLI_VERSION,
   detectHelpVersionFlag,
 } from './cli-shared.js';
 
@@ -31,15 +28,15 @@ function parseArgs(
 ):
   | { mode: 'exec'; file: string; args: string[] }
   | { mode: 'eval'; expression: string }
-  | { mode: 'help' | 'version' } {
-  // Check for --help and --version in any position (supports -h/-v shorthands)
+  | { mode: 'help' } {
+  // Check for --help in any position (supports -h shorthand). --version is handled by the dispatcher.
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    return helpVersionFlag;
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    return { mode: 'help' };
   }
 
   // Check for unknown flags (anything starting with -)
-  const knownFlags = new Set(['--help', '-h', '--version', '-v']);
+  const knownFlags = new Set(['--help', '-h']);
   for (const arg of argv) {
     if (arg.startsWith('-') && arg !== '-' && !knownFlags.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
@@ -86,7 +83,6 @@ function showHelp(): void {
 Usage:
   rill eval <expression>      Evaluate a Rill expression
   rill eval -h, --help        Show this help message
-  rill eval -v, --version     Show version information
 
 Examples:
   rill eval '"hello".len'
@@ -95,14 +91,7 @@ Examples:
 }
 
 /**
- * Display version information
- */
-function showVersion(): void {
-  process.stdout.write(`rill-eval ${CLI_VERSION} (rill ${VERSION})\n`);
-}
-
-/**
- * Entry point for rill-eval binary
+ * Entry point for rill eval subcommand
  */
 export async function main(argv: string[]): Promise<number> {
   try {
@@ -110,11 +99,6 @@ export async function main(argv: string[]): Promise<number> {
 
     if (command.mode === 'help') {
       showHelp();
-      return 0;
-    }
-
-    if (command.mode === 'version') {
-      showVersion();
       return 0;
     }
 

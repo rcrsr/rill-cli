@@ -167,11 +167,6 @@ describe('rill-check CLI', () => {
       expect(parseCheckArgs(['-h'])).toEqual({ mode: 'help' });
     });
 
-    it('parses --version flag [AC-S5]', () => {
-      expect(parseCheckArgs(['--version'])).toEqual({ mode: 'version' });
-      expect(parseCheckArgs(['-v'])).toEqual({ mode: 'version' });
-    });
-
     it('parses --fix flag [AC-S2]', () => {
       const parsed = parseCheckArgs(['test.rill', '--fix']);
       expect(parsed.mode).toBe('check');
@@ -314,20 +309,6 @@ describe('rill-check CLI', () => {
       expect(result.stdout).toContain('--fix');
       expect(result.stdout).toContain('--format');
       expect(result.stdout).toContain('--verbose');
-    });
-
-    it('shows version number [AC-S5]', async () => {
-      const result = await execCheck(['--version']);
-
-      expect(result.exitCode).toBe(0);
-
-      // Verify version output format: "rill-check <cli-version> (rill <core-version>)"
-      const { readFile } = await import('fs/promises');
-      const packageJsonPath = path.resolve(process.cwd(), 'package.json');
-      const packageJson = JSON.parse(
-        await readFile(packageJsonPath, 'utf-8')
-      ) as { version: string };
-      expect(result.stdout.trim()).toContain(packageJson.version);
     });
   });
 

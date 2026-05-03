@@ -30,7 +30,7 @@ import {
   ConfigError,
   type HandlerParam,
 } from '@rcrsr/rill-config';
-import { CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
+import { detectHelpVersionFlag } from './cli-shared.js';
 import { resolvePrefix } from './commands/prefix.js';
 import { explainError } from './cli-explain.js';
 import {
@@ -47,10 +47,10 @@ import type { RunCliOptions } from './run/types.js';
 // ============================================================
 
 const USAGE = `\
-Usage: rill run [root-dir]
+Usage: rill run [project-dir]
 
 Arguments:
-  root-dir                  Optional directory containing rill-config.json (default: cwd)
+  project-dir               Optional directory containing rill-config.json (default: cwd)
 
 Options:
   --config <path>           Config file path (default: search from cwd)
@@ -63,8 +63,7 @@ Options:
   --atom-only               JSON mode: emit only {atom, errorId} headers
   --create-bindings [dir]   Write bindings source to dir and exit (default: ./bindings)
   --explain <code>          Print error code documentation
-  -h, --help                Print this help message and exit
-  -v, --version             Print version and exit`.trimEnd();
+  -h, --help                Print this help message and exit`.trimEnd();
 
 // ============================================================
 // BASE OPTIONS (used to separate known flags from handler args)
@@ -76,7 +75,6 @@ const BASE_OPTIONS = {
   verbose: { type: 'boolean' as const },
   'max-stack-depth': { type: 'string' as const },
   help: { type: 'boolean' as const },
-  version: { type: 'boolean' as const },
   explain: { type: 'string' as const },
   trace: { type: 'boolean' as const },
   'no-trace': { type: 'boolean' as const },
@@ -122,12 +120,8 @@ export function parseCliArgs(
   argv: string[] = process.argv.slice(2)
 ): RunCliOptions & { rootDir?: string | undefined } {
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    if (helpVersionFlag.mode === 'help') {
-      process.stdout.write(USAGE + '\n');
-      process.exit(0);
-    }
-    process.stdout.write(`rill-run ${CLI_VERSION} (rill ${VERSION})\n`);
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    process.stdout.write(USAGE + '\n');
     process.exit(0);
   }
 

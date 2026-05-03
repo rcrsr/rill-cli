@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * rill-run: Extension-aware rill script runner.
  * Loads extensions from rill-config.json, generates bindings, and executes scripts.
@@ -32,6 +31,7 @@ import {
   type HandlerParam,
 } from '@rcrsr/rill-config';
 import { CLI_VERSION, detectHelpVersionFlag } from './cli-shared.js';
+import { resolvePrefix } from './commands/prefix.js';
 import { explainError } from './cli-explain.js';
 import {
   createStreamWriter,
@@ -47,7 +47,7 @@ import type { RunCliOptions } from './run/types.js';
 // ============================================================
 
 const USAGE = `\
-Usage: rill-run [root-dir]
+Usage: rill run [root-dir]
 
 Arguments:
   root-dir                  Optional directory containing rill-config.json (default: cwd)
@@ -225,10 +225,9 @@ function extractHandlerArgs(
 // MAIN
 // ============================================================
 
-export async function main(): Promise<void> {
+export async function main(argv: string[]): Promise<number> {
   dotenvConfig({ quiet: true });
 
-  const argv = process.argv.slice(2);
   const opts = parseCliArgs(argv);
 
   if (opts.explain !== undefined) {
@@ -238,7 +237,7 @@ export async function main(): Promise<void> {
     } else {
       process.stdout.write(`${opts.explain}: No documentation available.\n`);
     }
-    process.exit(0);
+    return 0;
   }
 
   const hasExplicitConfig = opts.config !== './rill-config.json';
@@ -254,21 +253,24 @@ export async function main(): Promise<void> {
   } catch (err) {
     if (err instanceof ConfigError) {
       process.stderr.write(err.message + '\n');
-      process.exit(1);
+      return 1;
     }
     throw err;
   }
+
+  const prefix = resolvePrefix(dirname(configPath));
 
   let project: Awaited<ReturnType<typeof loadProject>>;
   try {
     project = await loadProject({
       configPath,
       rillVersion: VERSION,
+      prefix,
     });
   } catch (err) {
     if (err instanceof ConfigError) {
       process.stderr.write(err.message + '\n');
-      process.exit(1);
+      return 1;
     }
     throw err;
   }
@@ -311,7 +313,7 @@ export async function main(): Promise<void> {
         // Ignore dispose errors during cleanup
       }
     }
-    process.exit(0);
+    return 0;
   }
 
   // Handler mode: main field contains "file.rill:handlerName"
@@ -326,7 +328,7 @@ export async function main(): Promise<void> {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(message + '\n');
-      process.exit(1);
+      return 1;
     }
 
     const formatErr = (err: unknown): string =>
@@ -337,7 +339,7 @@ export async function main(): Promise<void> {
       ast = parse(source);
     } catch (err) {
       process.stderr.write(formatErr(err) + '\n');
-      process.exit(1);
+      return 1;
     }
 
     const runtimeOptions: RuntimeOptions = {
@@ -357,7 +359,7 @@ export async function main(): Promise<void> {
       await execute(ast, ctx);
     } catch (err) {
       process.stderr.write(formatErr(err) + '\n');
-      process.exit(1);
+      return 1;
     }
 
     const handlerValue =
@@ -367,7 +369,7 @@ export async function main(): Promise<void> {
       process.stderr.write(
         `Handler not found: $${handlerName ?? '(none)'} is not a closure\n`
       );
-      process.exit(1);
+      return 1;
     }
 
     const introspection = introspectHandler(handlerValue);
@@ -379,7 +381,7 @@ export async function main(): Promise<void> {
     } catch (err) {
       if (err instanceof ConfigError) {
         process.stderr.write(err.message + '\n');
-        process.exit(1);
+        return 1;
       }
       throw err;
     }
@@ -409,7 +411,7 @@ export async function main(): Promise<void> {
       }
     } catch (err) {
       process.stderr.write(formatErr(err) + '\n');
-      process.exit(1);
+      return 1;
     } finally {
       for (const dispose of project.disposes) {
         try {
@@ -429,9 +431,9 @@ export async function main(): Promise<void> {
       const output = formatOutput(handlerResult, opts.format);
       process.stdout.write(output + '\n');
     }
-    process.exit(
-      !streamed && (handlerResult === false || handlerResult === '') ? 1 : 0
-    );
+    return !streamed && (handlerResult === false || handlerResult === '')
+      ? 1
+      : 0;
   }
 
   // Module mode: main field in config is required
@@ -440,7 +442,7 @@ export async function main(): Promise<void> {
       'Error: no main field in rill-config.json\n' +
         'Add a "main" field pointing to your entry script, e.g.: "main": "src/index.rill"\n'
     );
-    process.exit(1);
+    return 1;
   }
 
   const scriptPath = resolve(rootDir, mainField);
@@ -462,22 +464,5 @@ export async function main(): Promise<void> {
     process.stderr.write(runResult.errorOutput + '\n');
   }
 
-  process.exit(runResult.exitCode);
-}
-
-// ============================================================
-// ENTRY
-// ============================================================
-
-const shouldRunMain =
-  process.env['NODE_ENV'] !== 'test' &&
-  !process.env['VITEST'] &&
-  !process.env['VITEST_WORKER_ID'];
-
-if (shouldRunMain) {
-  main().catch((err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`Fatal error: ${message}\n`);
-    process.exit(1);
-  });
+  return runResult.exitCode;
 }

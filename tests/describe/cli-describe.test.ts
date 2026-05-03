@@ -15,14 +15,14 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const BINARY = path.join(PROJECT_ROOT, 'dist', 'cli-describe.js');
+const BINARY = path.join(PROJECT_ROOT, 'dist', 'cli.js');
 const FIXTURES = path.join(PROJECT_ROOT, 'tests', 'fixtures', 'describe');
 const DT_PROJECT = path.join(FIXTURES, 'dt-project');
 const DT_CONFIG = path.join(DT_PROJECT, 'rill-config.json');
 const HANDLER_PROJECT = path.join(FIXTURES, 'handler-project');
 const HANDLER_CONFIG = path.join(HANDLER_PROJECT, 'rill-config.json');
 
-// Ensure dist/cli-describe.js exists before tests spawn it. `pnpm test`
+// Ensure dist/cli.js exists before tests spawn it. `pnpm test`
 // does not run build first, so a clean checkout would otherwise fail
 // with ENOENT. tsbuildinfo can claim the project is up-to-date even
 // when emitted JS is missing (manual deletion, dirty dist), so use
@@ -48,7 +48,7 @@ function runDescribe(
   delete env['VITEST_WORKER_ID'];
   delete env['NODE_ENV'];
 
-  const result = spawnSync(process.execPath, [BINARY, ...args], {
+  const result = spawnSync(process.execPath, [BINARY, 'describe', ...args], {
     cwd,
     encoding: 'utf-8',
     env,

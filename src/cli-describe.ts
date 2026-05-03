@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Rill CLI - Describe project or runtime callables as a JSON contract
  *
@@ -31,6 +30,7 @@ import {
   ConfigError,
 } from '@rcrsr/rill-config';
 import { detectHelpVersionFlag, VERSION, CLI_VERSION } from './cli-shared.js';
+import { resolvePrefix } from './commands/prefix.js';
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -64,12 +64,26 @@ const SUBCOMMANDS: ReadonlySet<string> = new Set([
   'builtins',
 ]);
 
-const USAGE_LINE = 'Usage: rill-describe [project|handler|builtins] [options]';
+const USAGE_LINE = 'Usage: rill describe [project|handler|builtins] [options]';
+
+class DescribeArgError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DescribeArgError';
+  }
+}
+
+class DescribeExitError extends Error {
+  readonly code: number;
+  constructor(message: string, code: number) {
+    super(message);
+    this.name = 'DescribeExitError';
+    this.code = code;
+  }
+}
 
 function fail(message: string): never {
-  process.stderr.write(`Error: ${message}\n`);
-  process.stderr.write(USAGE_LINE + '\n');
-  process.exit(1);
+  throw new DescribeArgError(`Error: ${message}\n${USAGE_LINE}`);
 }
 
 function parseArgs(argv: string[]): ParsedArgs | { mode: 'help' | 'version' } {
@@ -384,22 +398,24 @@ async function loadConfigAndProject(configFlag: string | undefined): Promise<{
     });
   } catch (err) {
     if (err instanceof ConfigError) {
-      process.stderr.write(err.message + '\n');
-      process.exit(1);
+      throw new DescribeExitError(err.message, 1);
     }
     throw err;
   }
+
+  const projectDir = dirname(configPath);
+  const prefix = resolvePrefix(projectDir);
 
   let project: Awaited<ReturnType<typeof loadProject>>;
   try {
     project = await loadProject({
       configPath,
       rillVersion: VERSION,
+      prefix,
     });
   } catch (err) {
     if (err instanceof ConfigError) {
-      process.stderr.write(err.message + '\n');
-      process.exit(1);
+      throw new DescribeExitError(err.message, 1);
     }
     throw err;
   }
@@ -423,7 +439,7 @@ async function disposeAll(
 // Subcommand handlers
 // ---------------------------------------------------------------------------
 
-async function runProject(args: ProjectArgs): Promise<void> {
+async function runProject(args: ProjectArgs): Promise<number> {
   const { configPath, project } = await loadConfigAndProject(args.configFlag);
 
   const visited = new WeakSet<object>();
@@ -444,7 +460,7 @@ async function runProject(args: ProjectArgs): Promise<void> {
         `Error: mount "${args.mountName}" not found. Available mounts: ${available}\n`
       );
       await disposeAll(project.disposes);
-      process.exit(1);
+      return 1;
     }
     const single = mountTrees[args.mountName]!;
     outputMounts = { [args.mountName]: single };
@@ -476,14 +492,14 @@ async function runProject(args: ProjectArgs): Promise<void> {
           `[strict] callable at path "${p}" has returnType: any\n`
         );
       }
-      process.exit(1);
+      return 1;
     }
   }
 
-  process.exit(0);
+  return 0;
 }
 
-async function runHandler(args: HandlerArgs): Promise<void> {
+async function runHandler(args: HandlerArgs): Promise<number> {
   const { configPath, project } = await loadConfigAndProject(args.configFlag);
   const projectRoot = dirname(configPath);
 
@@ -493,7 +509,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
       'Error: rill-config.json has no main field; nothing to describe\n'
     );
     await disposeAll(project.disposes);
-    process.exit(1);
+    return 1;
   }
 
   let parsedMain: ReturnType<typeof parseMainField>;
@@ -503,7 +519,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
     if (err instanceof ConfigError) {
       process.stderr.write(err.message + '\n');
       await disposeAll(project.disposes);
-      process.exit(1);
+      return 1;
     }
     throw err;
   }
@@ -514,7 +530,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
       `Error: main "${mainField}" is not a handler reference; expected "file.rill:handlerName"\n`
     );
     await disposeAll(project.disposes);
-    process.exit(1);
+    return 1;
   }
 
   const absolutePath = resolve(projectRoot, filePath);
@@ -525,7 +541,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(message + '\n');
     await disposeAll(project.disposes);
-    process.exit(1);
+    return 1;
   }
 
   let ast: ReturnType<typeof parse>;
@@ -535,7 +551,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(message + '\n');
     await disposeAll(project.disposes);
-    process.exit(1);
+    return 1;
   }
 
   const runtimeOptions: RuntimeOptions = {
@@ -550,7 +566,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(message + '\n');
     await disposeAll(project.disposes);
-    process.exit(1);
+    return 1;
   }
 
   const handlerValue = ctx.variables.get(handlerName);
@@ -559,7 +575,7 @@ async function runHandler(args: HandlerArgs): Promise<void> {
       `Error: handler "${handlerName}" not found or is not a closure in ${filePath}\n`
     );
     await disposeAll(project.disposes);
-    process.exit(1);
+    return 1;
   }
 
   const entry = buildCallableEntry(handlerValue);
@@ -586,14 +602,14 @@ async function runHandler(args: HandlerArgs): Promise<void> {
           `[strict] callable at path "${p}" has returnType: any\n`
         );
       }
-      process.exit(1);
+      return 1;
     }
   }
 
-  process.exit(0);
+  return 0;
 }
 
-function runBuiltins(args: BuiltinsArgs): void {
+function runBuiltins(args: BuiltinsArgs): number {
   const ctx = createRuntimeContext();
   const visited = new WeakSet<object>();
   const callables: { [key: string]: ContractTree } = {};
@@ -645,58 +661,54 @@ function runBuiltins(args: BuiltinsArgs): void {
           `[strict] callable at path "${p}" has returnType: any\n`
         );
       }
-      process.exit(1);
+      return 1;
     }
   }
 
-  process.exit(0);
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+export async function main(argv: string[]): Promise<number> {
   dotenvConfig({ quiet: true });
-  const argv = process.argv.slice(2);
-  const parsed = parseArgs(argv);
 
-  if ('mode' in parsed) {
-    if (parsed.mode === 'help') {
-      showHelp();
-      return;
+  let parsed: ParsedArgs | { mode: 'help' | 'version' };
+  try {
+    parsed = parseArgs(argv);
+  } catch (err) {
+    if (err instanceof DescribeArgError) {
+      process.stderr.write(err.message + '\n');
+      return 1;
     }
-    showVersion();
-    return;
+    throw err;
   }
 
-  switch (parsed.cmd) {
-    case 'project':
-      await runProject(parsed);
-      return;
-    case 'handler':
-      await runHandler(parsed);
-      return;
-    case 'builtins':
-      runBuiltins(parsed);
-      return;
+  try {
+    if ('mode' in parsed) {
+      if (parsed.mode === 'help') {
+        showHelp();
+        return 0;
+      }
+      showVersion();
+      return 0;
+    }
+
+    switch (parsed.cmd) {
+      case 'project':
+        return await runProject(parsed);
+      case 'handler':
+        return await runHandler(parsed);
+      case 'builtins':
+        return runBuiltins(parsed);
+    }
+  } catch (err) {
+    if (err instanceof DescribeExitError) {
+      process.stderr.write(err.message + '\n');
+      return err.code;
+    }
+    throw err;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Entry guard
-// ---------------------------------------------------------------------------
-
-const shouldRunMain =
-  process.env['NODE_ENV'] !== 'test' &&
-  !process.env['VITEST'] &&
-  !process.env['VITEST_WORKER_ID'];
-
-if (shouldRunMain) {
-  main().catch((err: unknown) => {
-    process.stderr.write(
-      (err instanceof Error ? err.message : String(err)) + '\n'
-    );
-    process.exit(1);
-  });
 }

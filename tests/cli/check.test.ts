@@ -114,12 +114,12 @@ describe('rill-check CLI', () => {
     args: string[]
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
-      const checkPath = path.join(process.cwd(), 'dist', 'cli-check.js');
+      const cliPath = path.join(process.cwd(), 'dist', 'cli.js');
       const env = { ...process.env };
       delete env['VITEST'];
       delete env['VITEST_WORKER_ID'];
       delete env['NODE_ENV'];
-      const proc = spawn('node', [checkPath, ...args], {
+      const proc = spawn('node', [cliPath, 'check', ...args], {
         cwd: tempDir,
         env,
       });
@@ -309,7 +309,7 @@ describe('rill-check CLI', () => {
       const result = await execCheck(['--help']);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('rill-check');
+      expect(result.stdout).toContain('rill check');
       expect(result.stdout).toContain('Usage:');
       expect(result.stdout).toContain('--fix');
       expect(result.stdout).toContain('--format');

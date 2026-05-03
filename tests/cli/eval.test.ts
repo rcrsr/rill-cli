@@ -8,7 +8,7 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import { ParseError, RuntimeError } from '@rcrsr/rill';
 import { evaluateExpression } from '../../src/cli-eval.js';
 
-const CLI_PATH = path.join(process.cwd(), 'dist', 'cli-eval.js');
+const CLI_PATH = path.join(process.cwd(), 'dist', 'cli.js');
 
 // Spawn env without VITEST vars so the CLI's shouldRunMain guard does not block execution
 const SPAWN_ENV = Object.fromEntries(
@@ -23,7 +23,7 @@ function run(args: string[]): {
   exitCode: number;
 } {
   try {
-    const stdout = execFileSync('node', [CLI_PATH, ...args], {
+    const stdout = execFileSync('node', [CLI_PATH, 'eval', ...args], {
       encoding: 'utf-8',
       timeout: 10000,
       env: SPAWN_ENV,
@@ -120,7 +120,6 @@ describe('rill-eval CLI flags', () => {
     it('exits 0 and prints usage for --help', () => {
       const result = run(['--help']);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('rill-eval');
       expect(result.stdout).toContain('Usage');
     });
 
@@ -132,16 +131,16 @@ describe('rill-eval CLI flags', () => {
   });
 
   describe('--version flag', () => {
-    it('exits 0 and prints rill-eval for --version', () => {
+    it('exits 0 and prints version for --version', () => {
       const result = run(['--version']);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('rill-eval');
+      expect(result.stdout).toMatch(/\d+\.\d+/);
     });
 
-    it('exits 0 and prints rill-eval for -v', () => {
+    it('exits 0 and prints version for -v', () => {
       const result = run(['-v']);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('rill-eval');
+      expect(result.stdout).toMatch(/\d+\.\d+/);
     });
   });
 

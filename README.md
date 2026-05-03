@@ -10,14 +10,21 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 > [!WARNING]
 > **This language is experimental.** Breaking changes will occur before stabilization.
 
-| Tool | Purpose |
-|------|---------|
-| `rill-exec` | Execute a rill script file with positional arguments |
-| `rill-eval` | Evaluate a single rill expression (no file context) |
-| `rill-check` | Static analysis and lint validation |
-| `rill-run` | Config-driven execution with extensions and modules |
-| `rill-build` | Compile a rill project into a self-contained output directory |
-| `rill-describe` | Describe rill callables as a JSON contract (project, handler, or builtins) |
+| Subcommand | Purpose |
+|------------|---------|
+| `rill bootstrap` | Initialize a new rill project (.rill/npm/, rill-config.json) |
+| `rill install <pkg>` | Install an extension into .rill/npm/ and mount it |
+| `rill uninstall <mount>` | Remove a mounted extension |
+| `rill upgrade <mount>` | Update a mounted extension to a newer version |
+| `rill list` | List installed extensions and their mount paths |
+| `rill build` | Bundle the project for production |
+| `rill check` | Validate rill-config.json and source files |
+| `rill describe` | Print callable contracts (handler signatures) |
+| `rill eval <expr>` | Evaluate a rill expression and print the result |
+| `rill exec <file>` | Execute a rill script file or stdin input |
+| `rill run <handler>` | Execute a handler against the loaded project |
+
+Run `rill help <command>` or `rill <command> --help` for details.
 
 ## Install
 
@@ -25,34 +32,113 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 npm install -g @rcrsr/rill-cli
 ```
 
-Or as a project dependency (peer dependencies `@rcrsr/rill` and `@rcrsr/rill-config` are bundled but will deduplicate with your project's versions):
+Or as a project dependency (`@rcrsr/rill` and `@rcrsr/rill-config` are declared as both runtime and peer dependencies, and will deduplicate with your project's installed versions):
 
 ```bash
 npm install @rcrsr/rill-cli
 ```
 
-## Tools
+## Quickstart
 
-### rill-exec
+```bash
+rill bootstrap                      # initialize project + .rill/npm/
+rill install @rcrsr/rill-ext-datetime  # add an extension
+rill list                           # show installed extensions
+rill build                          # bundle for production
+rill run                            # execute the project
+```
+
+## Subcommands
+
+### rill bootstrap
+
+Initialize a new rill project. Creates `.rill/npm/` and a starter `rill-config.json` in the current directory.
+
+```bash
+rill bootstrap
+rill bootstrap --force              # overwrite existing config
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing `rill-config.json` and `.rill/npm/` |
+
+### rill install
+
+Install an extension into `.rill/npm/` and register it as a mount in `rill-config.json`.
+
+```bash
+rill install @rcrsr/rill-ext-datetime          # install from npm
+rill install @rcrsr/rill-ext-datetime --as dt  # custom mount name
+rill install ./local-ext                       # install from local path
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--as <mount>` | Mount name to use (default: derived from package name) |
+| `--pin` | Pin to the exact installed version (no caret prefix) |
+| `--exact` | Alias for `--pin` |
+| `--range <semver>` | Specify a custom semver range |
+
+Local-path installs (e.g., `./local-ext`) symlink the directory, so source edits propagate without reinstalling. They cannot be upgraded with `rill upgrade`.
+
+### rill uninstall
+
+Remove a mounted extension from `.rill/npm/` and unregister it from `rill-config.json`.
+
+```bash
+rill uninstall <mount>
+```
+
+### rill upgrade
+
+Update a mounted extension to a newer version. Resolves the latest version matching the configured range and reinstalls.
+
+```bash
+rill upgrade <mount>
+```
+
+Local-path mounts cannot be upgraded; they are symlinked, so edits to the source directory are picked up automatically.
+
+### rill list
+
+List all installed extensions and their mount paths.
+
+```bash
+rill list
+rill list --json                    # machine-readable output
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Emit results as JSON array |
+
+### rill exec
 
 Execute a rill script file.
 
 ```bash
-rill-exec script.rill [args...]
-rill-exec -                        # read from stdin
+rill exec script.rill [args...]
+rill exec -                        # read from stdin
 ```
 
 Positional arguments pass to the script as `$` (pipe value):
 
 ```bash
-rill-exec greet.rill alice bob
+rill exec greet.rill alice bob
 # Inside script: $ == ["alice", "bob"]
 ```
 
 Read from stdin with `-`:
 
 ```bash
-echo '"Hello" -> log' | rill-exec -
+echo '"Hello" -> log' | rill exec -
 ```
 
 **Exit codes:**
@@ -64,24 +150,24 @@ echo '"Hello" -> log' | rill-exec -
 | `[0, "message"]` | 0 (prints message) |
 | `[1, "message"]` | 1 (prints message) |
 
-### rill-eval
+### rill eval
 
 Evaluate a single rill expression. No file context or module loading.
 
 ```bash
-rill-eval '"hello".len'            # 5
-rill-eval '5 + 3'                  # 8
-rill-eval '[1, 2, 3] -> map |x|($x * 2)'  # [2, 4, 6]
+rill eval '"hello".len'            # 5
+rill eval '5 + 3'                  # 8
+rill eval '[1, 2, 3] -> map |x|($x * 2)'  # [2, 4, 6]
 ```
 
-### rill-check
+### rill check
 
 Lint and validate rill scripts.
 
 ```bash
-rill-check script.rill             # text output
-rill-check --format json script.rill
-rill-check --fix script.rill       # auto-fix
+rill check script.rill             # text output
+rill check --format json script.rill
+rill check --fix script.rill       # auto-fix
 ```
 
 **Options:**
@@ -117,28 +203,28 @@ Diagnostics below the threshold still print so the user sees them; only the exit
 
 Rule states: `"on"` (enabled), `"off"` (disabled), `"warn"` (downgrade to warning).
 
-**Lint rules:** 34 rules across 9 categories (naming, anti-patterns, strings, types, flow, loops, collections, conditionals, formatting). Run `rill-check --help` for the full list.
+**Lint rules:** 40 rules across 11 categories (naming, flow, collections, loops, conditionals, closures, types, strings, anti-patterns, formatting, errors). Run `rill check --help` for the full list.
 
-### rill-run
+### rill run
 
 Config-driven execution. Loads extensions and settings from `rill-config.json`, then runs a script or named handler.
 
 ```bash
-rill-run [--config <path>] [args...]
+rill run [--config <path>] [args...]
 ```
 
-**Module mode:** When `main` points to a script file, `rill-run` executes it. Positional arguments forward as `$`.
+**Module mode:** When `main` points to a script file, `rill run` executes it. Positional arguments forward as `$`.
 
-**Handler mode:** When `main` names a handler (e.g., `"script.rill:processOrder"`), parameters come from `--param_name value` flags. Run `rill-run --help` to print the parameter list.
+**Handler mode:** When `main` names a handler (e.g., `"script.rill:processOrder"`), parameters come from `--param_name value` flags. Run `rill run --help` to print the parameter list.
 
 See [CLI Reference](https://github.com/rcrsr/rill/blob/main/docs/integration-cli.md) and [Config Reference](https://github.com/rcrsr/rill/blob/main/docs/ref-config.md) for details.
 
-### rill-build
+### rill build
 
 Compile a rill project into a self-contained output directory. Bundles extensions via esbuild, copies entry and module files, and writes an enriched `rill-config.json` with build metadata.
 
 ```bash
-rill-build [project-dir] [--output <dir>]
+rill build [project-dir] [--output <dir>]
 ```
 
 **Options:**
@@ -162,15 +248,15 @@ build/<package-name>/
 
 The `build` section in the output `rill-config.json` contains a SHA-256 checksum, rill runtime version, and config version.
 
-### rill-describe
+### rill describe
 
 Describe rill callables as a JSON contract. Three subcommands cover the distinct surfaces a project exposes: extension surface (`project`), the project's own handler (`handler`), and the rill runtime itself (`builtins`).
 
 ```bash
-rill-describe project                          # all extension mounts (default)
-rill-describe project --mount <name>           # restrict output to a single mount
-rill-describe handler                          # the project's published handler
-rill-describe builtins                         # rill runtime callables (no config needed)
+rill describe project                          # all extension mounts (default)
+rill describe project --mount <name>           # restrict output to a single mount
+rill describe handler                          # the project's published handler
+rill describe builtins                         # rill runtime callables (no config needed)
 ```
 
 When no subcommand is given, `project` is assumed.

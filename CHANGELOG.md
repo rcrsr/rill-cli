@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Unified `rill` CLI replaces six standalone binaries with a single entry point and new
+  `bootstrap`, `install`, `uninstall`, `upgrade`, and `list` subcommands for managing
+  project-scoped extensions
+- `rill bootstrap`: new subcommand that initializes a project by creating `.rill/` and `.rill/npm/` under `<projectDir>`, writing a scoped `package.json` inside `.rill/npm/`, generating a starter `rill-config.json` at the project root, seeding `.rill/.gitignore` and `.rill/npm/.gitignore`, and appending `.rill/` to the project-root `.gitignore`. Must be run once before installing extensions. Dispatched via `src/cli.ts`
+- `rill install <pkg>`: installs a rill extension into `.rill/npm/` and registers it in `rill-config.json`. Accepts `--as <mount>` (mount path override), `--pin` (record exact installed version, no caret), `--exact` (alias for `--pin`), and `--range <spec>` (custom semver range recorded verbatim). Replaces manual `npm install` + config editing
+- `rill uninstall <mount>`: removes the extension registered under `<mount>` from `.rill/npm/` and from `rill-config.json`
+- `rill upgrade <mount>`: upgrades the extension registered under `<mount>` to the latest compatible version inside `.rill/npm/`
+- `rill list`: lists all registered extensions from `rill-config.json`. Accepts `--json` to emit machine-readable output
+
+### Changed
+
+- **Breaking:** Six standalone binaries (`rill-build`, `rill-check`, `rill-describe`, `rill-eval`, `rill-exec`, `rill-run`) are removed. A single `rill` binary now dispatches all subcommands: `rill build`, `rill check`, `rill describe`, `rill eval`, `rill exec`, `rill run`. Invocations of the old binary names will fail with `command not found`. Update scripts, CI pipelines, and `package.json` `scripts` fields accordingly
+- **Breaking:** `package.json` `bin` field reduced from six entries (`rill-build`, `rill-check`, `rill-describe`, `rill-eval`, `rill-exec`, `rill-run`) to a single entry (`"rill": "./dist/cli.js"`). Global installs of previous versions must be uninstalled and reinstalled to pick up the unified binary
+- **Breaking:** Extensions now resolve from `<projectDir>/.rill/npm/` instead of the project-root `node_modules/`. The isolated prefix prevents extension dependencies from colliding with application dependencies. `src/build/build.ts` passes `.rill/npm/` as the module resolution base. Existing projects whose extensions are installed in project-root `node_modules/` will fail `rill build` with the error "Run 'rill bootstrap' to initialize this project". Migration: run `rill bootstrap`, then `rill install <pkg>` for each previously-installed extension
+- **Breaking:** `@rcrsr/rill-config` companion release adds a required `prefix` parameter to `loadProject()` and `loadExtensions()`. All consumers must compute `prefix = path.join(projectDir, '.rill/npm')` and pass it explicitly. Calls that omit `prefix` will resolve extensions against `node_modules/` and fail on bootstrapped projects
+
 ## [0.19.2] - 2026-04-30
 
 ### Fixed

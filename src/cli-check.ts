@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * CLI Check Entry Point
  *
@@ -295,16 +294,16 @@ function formatDiagnosticsJSON(
  * Main entry point for rill-check CLI.
  * Orchestrates argument parsing, file reading, validation, fixing, and output.
  */
-async function main(): Promise<void> {
+export async function main(argv: string[]): Promise<number> {
   try {
     // Parse command-line arguments
-    const args = parseCheckArgs(process.argv.slice(2));
+    const args = parseCheckArgs(argv);
 
     // Handle help mode
     if (args.mode === 'help') {
-      console.log(`rill-check - Validate Rill scripts
+      console.log(`rill check - Validate Rill scripts
 
-Usage: rill-check [options] <file>
+Usage: rill check [options] <file>
 
 Options:
   --fix                    Apply automatic fixes
@@ -320,13 +319,13 @@ Exit codes:
   1   Diagnostics at or above --min-severity, or CLI usage error
   2   File not found or path is a directory
   3   Parse error in source`);
-      process.exit(0);
+      return 0;
     }
 
     // Handle version mode
     if (args.mode === 'version') {
       console.log(`rill-check ${CLI_VERSION} (rill ${VERSION})`);
-      process.exit(0);
+      return 0;
     }
 
     // At this point, args.mode must be 'check'
@@ -346,14 +345,14 @@ Exit codes:
       // Check if file exists
       if (!fs.existsSync(args.file)) {
         console.error(`Error [RILL-C001]: File not found: ${args.file}`);
-        process.exit(2);
+        return 2;
       }
 
       // Check if path is a directory
       const stats = fs.statSync(args.file);
       if (stats.isDirectory()) {
         console.error(`Error [RILL-C002]: Path is a directory: ${args.file}`);
-        process.exit(2);
+        return 2;
       }
 
       // Read file contents
@@ -376,7 +375,7 @@ Exit codes:
       } else {
         console.error(`Error [RILL-C002]: Cannot read file: ${args.file}`);
       }
-      process.exit(2);
+      return 2;
     }
 
     // Parse AST with recovery to collect all errors
@@ -414,7 +413,7 @@ Exit codes:
         console.error('Cannot apply fixes: file has parse errors');
       }
 
-      process.exit(3);
+      return 3;
     }
 
     const ast = parseResult.ast;
@@ -474,7 +473,7 @@ Exit codes:
       } else {
         console.log('No issues found');
       }
-      process.exit(0);
+      return 0;
     }
 
     // Output all diagnostics regardless of severity (still useful info).
@@ -491,7 +490,7 @@ Exit codes:
     const failingCount = diagnostics.filter((d) =>
       meetsSeverityThreshold(d, args.minSeverity)
     ).length;
-    process.exit(failingCount > 0 ? 1 : 0);
+    return failingCount > 0 ? 1 : 0;
   } catch (err) {
     // Handle unexpected errors
     if (err instanceof Error) {
@@ -499,16 +498,6 @@ Exit codes:
     } else {
       console.error(`Error: ${String(err)}`);
     }
-    process.exit(1);
+    return 1;
   }
-}
-
-// Only run main if this is the entry point (not imported)
-const shouldRunMain =
-  process.env['NODE_ENV'] !== 'test' &&
-  !process.env['VITEST'] &&
-  !process.env['VITEST_WORKER_ID'];
-
-if (shouldRunMain) {
-  main();
 }

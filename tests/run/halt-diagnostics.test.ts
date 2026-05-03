@@ -80,7 +80,7 @@ async function runHalt(optsOverrides: Partial<RunCliOptions> = {}) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
-const RILL_RUN_BINARY = path.join(PROJECT_ROOT, 'dist', 'cli-run.js');
+const RILL_RUN_BINARY = path.join(PROJECT_ROOT, 'dist', 'cli.js');
 const FIXTURES = path.join(PROJECT_ROOT, 'tests', 'fixtures', 'run');
 
 // Ensure dist/cli-run.js exists before handler-mode tests spawn it.
@@ -109,11 +109,15 @@ function spawnRillRun(
   delete env['VITEST_WORKER_ID'];
   delete env['NODE_ENV'];
 
-  const result = spawnSync(process.execPath, [RILL_RUN_BINARY, ...args], {
-    cwd: fixtureDir,
-    encoding: 'utf-8',
-    env,
-  });
+  const result = spawnSync(
+    process.execPath,
+    [RILL_RUN_BINARY, 'run', ...args],
+    {
+      cwd: fixtureDir,
+      encoding: 'utf-8',
+      env,
+    }
+  );
   return {
     exitCode: result.status ?? 1,
     stdout: result.stdout ?? '',

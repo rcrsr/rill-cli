@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -40,14 +41,35 @@ export function extractPackageName(specifier: string): string {
 const LOCAL_FILE_EXTS = ['.ts', '.js', '.mjs', '.cjs', '.tsx', '.jsx'];
 
 /**
- * Returns true when specifier is a local path pointing at a single source file
- * (ts/js/mjs/cjs/tsx/jsx). Single-file local paths bypass npm and are recorded
- * verbatim in rill-config.json.
+ * Returns true when the specifier looks like a local single-file path based on
+ * its suffix alone (no filesystem access). Safe to call during argument parsing
+ * before the path is known to exist on disk.
+ *
+ * Use this predicate when reading values from rill-config.json or when the
+ * file may not yet exist (e.g. during install argument validation).
  */
-export function isLocalFilePath(specifier: string): boolean {
+export function looksLikeLocalFilePath(specifier: string): boolean {
   if (!isLocalPath(specifier)) return false;
   const lower = specifier.toLowerCase();
   return LOCAL_FILE_EXTS.some((ext) => lower.endsWith(ext));
+}
+
+/**
+ * Returns true when specifier is a local path that points at an existing
+ * single source file (ts/js/mjs/cjs/tsx/jsx). Performs a stat to distinguish
+ * a file named e.g. `foo.ts` from a directory with the same name.
+ *
+ * Requires the path to exist on disk — only call this after confirming the
+ * specifier resolves to a real filesystem entry.
+ */
+export function isLocalFilePath(specifier: string): boolean {
+  if (!looksLikeLocalFilePath(specifier)) return false;
+  try {
+    return fs.statSync(specifier).isFile();
+  } catch {
+    // Path does not exist or is inaccessible; treat as non-file.
+    return false;
+  }
 }
 
 /**

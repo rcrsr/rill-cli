@@ -292,6 +292,47 @@ describe('uninstall', () => {
   });
 
   // ============================================================
+  // C7: single-file uninstall — no npm, source file stays on disk
+  // ============================================================
+
+  describe('C7: single-file mount uninstall skips npm and leaves source file', () => {
+    it('removes mount from config, does not invoke npm, leaves source file on disk', async () => {
+      // Set up a source file that the mount points to
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+
+      bootstrapProject(tmpDir, {
+        crawler: './extensions/crawler.ts',
+      });
+
+      const { run } = await import('../../src/commands/uninstall.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['crawler']);
+      } finally {
+        cap.restore();
+      }
+
+      // Command must succeed
+      expect(exitCode).toBe(0);
+
+      // Mount must be removed from config
+      const config = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'rill-config.json'), 'utf8')
+      ) as { extensions: { mounts: Record<string, string> } };
+      expect(config.extensions.mounts).not.toHaveProperty('crawler');
+
+      // npm uninstall must NOT have been invoked
+      expect(mocks.spawn).not.toHaveBeenCalled();
+
+      // Source file must remain untouched on disk
+      expect(fs.existsSync(extPath)).toBe(true);
+    });
+  });
+
+  // ============================================================
   // EC-16: loadProject validation fails after uninstall
   // ============================================================
 

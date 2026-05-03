@@ -81,6 +81,16 @@ export async function run(argv: string[]): Promise<number> {
 
   const force = values['force'] === true;
   const reset = values['reset'] === true;
+
+  if (force && reset) {
+    process.stderr.write(
+      'error: --force and --reset are mutually exclusive. ' +
+        'Use --force to overwrite rill-config.json only, ' +
+        'or --reset to wipe .rill/npm/ and rewrite all files.\n'
+    );
+    return 1;
+  }
+
   const cwd = process.cwd();
 
   // Step 1: mkdir .rill/ (recursive, idempotent)

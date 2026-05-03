@@ -475,95 +475,118 @@ function applyEnvStubs(configText: string): string[] {
 // ---------------------------------------------------------------------------
 
 async function runProject(args: ProjectArgs): Promise<number> {
-  if (args.stubs) {
-    let configPathForStubs: string;
-    try {
-      configPathForStubs = resolveConfigPath({
-        ...(args.configFlag !== undefined
-          ? { configFlag: args.configFlag }
-          : {}),
-        cwd: process.cwd(),
-      });
-    } catch (err) {
-      if (err instanceof ConfigError) {
-        process.stderr.write(err.message + '\n');
+  // Snapshot env keys that applyEnvStubs will mutate so they can be restored.
+  const envSnapshot: Record<string, string | undefined> = {};
+
+  try {
+    if (args.stubs) {
+      let configPathForStubs: string;
+      try {
+        configPathForStubs = resolveConfigPath({
+          ...(args.configFlag !== undefined
+            ? { configFlag: args.configFlag }
+            : {}),
+          cwd: process.cwd(),
+        });
+      } catch (err) {
+        if (err instanceof ConfigError) {
+          process.stderr.write(err.message + '\n');
+          return 1;
+        }
+        throw err;
+      }
+      let configText = '';
+      try {
+        configText = readFileSync(configPathForStubs, 'utf8');
+      } catch {
+        // Fall through; loadConfigAndProject will surface the real error.
+      }
+      if (configText !== '') {
+        // Snapshot before stubbing so the finally block can restore.
+        const re = /\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(configText)) !== null) {
+          const name = m[1]!;
+          if (!(name in envSnapshot)) {
+            envSnapshot[name] = process.env[name];
+          }
+        }
+        const stubbed = applyEnvStubs(configText);
+        if (stubbed.length > 0) {
+          process.stderr.write(
+            `[describe] stubbed ${stubbed.length} env var${stubbed.length === 1 ? '' : 's'} for surface enumeration: ${stubbed.join(', ')}\n`
+          );
+        }
+      }
+    }
+
+    const { configPath, project } = await loadConfigAndProject(args.configFlag);
+
+    const visited = new WeakSet<object>();
+    const mountTrees: { [key: string]: ContractTree } = {};
+
+    for (const [name, value] of Object.entries(project.extTree)) {
+      const subtree = buildTree(value, visited);
+      if (subtree !== null) {
+        mountTrees[name] = subtree;
+      }
+    }
+
+    let outputMounts: { [key: string]: ContractTree };
+    if (args.mountName !== undefined) {
+      if (!(args.mountName in mountTrees)) {
+        const available = Object.keys(mountTrees).sort().join(', ');
+        process.stderr.write(
+          `Error: mount "${args.mountName}" not found. Available mounts: ${available}\n`
+        );
+        await disposeAll(project.disposes);
         return 1;
       }
-      throw err;
+      const single = mountTrees[args.mountName]!;
+      outputMounts = { [args.mountName]: single };
+    } else {
+      outputMounts = mountTrees;
     }
-    let configText = '';
-    try {
-      configText = readFileSync(configPathForStubs, 'utf8');
-    } catch {
-      // Fall through; loadConfigAndProject will surface the real error.
+
+    const output = {
+      rillVersion: VERSION,
+      configPath,
+      mounts: outputMounts,
+    };
+
+    process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+
+    await disposeAll(project.disposes);
+
+    if (args.strict) {
+      const anyPaths: string[] = [];
+      for (const key of Object.keys(outputMounts).sort()) {
+        const child = outputMounts[key];
+        if (child !== undefined) {
+          collectAnyReturnCallables(child, key, anyPaths);
+        }
+      }
+      if (anyPaths.length > 0) {
+        for (const p of anyPaths) {
+          process.stderr.write(
+            `[strict] callable at path "${p}" has returnType: any\n`
+          );
+        }
+        return 1;
+      }
     }
-    if (configText !== '') {
-      const stubbed = applyEnvStubs(configText);
-      if (stubbed.length > 0) {
-        process.stderr.write(
-          `[describe] stubbed ${stubbed.length} env var${stubbed.length === 1 ? '' : 's'} for surface enumeration: ${stubbed.join(', ')}\n`
-        );
+
+    return 0;
+  } finally {
+    // Restore any env keys that were stubbed by applyEnvStubs.
+    for (const [key, original] of Object.entries(envSnapshot)) {
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
       }
     }
   }
-
-  const { configPath, project } = await loadConfigAndProject(args.configFlag);
-
-  const visited = new WeakSet<object>();
-  const mountTrees: { [key: string]: ContractTree } = {};
-
-  for (const [name, value] of Object.entries(project.extTree)) {
-    const subtree = buildTree(value, visited);
-    if (subtree !== null) {
-      mountTrees[name] = subtree;
-    }
-  }
-
-  let outputMounts: { [key: string]: ContractTree };
-  if (args.mountName !== undefined) {
-    if (!(args.mountName in mountTrees)) {
-      const available = Object.keys(mountTrees).sort().join(', ');
-      process.stderr.write(
-        `Error: mount "${args.mountName}" not found. Available mounts: ${available}\n`
-      );
-      await disposeAll(project.disposes);
-      return 1;
-    }
-    const single = mountTrees[args.mountName]!;
-    outputMounts = { [args.mountName]: single };
-  } else {
-    outputMounts = mountTrees;
-  }
-
-  const output = {
-    rillVersion: VERSION,
-    configPath,
-    mounts: outputMounts,
-  };
-
-  process.stdout.write(JSON.stringify(output, null, 2) + '\n');
-
-  await disposeAll(project.disposes);
-
-  if (args.strict) {
-    const anyPaths: string[] = [];
-    for (const key of Object.keys(outputMounts).sort()) {
-      const child = outputMounts[key];
-      if (child !== undefined) {
-        collectAnyReturnCallables(child, key, anyPaths);
-      }
-    }
-    if (anyPaths.length > 0) {
-      for (const p of anyPaths) {
-        process.stderr.write(
-          `[strict] callable at path "${p}" has returnType: any\n`
-        );
-      }
-      return 1;
-    }
-  }
-
-  return 0;
 }
 
 async function runHandler(args: HandlerArgs): Promise<number> {

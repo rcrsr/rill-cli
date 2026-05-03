@@ -16,7 +16,7 @@ import { readConfigSnapshot, ConfigNotFoundError } from './config-edit.js';
 import {
   extractPackageName,
   isLocalPath,
-  isLocalFilePath,
+  looksLikeLocalFilePath,
 } from './mount-derive.js';
 
 // ============================================================
@@ -144,7 +144,7 @@ export async function run(argv: string[]): Promise<number> {
 
   const rows: MountRow[] = mountEntries.map(([mount, specifier]) => {
     const local = isLocalPath(specifier);
-    const localFile = isLocalFilePath(specifier);
+    const localFile = looksLikeLocalFilePath(specifier);
     const source: MountRow['source'] = localFile
       ? 'local-file'
       : local

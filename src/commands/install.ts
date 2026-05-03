@@ -20,7 +20,7 @@ import {
   deriveMount,
   extractPackageName,
   isLocalPath,
-  isLocalFilePath,
+  looksLikeLocalFilePath,
 } from './mount-derive.js';
 import {
   readConfigSnapshot,
@@ -192,7 +192,7 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Single-file local source short-circuit (P0-3) ----
   // Single-file extensions skip npm entirely. Mount value is the path verbatim.
   // --as is required; --pin/--exact/--range are rejected since there is no version.
-  if (isLocalFilePath(specifier)) {
+  if (looksLikeLocalFilePath(specifier)) {
     if (asOverride === undefined) {
       process.stderr.write(
         `✗ Single-file extension '${specifier}' requires --as <mount>\n`

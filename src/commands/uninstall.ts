@@ -19,7 +19,7 @@ import {
 } from './prefix.js';
 import { readConfigSnapshot, hasMount, applyMountEdit } from './config-edit.js';
 import { npmUninstall, NpmNotFoundError } from './npm-runner.js';
-import { isLocalPath, isLocalFilePath } from './mount-derive.js';
+import { isLocalPath, looksLikeLocalFilePath } from './mount-derive.js';
 import { CLI_VERSION } from '../cli-shared.js';
 
 // ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ export async function run(argv: string[]): Promise<number> {
   const specifierVerbatim =
     snapshot.parsed.extensions?.mounts?.[mount] ?? mount;
   const pkgName = deriveNpmPackageName(specifierVerbatim, mount);
-  const localFile = isLocalFilePath(specifierVerbatim);
+  const localFile = looksLikeLocalFilePath(specifierVerbatim);
 
   // ---- Step 4: Print removal start message (UXT-EXT-7 line 1) ----
   process.stdout.write(

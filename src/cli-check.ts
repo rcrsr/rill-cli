@@ -59,7 +59,24 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
 
   // P0-1: --types runs `tsc --noEmit` against the user's tsconfig.json,
   // resolving extension types out of .rill/npm/ via tsconfig.rill.json.
+  // --types is exclusive: reject positional args and incompatible flags.
   if (argv.includes('--types')) {
+    const incompatibleFlags = [
+      '--fix',
+      '--verbose',
+      '--format',
+      '--min-severity',
+    ];
+    const hasIncompatible = incompatibleFlags.some((f) => argv.includes(f));
+    const hasPositional = argv.some(
+      (a) => a !== '--types' && !a.startsWith('-')
+    );
+    if (hasPositional || hasIncompatible) {
+      throw new Error(
+        '--types is exclusive: cannot be combined with file arguments or ' +
+          '--fix, --verbose, --format, --min-severity'
+      );
+    }
     return { mode: 'types' };
   }
 
@@ -316,21 +333,35 @@ function maybePrintMinSeverityNotice(): void {
 
   if (fs.existsSync(path.join(cwd, '.rill-check.json'))) return;
 
-  const noticesDir = path.join(cwd, '.rill', '.notices');
-  const marker = path.join(noticesDir, 'min-severity-0.19.1');
-  if (fs.existsSync(marker)) return;
+  // Only persist the marker when .rill/ already exists (bootstrapped project).
+  // For plain directories, print the notice every run rather than creating a
+  // hidden .rill/ directory as a side effect of a read-only command.
+  const rillDir = path.join(cwd, '.rill');
+  const rillExists = fs.existsSync(rillDir);
 
-  process.stderr.write(
-    'notice: rill check defaults changed in 0.19.1 — info/warning diagnostics no longer fail. ' +
-      'Pass --min-severity info to restore strict behavior.\n'
-  );
+  if (rillExists) {
+    const noticesDir = path.join(rillDir, '.notices');
+    const marker = path.join(noticesDir, 'min-severity-0.19.1');
+    if (fs.existsSync(marker)) return;
 
-  try {
-    fs.mkdirSync(noticesDir, { recursive: true });
-    fs.writeFileSync(marker, '', 'utf8');
-  } catch {
-    // Non-fatal: missing .rill/ or unwritable marker means we may emit
-    // the notice again on the next run, which is acceptable.
+    process.stderr.write(
+      'notice: rill check defaults changed in 0.19.1 — info/warning diagnostics no longer fail. ' +
+        'Pass --min-severity info to restore strict behavior.\n'
+    );
+
+    try {
+      fs.mkdirSync(noticesDir, { recursive: true });
+      fs.writeFileSync(marker, '', 'utf8');
+    } catch {
+      // Non-fatal: unwritable marker means we may emit the notice again on
+      // the next run, which is acceptable.
+    }
+  } else {
+    // Non-bootstrapped directory: just print the notice every run.
+    process.stderr.write(
+      'notice: rill check defaults changed in 0.19.1 — info/warning diagnostics no longer fail. ' +
+        'Pass --min-severity info to restore strict behavior.\n'
+    );
   }
 }
 
@@ -360,10 +391,20 @@ async function runTypeCheck(): Promise<number> {
     return 1;
   }
 
-  const candidates = [
-    path.join(cwd, 'node_modules', '.bin', 'tsc'),
-    path.join(cwd, '.rill', 'npm', 'node_modules', '.bin', 'tsc'),
+  // On Windows, npm/pnpm install <pkg>.cmd shims instead of POSIX binaries.
+  // Build candidate list that checks both names on win32 and only the POSIX
+  // name on other platforms.
+  const binName = process.platform === 'win32' ? ['tsc.cmd', 'tsc'] : ['tsc'];
+  const binDirs = [
+    path.join(cwd, 'node_modules', '.bin'),
+    path.join(cwd, '.rill', 'npm', 'node_modules', '.bin'),
   ];
+  const candidates: string[] = [];
+  for (const dir of binDirs) {
+    for (const name of binName) {
+      candidates.push(path.join(dir, name));
+    }
+  }
   const tsc = candidates.find((p) => fs.existsSync(p));
   if (tsc === undefined) {
     process.stderr.write(

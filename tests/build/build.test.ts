@@ -945,6 +945,59 @@ export const extensionManifest = {
 });
 
 // ============================================================
+// --flat FLAG (CLI arg → programmatic API)
+// ============================================================
+
+describe('buildPackage --flat option', () => {
+  // ----------------------------------------------------------
+  // flat: true writes output directly into outputDir (no package-name subdir)
+  // ----------------------------------------------------------
+  it('writes output directly into outputDir when flat: true [--flat]', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir, flat: true });
+
+    // outputPath must equal outputDir itself, not outputDir/<packageName>
+    expect(result.outputPath).toBe(path.resolve(outputDir));
+    expect(existsSync(path.join(result.outputPath, 'rill-config.json'))).toBe(
+      true
+    );
+    expect(existsSync(path.join(result.outputPath, 'main.rill'))).toBe(true);
+  });
+
+  it('cleans outputDir itself (not a subdir) before writing when flat: true', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    // Write a stale file into outputDir; flat build must wipe it
+    const staleFile = path.join(outputDir, 'stale.txt');
+    await import('node:fs/promises').then(({ writeFile }) =>
+      writeFile(staleFile, 'old', 'utf-8')
+    );
+
+    await buildPackage(projectDir, { outputDir, flat: true });
+
+    // Stale file must be gone — outputDir was cleaned before build
+    expect(existsSync(staleFile)).toBe(false);
+  });
+
+  it('flat: false (default) nests output under package-name subdir', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    // Default (non-flat): outputPath is outputDir/<packageName>
+    expect(result.outputPath).toBe(
+      path.join(path.resolve(outputDir), 'test-package')
+    );
+    expect(
+      existsSync(path.join(outputDir, 'test-package', 'rill-config.json'))
+    ).toBe(true);
+    // No rill-config.json directly inside outputDir
+    expect(existsSync(path.join(outputDir, 'rill-config.json'))).toBe(false);
+  });
+});
+
+// ============================================================
 // HANDLER LIFECYCLE CONTRACT
 // ============================================================
 

@@ -31,7 +31,7 @@ Usage: rill upgrade <mount> [--pin] [--range <semver>]
 
 Upgrade an installed extension to a newer version. Pinned mounts (e.g.
 "pkg@1.2.3" with no caret/range) are a no-op; re-pin with
-\`rill install <pkg>@latest --pin\`.
+\`rill install <pkg>@latest --pin --as <mount>\`.
 
 Arguments:
   <mount>          Mount name as it appears in rill-config.json (e.g. datetime)

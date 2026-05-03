@@ -19,7 +19,7 @@ import {
 } from './prefix.js';
 import { readConfigSnapshot, hasMount, applyMountEdit } from './config-edit.js';
 import { npmUninstall, NpmNotFoundError } from './npm-runner.js';
-import { isLocalPath } from './mount-derive.js';
+import { isLocalPath, looksLikeLocalFilePath } from './mount-derive.js';
 import { CLI_VERSION } from '../cli-shared.js';
 
 // ---------------------------------------------------------------------------
@@ -147,6 +147,7 @@ export async function run(argv: string[]): Promise<number> {
   const specifierVerbatim =
     snapshot.parsed.extensions?.mounts?.[mount] ?? mount;
   const pkgName = deriveNpmPackageName(specifierVerbatim, mount);
+  const localFile = looksLikeLocalFilePath(specifierVerbatim);
 
   // ---- Step 4: Print removal start message (UXT-EXT-7 line 1) ----
   process.stdout.write(
@@ -161,28 +162,37 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Step 6: Print config updated (UXT-EXT-7 line 2) ----
   process.stdout.write('✓ Updated rill-config.json\n');
 
-  // ---- Step 7: npm uninstall ----
-  let npmResult: { exitCode: number };
-  try {
-    npmResult = await npmUninstall({ spec: pkgName, prefix });
-  } catch (err) {
-    if (err instanceof NpmNotFoundError) {
-      process.stderr.write('npm not found on PATH; install Node.js with npm\n');
-      return 1;
+  // ---- Step 7: npm uninstall (skipped for single-file local sources) ----
+  if (localFile) {
+    // P0-3: single-file mounts have nothing under .rill/npm/; just unregister.
+    process.stdout.write(
+      `✓ Removed mount (single-file source left on disk: ${specifierVerbatim})\n`
+    );
+  } else {
+    let npmResult: { exitCode: number };
+    try {
+      npmResult = await npmUninstall({ spec: pkgName, prefix });
+    } catch (err) {
+      if (err instanceof NpmNotFoundError) {
+        process.stderr.write(
+          'npm not found on PATH; install Node.js with npm\n'
+        );
+        return 1;
+      }
+      throw err;
     }
-    throw err;
-  }
 
-  // EC-15: npm uninstall non-zero exit -> propagate exit code; npm already streamed stderr
-  if (npmResult.exitCode !== 0) {
-    return npmResult.exitCode;
-  }
+    // EC-15: npm uninstall non-zero exit -> propagate exit code; npm already streamed stderr
+    if (npmResult.exitCode !== 0) {
+      return npmResult.exitCode;
+    }
 
-  // UXT-EXT-7 line 3: uninstalled message
-  // AC-B9: missing package directory is NOT an error; npm uninstall returns 0 in that case.
-  process.stdout.write(
-    `✓ Uninstalled from .rill/npm/node_modules/${pkgName}\n`
-  );
+    // UXT-EXT-7 line 3: uninstalled message
+    // AC-B9: missing package directory is NOT an error; npm uninstall returns 0 in that case.
+    process.stdout.write(
+      `✓ Uninstalled from .rill/npm/node_modules/${pkgName}\n`
+    );
+  }
 
   // ---- Step 8: Post-uninstall loadProject validation ----
   // EC-16: on failure do NOT roll back config; emit error and return 1.

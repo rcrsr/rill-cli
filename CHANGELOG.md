@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `rill bootstrap` writes `.rill/tsconfig.rill.json` with `paths` mapping into `.rill/npm/node_modules/` so that `tsc --noEmit` and editors can resolve extension types. When a project-root `tsconfig.json` exists without an `extends` reference, bootstrap prints a one-shot hint to add `"extends": "./.rill/tsconfig.rill.json"` (P0-1)
+- `rill check --types` runs `tsc --noEmit` against the project's `tsconfig.json`. Resolves `tsc` from `<projectDir>/node_modules/.bin/` then `<projectDir>/.rill/npm/node_modules/.bin/`. Errors with an actionable hint when `tsc` is not installed locally (P0-1)
+- `rill describe project --stubs` walks `rill-config.json` for `${env.X}` references and stubs unset env vars to literal `"x"` before constructing extensions, unblocking surface enumeration before credentials are populated. Stubbed names are reported on stderr. String-typed config only; numeric/bool config may still cause factory construction to fail (P0-2)
+- `rill install ./extensions/foo.ts --as <mount>` installs single-file extensions (`.ts`, `.js`, `.mjs`, `.cjs`, `.tsx`, `.jsx`). The path is recorded verbatim in `rill-config.json`; npm is not invoked. `--as` is required; version flags are rejected. `rill list` labels the source as `local-file`; `rill uninstall` unregisters but leaves the file on disk (P0-3)
+- `rill install --dry-run <pkg-or-path>` prints the derived mount, target version, and would-be config write without touching disk or running npm (P2-2)
+- `rill bootstrap --reset` wipes `.rill/npm/` entirely and rewrites all scaffolded files, restoring the previous destructive behavior of `--force` (P1-2)
+- `rill build --flat` writes output directly into `<output>` without nesting under a package-name subdirectory (P3-2)
+- One-shot stderr notice on the 0.19.1 `rill check` min-severity default change. Suppressed via marker file at `.rill/.notices/min-severity-0.19.1`. Skipped when `--min-severity` is supplied or `.rill-check.json` is present (P1-3)
+- README documents the mount-name derivation algorithm under `rill install` (P2-2)
+
+### Changed
+
+- **Breaking:** `rill bootstrap --force` now overwrites only `rill-config.json`. `.rill/npm/` and installed extensions are preserved. Use `--reset` to restore the previous wipe-everything behavior. Migration: callers depending on the old destructive `--force` should switch to `--reset` (P1-2)
+- `rill upgrade <mount>` is a no-op when the mount value is pinned (e.g. `pkg@1.2.3` with no caret/range marker). Prints a notice and exits 0; user re-pins via `rill install <pkg>@latest --pin --as <mount>` (P2-3)
+- `rill install --exact` and `rill upgrade --exact` print a deprecation warning. The flag still works; will be removed in 0.20. Use `--pin` instead (P2-1)
+- `rill` CLI entry now fails fast with a clear message when running on Node < 22.16.0 instead of letting downstream errors surface as opaque module-resolution failures (P1-1)
+
 ## [0.19.3] - 2026-05-03
 
 ### Added

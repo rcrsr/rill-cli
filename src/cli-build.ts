@@ -8,6 +8,9 @@ Arguments:
 
 Options:
   --output <dir>            Output directory (default: build/)
+  --flat                    Write output directly into <output> without a
+                            package-name subdirectory.
+                            By default output goes to <output>/<packageName>/.
   -h, --help                Show this help message
 `;
 
@@ -19,7 +22,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   // Reject unknown flags
-  const knownFlags = new Set(['--output', '--help', '-h']);
+  const knownFlags = new Set(['--output', '--flat', '--help', '-h']);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg && arg.startsWith('-')) {
@@ -62,9 +65,12 @@ export async function main(argv: string[]): Promise<number> {
       ? argv[outputIdx + 1]
       : undefined;
 
+  const flat = argv.includes('--flat');
+
   try {
     const result = await buildPackage(projectDir, {
       ...(outputDir !== undefined ? { outputDir } : {}),
+      ...(flat ? { flat: true } : {}),
     });
     process.stdout.write(`${result.outputPath}\n`);
   } catch (err) {

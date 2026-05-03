@@ -13,7 +13,11 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { resolvePrefix } from './prefix.js';
 import { readConfigSnapshot, ConfigNotFoundError } from './config-edit.js';
-import { isLocalPath } from './mount-derive.js';
+import {
+  extractPackageName,
+  isLocalPath,
+  looksLikeLocalFilePath,
+} from './mount-derive.js';
 
 // ============================================================
 // HELP TEXT
@@ -47,31 +51,12 @@ interface MountRow {
   mount: string;
   specifier: string;
   version: string | null; // null for local-path in JSON; 'n/a' or 'unknown' in human
-  source: 'registry' | 'local';
+  source: 'registry' | 'local' | 'local-file';
 }
 
 // ============================================================
 // HELPERS
 // ============================================================
-
-/**
- * Extract bare package name from a registry specifier.
- *
- * Strips the trailing version qualifier: the part after the last '@' that is
- * NOT the leading scope '@'.
- *
- * Examples:
- *   "@rcrsr/rill-ext-datetime@^0.19.0" -> "@rcrsr/rill-ext-datetime"
- *   "my-pkg@^1.0.0"                    -> "my-pkg"
- *   "my-pkg"                           -> "my-pkg"
- */
-function extractPackageName(specifier: string): string {
-  const atIndex = specifier.indexOf('@', 1);
-  if (atIndex === -1) {
-    return specifier;
-  }
-  return specifier.slice(0, atIndex);
-}
 
 /**
  * Try to read the installed version from node_modules/<pkgName>/package.json.
@@ -159,11 +144,16 @@ export async function run(argv: string[]): Promise<number> {
 
   const rows: MountRow[] = mountEntries.map(([mount, specifier]) => {
     const local = isLocalPath(specifier);
-    const source: 'local' | 'registry' = local ? 'local' : 'registry';
+    const localFile = looksLikeLocalFilePath(specifier);
+    const source: MountRow['source'] = localFile
+      ? 'local-file'
+      : local
+        ? 'local'
+        : 'registry';
 
     let version: string | null;
     if (local) {
-      // Local-path: no installed version to read (EC-25 / UXC-EXT-2)
+      // Local-path (file or dir): no installed version to read (EC-25 / UXC-EXT-2)
       version = null;
     } else {
       const pkgName = extractPackageName(specifier);
@@ -188,7 +178,7 @@ export async function run(argv: string[]): Promise<number> {
     const jsonRows = rows.map(({ mount, specifier, version, source }) => ({
       mount,
       specifier,
-      version: source === 'local' ? null : version,
+      version: source === 'local' || source === 'local-file' ? null : version,
       source,
     }));
     process.stdout.write(JSON.stringify(jsonRows, null, 2) + '\n');
@@ -213,6 +203,9 @@ export async function run(argv: string[]): Promise<number> {
     if (row.mount.length + 2 > mountWidth) mountWidth = row.mount.length + 2;
     if (pkg.length + 2 > packageWidth) packageWidth = pkg.length + 2;
     if (ver.length + 2 > versionWidth) versionWidth = ver.length + 2;
+    if (row.source.length + 2 > 12) {
+      // SOURCE column is the last; no fixed width but ensure source label fits
+    }
   }
 
   const header = `${padCol('MOUNT', mountWidth)}${padCol('PACKAGE', packageWidth)}${padCol('VERSION', versionWidth)}SOURCE`;

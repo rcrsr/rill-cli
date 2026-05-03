@@ -316,6 +316,117 @@ describe('bootstrap', () => {
   // TESTS: AC-P1 — timing < 2s
   // ============================================================
 
+  describe('tsconfig.rill.json (P0-1)', () => {
+    it('writes .rill/tsconfig.rill.json on fresh bootstrap', async () => {
+      const { run } = await import('../../src/commands/bootstrap.js');
+      const cap = captureOutput();
+      try {
+        await run([]);
+      } finally {
+        cap.restore();
+      }
+      const tsconfigRill = path.join(tmpDir, '.rill', 'tsconfig.rill.json');
+      expect(fs.existsSync(tsconfigRill)).toBe(true);
+      const parsed = JSON.parse(fs.readFileSync(tsconfigRill, 'utf8')) as {
+        compilerOptions?: {
+          baseUrl?: string;
+          paths?: Record<string, string[]>;
+        };
+      };
+      expect(parsed.compilerOptions?.baseUrl).toBe('./npm');
+      expect(parsed.compilerOptions?.paths).toEqual({
+        '*': ['node_modules/*'],
+      });
+    });
+
+    it('hints user when tsconfig.json exists without extends', async () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'tsconfig.json'),
+        '{"compilerOptions": {"strict": true}}\n',
+        'utf8'
+      );
+      const { run } = await import('../../src/commands/bootstrap.js');
+      const cap = captureOutput();
+      try {
+        await run([]);
+      } finally {
+        cap.restore();
+      }
+      const out = cap.stdout.join('');
+      expect(out).toContain('tsconfig.json detected');
+      expect(out).toContain('"extends": "./.rill/tsconfig.rill.json"');
+    });
+
+    it('does not hint when tsconfig.json already extends rill config', async () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'tsconfig.json'),
+        '{"extends": "./.rill/tsconfig.rill.json"}\n',
+        'utf8'
+      );
+      const { run } = await import('../../src/commands/bootstrap.js');
+      const cap = captureOutput();
+      try {
+        await run([]);
+      } finally {
+        cap.restore();
+      }
+      const out = cap.stdout.join('');
+      expect(out).not.toContain('tsconfig.json detected');
+    });
+  });
+
+  describe('--force / --reset split (P1-2)', () => {
+    it('--force preserves .rill/npm/package.json contents', async () => {
+      const { run } = await import('../../src/commands/bootstrap.js');
+      const cap1 = captureOutput();
+      try {
+        await run([]);
+      } finally {
+        cap1.restore();
+      }
+      const npmPkg = path.join(tmpDir, '.rill', 'npm', 'package.json');
+      fs.writeFileSync(
+        npmPkg,
+        '{"name":"rill-extensions","private":true,"dependencies":{"foo":"^1.0.0"}}\n',
+        'utf8'
+      );
+
+      const cap2 = captureOutput();
+      try {
+        await run(['--force']);
+      } finally {
+        cap2.restore();
+      }
+      const after = fs.readFileSync(npmPkg, 'utf8');
+      expect(after).toContain('"foo"');
+    });
+
+    it('--reset wipes .rill/npm/ contents', async () => {
+      const { run } = await import('../../src/commands/bootstrap.js');
+      const cap1 = captureOutput();
+      try {
+        await run([]);
+      } finally {
+        cap1.restore();
+      }
+      const npmPkg = path.join(tmpDir, '.rill', 'npm', 'package.json');
+      fs.writeFileSync(
+        npmPkg,
+        '{"name":"rill-extensions","private":true,"dependencies":{"foo":"^1.0.0"}}\n',
+        'utf8'
+      );
+
+      const cap2 = captureOutput();
+      try {
+        await run(['--reset']);
+      } finally {
+        cap2.restore();
+      }
+      const after = fs.readFileSync(npmPkg, 'utf8');
+      expect(after).not.toContain('"foo"');
+    });
+  });
+
   describe('AC-P1: timing < 2s', () => {
     it('completes file I/O in under 2000ms', async () => {
       const { run } = await import('../../src/commands/bootstrap.js');

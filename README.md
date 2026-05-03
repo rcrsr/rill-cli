@@ -28,6 +28,8 @@ Run `rill help <command>` or `rill <command> --help` for details.
 
 ## Install
 
+Requires **Node.js >= 22.16.0**. The CLI checks `process.versions.node` at entry and exits with a clear error on older runtimes.
+
 ```bash
 npm install -g @rcrsr/rill-cli
 ```
@@ -52,18 +54,28 @@ rill run                            # execute the project
 
 ### rill bootstrap
 
-Initialize a new rill project. Creates `.rill/npm/` and a starter `rill-config.json` in the current directory.
+Initialize a new rill project. Creates `.rill/npm/`, `.rill/tsconfig.rill.json`, and a starter `rill-config.json` in the current directory.
 
 ```bash
 rill bootstrap
-rill bootstrap --force              # overwrite existing config
+rill bootstrap --force              # rewrite rill-config.json (preserves .rill/npm/)
+rill bootstrap --reset              # wipe .rill/npm/ and rewrite all scaffolded files
 ```
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
-| `--force` | Overwrite existing `rill-config.json` and `.rill/npm/` |
+| `--force` | Overwrite existing `rill-config.json`. `.rill/npm/` and installed extensions are preserved. |
+| `--reset` | Wipe `.rill/npm/` and rewrite all scaffolded files. Deletes installed extensions; re-run `rill install` for each. |
+
+**TypeScript types for custom extensions.** Bootstrap writes `.rill/tsconfig.rill.json` with a `paths` mapping into `.rill/npm/node_modules/`. Add this line to your `tsconfig.json` so editors and `tsc --noEmit` resolve extension imports:
+
+```json
+{ "extends": "./.rill/tsconfig.rill.json" }
+```
+
+Or use `rill check --types` (see below) to typecheck without managing tsconfig directly.
 
 ### rill install
 
@@ -72,19 +84,36 @@ Install an extension into `.rill/npm/` and register it as a mount in `rill-confi
 ```bash
 rill install @rcrsr/rill-ext-datetime          # install from npm
 rill install @rcrsr/rill-ext-datetime --as dt  # custom mount name
-rill install ./local-ext                       # install from local path
+rill install ./local-ext                       # install from a local directory
+rill install ./extensions/crawler.ts --as crawler  # single-file source
+rill install --dry-run @rcrsr/rill-ext-anthropic   # preview without writing
 ```
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
-| `--as <mount>` | Mount name to use (default: derived from package name) |
-| `--pin` | Pin to the exact installed version (no caret prefix) |
-| `--exact` | Alias for `--pin` |
-| `--range <semver>` | Specify a custom semver range |
+| `--as <mount>` | Mount name to use (default: derived from package name; required for single-file sources) |
+| `--pin` | Pin to the exact installed version (no caret prefix). Registry installs only. |
+| `--exact` | **Deprecated** alias for `--pin`. Will be removed in 0.20. |
+| `--range <semver>` | Specify a custom semver range. Registry installs only. |
+| `--dry-run` | Print what would be done without writing config or running npm. |
 
-Local-path installs (e.g., `./local-ext`) symlink the directory, so source edits propagate without reinstalling. They cannot be upgraded with `rill upgrade`.
+**Mount name derivation.** When `--as` is omitted, the mount name comes from:
+
+1. Local path (`./foo`, `/abs/path`): `path.basename(specifier)`.
+2. Scoped rill-ext (`@scope/rill-ext-X`): `X`.
+3. Plain rill-ext (`rill-ext-X`): `X`.
+4. Scoped package (`@scope/name`): `name` (last segment).
+5. Plain package: the specifier verbatim.
+
+Use `rill install --dry-run <pkg>` to preview the derived name before installing.
+
+**Source kinds:**
+
+- **Registry** — `@rcrsr/rill-ext-foo` or `pkg@^1.2.3`. npm install into `.rill/npm/`. Eligible for `--pin`/`--range`.
+- **Local directory** — `./my-ext`. npm symlinks the directory; source edits propagate without reinstalling. Cannot be upgraded with `rill upgrade`.
+- **Single-file source** — `./extensions/crawler.ts` (`.ts`/`.js`/`.mjs`/`.cjs`/`.tsx`/`.jsx`). Path is recorded verbatim in `rill-config.json`; npm is not invoked. `--as` is required, version flags are rejected. `rill list` labels it `local-file`. `rill uninstall` unregisters but leaves the file on disk.
 
 ### rill uninstall
 
@@ -104,6 +133,8 @@ rill upgrade <mount>
 
 Local-path mounts cannot be upgraded; they are symlinked, so edits to the source directory are picked up automatically.
 
+Pinned mounts (`pkg@1.2.3` with no caret/range) are a no-op — the mount was pinned on purpose. To repin to a new version, run `rill install <pkg>@latest --pin --as <mount>`.
+
 ### rill list
 
 List all installed extensions and their mount paths.
@@ -118,6 +149,12 @@ rill list --json                    # machine-readable output
 | Flag | Description |
 |------|-------------|
 | `--json` | Emit results as JSON array |
+
+The `source` column distinguishes:
+
+- `registry` — installed from npm into `.rill/npm/`.
+- `local` — local directory, symlinked into `.rill/npm/`.
+- `local-file` — single-file source (`.ts`/`.js`/`.mjs`/etc.) recorded verbatim in `rill-config.json`.
 
 ### rill exec
 
@@ -162,12 +199,13 @@ rill eval '[1, 2, 3] -> map |x|($x * 2)'  # [2, 4, 6]
 
 ### rill check
 
-Lint and validate rill scripts.
+Lint and validate rill scripts. Or, with `--types`, run `tsc --noEmit` against the project's TypeScript extensions.
 
 ```bash
 rill check script.rill             # text output
 rill check --format json script.rill
 rill check --fix script.rill       # auto-fix
+rill check --types                 # TypeScript type-check
 ```
 
 **Options:**
@@ -178,6 +216,7 @@ rill check --fix script.rill       # auto-fix
 | `--format text\|json` | Output format (default: text) |
 | `--verbose` | Include rule category in JSON output |
 | `--min-severity error\|warning\|info` | Severity threshold for non-zero exit (default: error) |
+| `--types` | Run `tsc --noEmit` against the project's `tsconfig.json`. Locates `tsc` from `node_modules/.bin/` or `.rill/npm/node_modules/.bin/`. Requires the user's `tsconfig.json` to extend `./.rill/tsconfig.rill.json` (written by `rill bootstrap`). |
 
 **Exit codes:**
 
@@ -224,7 +263,7 @@ See [CLI Reference](https://github.com/rcrsr/rill/blob/main/docs/integration-cli
 Compile a rill project into a self-contained output directory. Bundles extensions via esbuild, copies entry and module files, and writes an enriched `rill-config.json` with build metadata.
 
 ```bash
-rill build [project-dir] [--output <dir>]
+rill build [project-dir] [--output <dir>] [--flat]
 ```
 
 **Options:**
@@ -232,8 +271,9 @@ rill build [project-dir] [--output <dir>]
 | Flag | Description |
 |------|-------------|
 | `--output <dir>` | Output directory (default: `build/`) |
+| `--flat` | Write directly into `<output>` without a package-name subdirectory. |
 
-**Output structure:**
+**Output structure (default):**
 
 ```
 build/<package-name>/
@@ -245,6 +285,8 @@ build/<package-name>/
   run.js                 # CLI wrapper
   handler.js             # handler export for harness consumption
 ```
+
+**Output structure (`--flat`):** identical contents written directly into `<output>` without the package-name level. Use when you control the output dir and don't need to compose multiple packages.
 
 The `build` section in the output `rill-config.json` contains a SHA-256 checksum, rill runtime version, and config version.
 
@@ -275,6 +317,7 @@ When no subcommand is given, `project` is assumed.
 |------|-------------|
 | `--mount <name>` | Limit output to a single mount |
 | `--strict` | Exit 1 if any callable has `returnType: any` |
+| `--stubs` | Stub unset env vars referenced as `${env.X}` in `rill-config.json` with literal `"x"` before constructing extensions. Use to enumerate callable surface before credentials are populated (e.g., for LLM-driven authoring tools). String-typed config only; numeric/bool config may still cause factory construction to fail. |
 | `--config <path>` | Config file path (default: `./rill-config.json`) |
 
 **Options (handler):**

@@ -42,6 +42,7 @@ vi.mock('../../src/commands/list.js', () => ({
 vi.mock('../../src/cli-shared.js', () => ({
   CLI_VERSION: '0.0.0-test',
   VERSION: '0.0.0-test',
+  checkNodeVersion: () => null,
 }));
 
 // ============================================================

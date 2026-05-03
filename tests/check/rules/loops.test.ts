@@ -62,7 +62,9 @@ describe('LOOP_ACCUMULATOR', () => {
   const config = createConfig({ PREFER_DO_WHILE: 'off', USE_EACH: 'off' });
 
   it('accepts $ as accumulator in while loop', () => {
-    expect(hasViolations('0 -> while ($ < 5) do { $ + 1 }', config)).toBe(false);
+    expect(hasViolations('0 -> while ($ < 5) do { $ + 1 }', config)).toBe(
+      false
+    );
   });
 
   it('accepts $ as accumulator in do-while loop', () => {

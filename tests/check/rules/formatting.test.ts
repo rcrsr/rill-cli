@@ -119,9 +119,10 @@ describe('isBareReference', () => {
   });
 
   it('returns false for non-expression node (EC-2)', () => {
-    // Parse returns a Script, which is not an Expression
+    // Parse returns a Script, which is not an Expression. Cast through
+    // unknown so the EC-2 branch can be exercised without `any`.
     const script = parse('$');
-    expect(isBareReference(script as any)).toBe(false);
+    expect(isBareReference(script as unknown as ExpressionNode)).toBe(false);
   });
 
   it('returns false for named variable with access chain $x.field', () => {

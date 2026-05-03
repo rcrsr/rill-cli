@@ -15,6 +15,42 @@ export function isLocalPath(specifier: string): boolean {
 }
 
 /**
+ * Extract the bare package name from a registry specifier or mount value.
+ *
+ * Strips the trailing version qualifier — the part after the last '@' that is
+ * NOT in the leading scope position. The leading '@' on scoped packages
+ * (`@scope/...`) is preserved.
+ *
+ * Examples:
+ *   "@rcrsr/rill-ext-datetime"       -> "@rcrsr/rill-ext-datetime"
+ *   "@rcrsr/rill-ext-datetime@0.19.0"-> "@rcrsr/rill-ext-datetime"
+ *   "@rcrsr/rill-ext-datetime@^0.19.0"-> "@rcrsr/rill-ext-datetime"
+ *   "my-pkg@^1.0.0"                  -> "my-pkg"
+ *   "my-pkg"                         -> "my-pkg"
+ */
+export function extractPackageName(specifier: string): string {
+  const atIndex = specifier.indexOf('@', 1);
+  if (atIndex === -1) {
+    return specifier;
+  }
+  return specifier.slice(0, atIndex);
+}
+
+/** Single-file extension extensions that `rill install ./foo.ts --as bar` accepts. */
+const LOCAL_FILE_EXTS = ['.ts', '.js', '.mjs', '.cjs', '.tsx', '.jsx'];
+
+/**
+ * Returns true when specifier is a local path pointing at a single source file
+ * (ts/js/mjs/cjs/tsx/jsx). Single-file local paths bypass npm and are recorded
+ * verbatim in rill-config.json.
+ */
+export function isLocalFilePath(specifier: string): boolean {
+  if (!isLocalPath(specifier)) return false;
+  const lower = specifier.toLowerCase();
+  return LOCAL_FILE_EXTS.some((ext) => lower.endsWith(ext));
+}
+
+/**
  * Derive mount path from a package specifier or local path.
  *
  * Algorithm (FR-EXT-2/3/4):

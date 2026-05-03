@@ -18,7 +18,7 @@ import {
   BootstrapMissingError,
   resolvePrefix,
 } from './prefix.js';
-import { isLocalPath } from './mount-derive.js';
+import { extractPackageName, isLocalPath } from './mount-derive.js';
 import { readConfigSnapshot, applyMountEdit, hasMount } from './config-edit.js';
 import { npmInstall, NpmNotFoundError } from './npm-runner.js';
 
@@ -27,44 +27,35 @@ import { npmInstall, NpmNotFoundError } from './npm-runner.js';
 // ============================================================
 
 const USAGE = `\
-Usage: rill upgrade <mount> [--pin] [--exact] [--range <semver>]
+Usage: rill upgrade <mount> [--pin] [--range <semver>]
 
-Upgrade an installed extension to a newer version.
+Upgrade an installed extension to a newer version. Pinned mounts (e.g.
+"pkg@1.2.3" with no caret/range) are a no-op; re-pin with
+\`rill install <pkg>@latest --pin\`.
 
 Arguments:
   <mount>          Mount name as it appears in rill-config.json (e.g. datetime)
 
 Options:
   --pin            Record exact installed version (no caret)
-  --exact          Alias for --pin
+  --exact          Deprecated alias for --pin (will be removed in 0.20)
   --range <semver> Install and record a custom semver range verbatim
   --help           Show this help message
 `;
 
-// ============================================================
-// HELPERS
-// ============================================================
-
 /**
- * Extract the bare package name from a registry mount value.
+ * Detect whether a mount value is pinned to an exact version.
  *
- * Strips the trailing version qualifier: the part after the last '@' that is
- * NOT the leading scope prefix.
- *
- * Examples:
- *   "@rcrsr/rill-ext-datetime@^0.19.0" -> "@rcrsr/rill-ext-datetime"
- *   "@rcrsr/rill-ext-datetime"         -> "@rcrsr/rill-ext-datetime"
- *   "my-pkg@^1.0.0"                    -> "my-pkg"
- *   "my-pkg"                           -> "my-pkg"
+ * A mount value is "pinned" when its version qualifier is a bare semver
+ * (e.g. "@rcrsr/rill-ext-foo@1.2.3" or "pkg@1.2.3-beta.1") with no caret,
+ * tilde, or range markers. Local-path mounts and bare package names without
+ * any version are not pinned.
  */
-function extractPackageName(mountValue: string): string {
-  // Scoped packages start with '@'; the leading '@' is NOT a version delimiter.
-  // Find the last '@' that appears AFTER position 1 (so it isn't the scope prefix).
-  const atIndex = mountValue.indexOf('@', 1);
-  if (atIndex === -1) {
-    return mountValue;
-  }
-  return mountValue.slice(0, atIndex);
+function isPinnedMountValue(value: string): boolean {
+  const atIndex = value.indexOf('@', 1);
+  if (atIndex === -1) return false;
+  const versionPart = value.slice(atIndex + 1);
+  return /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(versionPart);
 }
 
 // ============================================================
@@ -104,6 +95,13 @@ export async function run(argv: string[]): Promise<number> {
     process.stderr.write('Usage: rill upgrade <mount>\n');
     process.stderr.write('  Missing required argument: <mount>\n');
     return 1;
+  }
+
+  // P2-1: --exact is deprecated; warn once before continuing.
+  if (values['exact'] === true) {
+    process.stderr.write(
+      'warning: --exact is deprecated, use --pin (will be removed in 0.20)\n'
+    );
   }
 
   const pin = values['pin'] === true || values['exact'] === true;
@@ -158,6 +156,20 @@ export async function run(argv: string[]): Promise<number> {
       `  Local-path mounts cannot be upgraded. Edit the source directly, then re-run 'rill install ${currentValue} --as ${mount}'.\n`
     );
     return 1;
+  }
+
+  // P2-3: Pinned mounts are a no-op for upgrade.
+  // The user pinned on purpose; re-pin via 'rill install <pkg>@latest --pin'.
+  if (isPinnedMountValue(currentValue)) {
+    const atIndex = currentValue.indexOf('@', 1);
+    const pkgName =
+      atIndex === -1 ? currentValue : currentValue.slice(0, atIndex);
+    const version = atIndex === -1 ? '?' : currentValue.slice(atIndex + 1);
+    process.stdout.write(
+      `mount '${mount}' is pinned to ${version}; upgrade is a no-op.\n` +
+        `Use 'rill install ${pkgName}@latest --pin --as ${mount}' to repin.\n`
+    );
+    return 0;
   }
 
   // ---- Step 4: Print current value ----

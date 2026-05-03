@@ -12,7 +12,7 @@
 
 import { parseArgs } from 'node:util';
 import { printHelp } from './commands/help.js';
-import { CLI_VERSION, VERSION } from './cli-shared.js';
+import { CLI_VERSION, VERSION, checkNodeVersion } from './cli-shared.js';
 import { run as bootstrapRun } from './commands/bootstrap.js';
 import { run as installRun } from './commands/install.js';
 import { run as uninstallRun } from './commands/uninstall.js';
@@ -58,6 +58,14 @@ const PHASE3_COMMANDS: Record<string, CommandHandler> = {
  * @returns Exit code (0 = success, 1 = error)
  */
 export async function main(argv: string[]): Promise<number> {
+  // Fail fast on unsupported Node versions before any subcommand work.
+  // engines.node in package.json is the source of truth for the minimum.
+  const nodeError = checkNodeVersion();
+  if (nodeError !== null) {
+    process.stderr.write(`${nodeError}\n`);
+    return 1;
+  }
+
   // Extract positionals and named flags
   const { positionals } = parseArgs({
     args: argv,

@@ -218,6 +218,47 @@ export function determineExitCode(value: NativeValue): {
 }
 
 /**
+ * Minimum Node.js version required by rill-cli.
+ * Mirrors `engines.node` in package.json.
+ */
+export const MIN_NODE_VERSION = '22.16.0';
+
+/**
+ * Compare two semver-like X.Y.Z strings numerically. Pre-release suffixes are stripped.
+ *
+ * @returns negative if a < b, 0 if equal, positive if a > b
+ */
+function compareSemver(a: string, b: string): number {
+  const parse = (v: string): [number, number, number] => {
+    const core = v.split('-')[0] ?? v;
+    const parts = core.split('.').map((p) => parseInt(p, 10));
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  };
+  const [aMaj, aMin, aPat] = parse(a);
+  const [bMaj, bMin, bPat] = parse(b);
+  if (aMaj !== bMaj) return aMaj - bMaj;
+  if (aMin !== bMin) return aMin - bMin;
+  return aPat - bPat;
+}
+
+/**
+ * Throw-style assertion that the running Node version meets MIN_NODE_VERSION.
+ *
+ * Returns null when the runtime is acceptable; returns a user-facing error
+ * message otherwise. The message is suitable for writing directly to stderr.
+ *
+ * Extracted from CLI entry for unit testability.
+ */
+export function checkNodeVersion(
+  actual: string = process.versions.node
+): string | null {
+  if (compareSemver(actual, MIN_NODE_VERSION) < 0) {
+    return `error: rill requires Node >= ${MIN_NODE_VERSION} (you have ${actual})`;
+  }
+  return null;
+}
+
+/**
  * Detect help or version flags in CLI argument array.
  * Checks for --help, -h, --version, -v in any position.
  *

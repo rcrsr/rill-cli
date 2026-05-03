@@ -43,15 +43,6 @@ function hasViolations(source: string, config?: CheckConfig): boolean {
   return diagnostics.length > 0;
 }
 
-/**
- * Validate source and get diagnostic codes.
- */
-function getCodes(source: string, config?: CheckConfig): string[] {
-  const ast = parse(source);
-  const diagnostics = validateScript(ast, source, config ?? createConfig());
-  return diagnostics.map((d) => d.code);
-}
-
 // ============================================================
 // USE_EMPTY_METHOD TESTS
 // ============================================================

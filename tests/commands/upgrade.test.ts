@@ -400,4 +400,87 @@ describe('upgrade', () => {
       expect(configAfter).toBe(configBefore);
     });
   });
+
+  // ============================================================
+  // P2-3: Pinned mount no-op
+  // ============================================================
+
+  describe('P2-3: pinned mount no-op', () => {
+    it('exits 0 and does not run npm when mount is pinned', async () => {
+      bootstrapProject(tmpDir, {
+        datetime: '@rcrsr/rill-ext-datetime@1.2.3',
+      });
+
+      const { run } = await import('../../src/commands/upgrade.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['datetime']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(mocks.spawn).not.toHaveBeenCalled();
+      const out = cap.stdout.join('');
+      expect(out).toContain("mount 'datetime' is pinned to 1.2.3");
+      expect(out).toContain('--pin --as datetime');
+
+      // Config must remain byte-equal
+      const cfg = fs.readFileSync(
+        path.join(tmpDir, 'rill-config.json'),
+        'utf8'
+      );
+      const parsed = JSON.parse(cfg) as {
+        extensions: { mounts: Record<string, string> };
+      };
+      expect(parsed.extensions.mounts['datetime']).toBe(
+        '@rcrsr/rill-ext-datetime@1.2.3'
+      );
+    });
+
+    it('treats caret as upgradeable, not pinned', async () => {
+      bootstrapProject(tmpDir, {
+        datetime: '@rcrsr/rill-ext-datetime@^1.2.3',
+      });
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      mocks.spawn.mockImplementation(
+        makeUpgradeSpawnMock(prefix, '@rcrsr/rill-ext-datetime', '1.3.0')
+      );
+
+      const { run } = await import('../../src/commands/upgrade.js');
+      const cap = captureOutput();
+      try {
+        await run(['datetime']);
+      } finally {
+        cap.restore();
+      }
+      expect(mocks.spawn).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // P2-1: --exact deprecation warning
+  // ============================================================
+
+  describe('P2-1: --exact deprecation warning', () => {
+    it('prints deprecation warning when --exact is used', async () => {
+      bootstrapProject(tmpDir, {
+        datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
+      });
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      mocks.spawn.mockImplementation(
+        makeUpgradeSpawnMock(prefix, '@rcrsr/rill-ext-datetime', '0.20.1')
+      );
+
+      const { run } = await import('../../src/commands/upgrade.js');
+      const cap = captureOutput();
+      try {
+        await run(['datetime', '--exact']);
+      } finally {
+        cap.restore();
+      }
+      expect(cap.stderr.join('')).toContain('--exact is deprecated');
+    });
+  });
 });

@@ -34,6 +34,11 @@ export class BuildError extends Error {
 export interface BuildOptions {
   readonly outputDir?: string | undefined;
   readonly introspect?: boolean | undefined;
+  /**
+   * When true, write build output directly into outputDir without nesting
+   * under a package-name subdirectory (P3-2 / `rill build --flat`).
+   */
+  readonly flat?: boolean | undefined;
 }
 
 export interface BuildResult {
@@ -649,9 +654,15 @@ export async function buildPackage(
     originalConfig: rawConfigObj,
   };
 
-  // Create package output directory: <outputDir>/<packageName>/
-  // Only clean the package subdirectory to preserve other packages' output.
-  const packageOutDir = path.join(absOutputDir, packageName);
+  // Create package output directory.
+  // Default: <outputDir>/<packageName>/ — nesting prevents collisions when
+  // multiple packages share an outputDir.
+  // --flat: write directly into <outputDir>. Caller is responsible for not
+  // mixing multiple packages' output in a single flat dir.
+  const flat = options?.flat === true;
+  const packageOutDir = flat
+    ? absOutputDir
+    : path.join(absOutputDir, packageName);
   try {
     await rm(packageOutDir, { recursive: true, force: true });
     await mkdir(packageOutDir, { recursive: true });

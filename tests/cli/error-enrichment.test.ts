@@ -9,10 +9,7 @@ import {
   suggestSimilarNames,
   enrichError,
 } from '../../src/cli-error-enrichment.js';
-import type {
-  SourceSpan,
-  SourceLocation,
-} from '@rcrsr/rill';
+import type { SourceSpan, SourceLocation } from '@rcrsr/rill';
 import { RuntimeError } from '@rcrsr/rill';
 
 describe('extractSnippet', () => {

@@ -43,6 +43,7 @@ interface ProjectArgs {
   mountName: string | undefined;
   strict: boolean;
   configFlag: string | undefined;
+  stubs: boolean;
 }
 
 interface HandlerArgs {
@@ -121,11 +122,14 @@ function parseProjectArgs(argv: string[]): ProjectArgs {
   let mountName: string | undefined;
   let strict = false;
   let configFlag: string | undefined;
+  let stubs = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--strict') {
       strict = true;
+    } else if (arg === '--stubs') {
+      stubs = true;
     } else if (arg === '--mount') {
       const next = argv[i + 1];
       if (next === undefined || next.startsWith('-')) {
@@ -147,7 +151,7 @@ function parseProjectArgs(argv: string[]): ProjectArgs {
     }
   }
 
-  return { cmd: 'project', mountName, strict, configFlag };
+  return { cmd: 'project', mountName, strict, configFlag, stubs };
 }
 
 function parseHandlerArgs(argv: string[]): HandlerArgs {
@@ -207,6 +211,11 @@ Subcommands:
 Options (project):
   --mount <name>    Limit output to a single mount
   --strict          Exit 1 if any callable has returnType: any
+  --stubs           Stub unset env vars referenced as \${env.X} in rill-config.json
+                    with literal "x" before constructing extensions. Use to
+                    enumerate the surface before credentials are populated.
+                    Note: only string-typed config is stubbed; numeric/bool
+                    config may still cause factory construction to fail.
   --config <path>   Path to rill-config.json (defaults to ./rill-config.json)
 
 Options (handler):
@@ -431,10 +440,73 @@ async function disposeAll(
 }
 
 // ---------------------------------------------------------------------------
+// --stubs support (P0-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk a rill-config.json text for `${env.NAME}` references and stub any
+ * unset env vars to literal "x" so factories construct with a placeholder
+ * credential instead of throwing.
+ *
+ * Returns the names of vars that were stubbed (already-set vars are left
+ * alone). Idempotent: safe to call when no refs are present.
+ */
+function applyEnvStubs(configText: string): string[] {
+  const stubbed: string[] = [];
+  const seen = new Set<string>();
+  // Accept any POSIX-shell-valid env var name. Convention is uppercase, but
+  // Linux is case-sensitive and rill-config doesn't enforce upper-case.
+  const re = /\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(configText)) !== null) {
+    const name = match[1]!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (process.env[name] === undefined || process.env[name] === '') {
+      process.env[name] = 'x';
+      stubbed.push(name);
+    }
+  }
+  return stubbed;
+}
+
+// ---------------------------------------------------------------------------
 // Subcommand handlers
 // ---------------------------------------------------------------------------
 
 async function runProject(args: ProjectArgs): Promise<number> {
+  if (args.stubs) {
+    let configPathForStubs: string;
+    try {
+      configPathForStubs = resolveConfigPath({
+        ...(args.configFlag !== undefined
+          ? { configFlag: args.configFlag }
+          : {}),
+        cwd: process.cwd(),
+      });
+    } catch (err) {
+      if (err instanceof ConfigError) {
+        process.stderr.write(err.message + '\n');
+        return 1;
+      }
+      throw err;
+    }
+    let configText = '';
+    try {
+      configText = readFileSync(configPathForStubs, 'utf8');
+    } catch {
+      // Fall through; loadConfigAndProject will surface the real error.
+    }
+    if (configText !== '') {
+      const stubbed = applyEnvStubs(configText);
+      if (stubbed.length > 0) {
+        process.stderr.write(
+          `[describe] stubbed ${stubbed.length} env var${stubbed.length === 1 ? '' : 's'} for surface enumeration: ${stubbed.join(', ')}\n`
+        );
+      }
+    }
+  }
+
   const { configPath, project } = await loadConfigAndProject(args.configFlag);
 
   const visited = new WeakSet<object>();

@@ -5,6 +5,9 @@
  * Validates Rill source files against linting rules.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
 import type { Diagnostic, Severity } from './check/index.js';
 import {
   VALIDATION_RULES,
@@ -38,6 +41,7 @@ export type ParsedCheckArgs =
       format: 'text' | 'json';
       minSeverity: MinSeverity;
     }
+  | { mode: 'types' }
   | { mode: 'help' };
 
 /**
@@ -51,6 +55,12 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
   const helpVersionFlag = detectHelpVersionFlag(argv);
   if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
     return { mode: 'help' };
+  }
+
+  // P0-1: --types runs `tsc --noEmit` against the user's tsconfig.json,
+  // resolving extension types out of .rill/npm/ via tsconfig.rill.json.
+  if (argv.includes('--types')) {
+    return { mode: 'types' };
   }
 
   // Extract flags
@@ -97,6 +107,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     '--verbose',
     '--format',
     '--min-severity',
+    '--types',
   ]);
 
   for (let i = 0; i < argv.length; i++) {
@@ -285,6 +296,98 @@ function formatDiagnosticsJSON(
 }
 
 // ============================================================
+// MIN-SEVERITY ONE-SHOT NOTICE (P1-3)
+// ============================================================
+
+/**
+ * Print the 0.19.1 min-severity default-change notice once per project.
+ *
+ * Conditions:
+ *  - User did not pass --min-severity (caller checks this).
+ *  - No .rill-check.json in the project (project hasn't customized rules).
+ *  - No marker file at .rill/.notices/min-severity-0.19.1.
+ *
+ * On first run that meets all three, write the marker and emit the notice.
+ * Failures to read or write the marker are non-fatal; the notice may be
+ * shown more than once on broken filesystems.
+ */
+function maybePrintMinSeverityNotice(): void {
+  const cwd = process.cwd();
+
+  if (fs.existsSync(path.join(cwd, '.rill-check.json'))) return;
+
+  const noticesDir = path.join(cwd, '.rill', '.notices');
+  const marker = path.join(noticesDir, 'min-severity-0.19.1');
+  if (fs.existsSync(marker)) return;
+
+  process.stderr.write(
+    'notice: rill check defaults changed in 0.19.1 — info/warning diagnostics no longer fail. ' +
+      'Pass --min-severity info to restore strict behavior.\n'
+  );
+
+  try {
+    fs.mkdirSync(noticesDir, { recursive: true });
+    fs.writeFileSync(marker, '', 'utf8');
+  } catch {
+    // Non-fatal: missing .rill/ or unwritable marker means we may emit
+    // the notice again on the next run, which is acceptable.
+  }
+}
+
+// ============================================================
+// TYPE CHECK (--types)
+// ============================================================
+
+/**
+ * Run `tsc --noEmit` against the project's tsconfig.json.
+ *
+ * Resolves tsc in order: project node_modules/.bin/tsc, then
+ * .rill/npm/node_modules/.bin/tsc. Fails with a clear hint when neither is
+ * present — we don't bundle typescript with rill-cli to keep install size down.
+ *
+ * Relies on the user's tsconfig.json extending `./.rill/tsconfig.rill.json`
+ * (written by `rill bootstrap`) so module resolution finds extension types
+ * under .rill/npm/node_modules/.
+ */
+async function runTypeCheck(): Promise<number> {
+  const cwd = process.cwd();
+  const tsconfigPath = path.join(cwd, 'tsconfig.json');
+  if (!fs.existsSync(tsconfigPath)) {
+    process.stderr.write(
+      `error: no tsconfig.json at ${tsconfigPath}\n` +
+        '  Create one and add: "extends": "./.rill/tsconfig.rill.json"\n'
+    );
+    return 1;
+  }
+
+  const candidates = [
+    path.join(cwd, 'node_modules', '.bin', 'tsc'),
+    path.join(cwd, '.rill', 'npm', 'node_modules', '.bin', 'tsc'),
+  ];
+  const tsc = candidates.find((p) => fs.existsSync(p));
+  if (tsc === undefined) {
+    process.stderr.write(
+      'error: tsc not found.\n' +
+        '  Install TypeScript locally: npm install --save-dev typescript\n' +
+        '  Or under .rill/npm: npm install --prefix .rill/npm typescript\n'
+    );
+    return 1;
+  }
+
+  return await new Promise<number>((resolveExit) => {
+    const child = spawn(tsc, ['--noEmit', '-p', tsconfigPath], {
+      cwd,
+      stdio: 'inherit',
+    });
+    child.on('exit', (code) => resolveExit(code ?? 1));
+    child.on('error', (err) => {
+      process.stderr.write(`error: failed to spawn tsc: ${err.message}\n`);
+      resolveExit(1);
+    });
+  });
+}
+
+// ============================================================
 // MAIN ENTRY POINT
 // ============================================================
 
@@ -301,7 +404,9 @@ export async function main(argv: string[]): Promise<number> {
     if (args.mode === 'help') {
       console.log(`rill check - Validate Rill scripts
 
-Usage: rill check [options] <file>
+Usage:
+  rill check [options] <file>     Lint a Rill script
+  rill check --types              Run \`tsc --noEmit\` against tsconfig.json
 
 Options:
   --fix                    Apply automatic fixes
@@ -309,6 +414,9 @@ Options:
   --verbose                Include category and documentation references
   --min-severity <level>   Severity threshold for non-zero exit:
                            error (default), warning, or info
+  --types                  Run TypeScript type-check via local tsc.
+                           Requires tsconfig.json to extend
+                           ./.rill/tsconfig.rill.json (written by bootstrap).
   -h, --help               Show this help message
 
 Exit codes:
@@ -319,6 +427,10 @@ Exit codes:
       return 0;
     }
 
+    if (args.mode === 'types') {
+      return await runTypeCheck();
+    }
+
     // At this point, args.mode must be 'check'
     // TypeScript needs explicit assertion after early returns
     if (args.mode !== 'check') {
@@ -327,6 +439,13 @@ Exit codes:
 
     // Load configuration from cwd (null if not present)
     const config = loadConfig(process.cwd()) ?? createDefaultConfig();
+
+    // P1-3: One-shot notice on the 0.19.1 min-severity default change.
+    // Suppressed by a marker file under .rill/.notices/. Skipped if the
+    // user opted in (--min-severity) or has a .rill-check.json overriding defaults.
+    if (!argv.includes('--min-severity')) {
+      maybePrintMinSeverityNotice();
+    }
 
     // Read source file
     let source: string;

@@ -521,4 +521,189 @@ describe('install', () => {
       );
     });
   });
+
+  // ============================================================
+  // P2-1: --exact deprecation warning
+  // ============================================================
+
+  describe('P2-1: --exact deprecation warning', () => {
+    it('prints deprecation warning when --exact is used', async () => {
+      bootstrapProject(tmpDir);
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+      mocks.loadProject.mockResolvedValue({});
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime', '--exact']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(cap.stderr.join('')).toContain('--exact is deprecated');
+    });
+
+    it('does not warn when only --pin is used', async () => {
+      bootstrapProject(tmpDir);
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+      mocks.loadProject.mockResolvedValue({});
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      try {
+        await run(['@rcrsr/rill-ext-datetime', '--pin']);
+      } finally {
+        cap.restore();
+      }
+      expect(cap.stderr.join('')).not.toContain('deprecated');
+    });
+  });
+
+  // ============================================================
+  // P2-2: --dry-run preview
+  // ============================================================
+
+  describe('P2-2: --dry-run preview', () => {
+    it('prints preview without writing config or running npm', async () => {
+      bootstrapProject(tmpDir);
+      const configPath = path.join(tmpDir, 'rill-config.json');
+      const before = fs.readFileSync(configPath, 'utf8');
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime', '--dry-run']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(mocks.spawn).not.toHaveBeenCalled();
+      const after = fs.readFileSync(configPath, 'utf8');
+      expect(after).toBe(before);
+
+      const out = cap.stdout.join('');
+      expect(out).toContain('[dry-run] mount: datetime');
+      expect(out).toContain('[dry-run] specifier: @rcrsr/rill-ext-datetime');
+      expect(out).toContain('[dry-run] would run: npm install');
+    });
+  });
+
+  // ============================================================
+  // P0-3: single-file install
+  // ============================================================
+
+  describe('P0-3: single-file install', () => {
+    it('installs a .ts file mount without npm', async () => {
+      bootstrapProject(tmpDir);
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+
+      mocks.loadProject.mockResolvedValue({});
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./extensions/crawler.ts', '--as', 'crawler']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(mocks.spawn).not.toHaveBeenCalled();
+
+      const config = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'rill-config.json'), 'utf8')
+      ) as { extensions: { mounts: Record<string, string> } };
+      expect(config.extensions.mounts['crawler']).toBe(
+        './extensions/crawler.ts'
+      );
+    });
+
+    it('rejects single-file install without --as', async () => {
+      bootstrapProject(tmpDir);
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./extensions/crawler.ts']);
+      } finally {
+        cap.restore();
+      }
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain('requires --as');
+    });
+
+    it('rejects single-file install with --pin', async () => {
+      bootstrapProject(tmpDir);
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([
+          './extensions/crawler.ts',
+          '--as',
+          'crawler',
+          '--pin',
+        ]);
+      } finally {
+        cap.restore();
+      }
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain('not valid for single-file');
+    });
+
+    it('rejects single-file install when file is missing', async () => {
+      bootstrapProject(tmpDir);
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./extensions/missing.ts', '--as', 'missing']);
+      } finally {
+        cap.restore();
+      }
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain('File not found');
+    });
+
+    it('emits bootstrap hint when rill-config.json is missing', async () => {
+      // Create the file so the existence check passes; rill-config.json absent.
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./extensions/crawler.ts', '--as', 'crawler']);
+      } finally {
+        cap.restore();
+      }
+      expect(exitCode).toBe(1);
+      const err = cap.stderr.join('');
+      expect(err).toContain('rill-config.json not found');
+      expect(err).toContain("Run 'rill bootstrap'");
+    });
+  });
 });

@@ -302,4 +302,48 @@ describe('list', () => {
       expect(out).toContain('unknown');
     });
   });
+
+  // ============================================================
+  // P0-3: local-file source label
+  // ============================================================
+
+  describe('P0-3: local-file source', () => {
+    it('labels single-file mounts as local-file in human output', async () => {
+      bootstrapProject(tmpDir, {
+        crawler: './extensions/crawler.ts',
+      });
+      const { run } = await import('../../src/commands/list.js');
+      const cap = captureOutput();
+      try {
+        await run([]);
+      } finally {
+        cap.restore();
+      }
+      const out = cap.stdout.join('');
+      expect(out).toContain('crawler');
+      expect(out).toContain('local-file');
+    });
+
+    it('emits source: local-file in --json output', async () => {
+      bootstrapProject(tmpDir, {
+        crawler: './extensions/crawler.ts',
+      });
+      const { run } = await import('../../src/commands/list.js');
+      const cap = captureOutput();
+      try {
+        await run(['--json']);
+      } finally {
+        cap.restore();
+      }
+      const out = cap.stdout.join('');
+      const rows = JSON.parse(out) as Array<{
+        mount: string;
+        source: string;
+        version: string | null;
+      }>;
+      const row = rows.find((r) => r.mount === 'crawler');
+      expect(row?.source).toBe('local-file');
+      expect(row?.version).toBeNull();
+    });
+  });
 });

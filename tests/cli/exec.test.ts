@@ -52,11 +52,9 @@ describe('rill-exec', () => {
       });
     });
 
-    it('parses help and version flags', () => {
+    it('parses help flags', () => {
       expect(parseArgs(['--help']).mode).toBe('help');
       expect(parseArgs(['-h']).mode).toBe('help');
-      expect(parseArgs(['--version']).mode).toBe('version');
-      expect(parseArgs(['-v']).mode).toBe('version');
     });
 
     it('throws on unknown flags', () => {

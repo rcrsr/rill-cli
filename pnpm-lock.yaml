@@ -12,8 +12,8 @@ importers:
         specifier: ~0.19.2
         version: 0.19.2
       '@rcrsr/rill-config':
-        specifier: ~0.19.0
-        version: 0.19.0(@rcrsr/rill@0.19.2)
+        specifier: ~0.19.1
+        version: 0.19.1(@rcrsr/rill@0.19.2)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -290,8 +290,8 @@ packages:
   '@oxc-project/types@0.122.0':
     resolution: {integrity: sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==}
 
-  '@rcrsr/rill-config@0.19.0':
-    resolution: {integrity: sha512-8ZAxyUUnFLJgkhkSUugunlXqHKfCa3HZL4734MopY8+mzEruJV3A9zFT1CM+7xtmdy0BUZ5Y07AznSG0Big0Vg==}
+  '@rcrsr/rill-config@0.19.1':
+    resolution: {integrity: sha512-HhqPNwpKQdBi4I3n5ApoE05iXZKTNAoyiSLWqga6DkTa3qV0mJ9fubPcJA5qA8/3Q0A7jT2NlK2rVVv8uGYfrw==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@rcrsr/rill': ~0.19.0
@@ -1192,7 +1192,7 @@ snapshots:
 
   '@oxc-project/types@0.122.0': {}
 
-  '@rcrsr/rill-config@0.19.0(@rcrsr/rill@0.19.2)':
+  '@rcrsr/rill-config@0.19.1(@rcrsr/rill@0.19.2)':
     dependencies:
       '@rcrsr/rill': 0.19.2
       semver: 7.7.4

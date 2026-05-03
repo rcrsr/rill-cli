@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { rm, readFile, writeFile, mkdtemp } from 'node:fs/promises';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { rm, readFile, writeFile, mkdir, mkdtemp } from 'node:fs/promises';
 import { existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
@@ -10,6 +10,22 @@ import {
   inlinePackageJsonRequires,
   findOffendingDynamicRequires,
 } from '../../src/build/build.js';
+
+// ============================================================
+// SPY: loadProject — tracks calls for AC-9 prefix assertion
+// ============================================================
+
+const mocks = vi.hoisted(() => ({
+  loadProject: vi.fn(),
+}));
+
+vi.mock('@rcrsr/rill-config', async (importActual) => {
+  const actual = await importActual<typeof import('@rcrsr/rill-config')>();
+  mocks.loadProject.mockImplementation(
+    actual.loadProject as typeof mocks.loadProject
+  );
+  return { ...actual, loadProject: mocks.loadProject };
+});
 
 // ============================================================
 // MINIMAL FIXTURE
@@ -39,6 +55,21 @@ async function makeTmpDir(): Promise<string> {
  * Create a minimal package fixture in a temp directory using rill-config.json.
  * Returns the project directory path and the output dir path.
  */
+/**
+ * Initialize the .rill/npm/package.json marker so buildPackage's FR-EXT-9
+ * pre-check passes. Call this on any projectDir created via makeTmpDir()
+ * that will be passed to buildPackage.
+ */
+async function initRillNpm(projectDir: string): Promise<void> {
+  const rillNpmDir = path.join(projectDir, '.rill', 'npm');
+  await mkdir(rillNpmDir, { recursive: true });
+  await writeFile(
+    path.join(rillNpmDir, 'package.json'),
+    JSON.stringify({ name: 'rill-extensions', private: true }, null, 2),
+    'utf-8'
+  );
+}
+
 async function makeProjectFixture(
   overrides: Partial<typeof MINIMAL_RILL_CONFIG> = {},
   extraFiles: Record<string, string> = {}
@@ -58,6 +89,9 @@ async function makeProjectFixture(
     'utf-8'
   );
 
+  // Create .rill/npm/ and its package.json so buildPackage's FR-EXT-9 pre-check passes.
+  await initRillNpm(projectDir);
+
   for (const [filename, content] of Object.entries(extraFiles)) {
     await writeFile(path.join(projectDir, filename), content, 'utf-8');
   }
@@ -69,6 +103,7 @@ afterEach(async () => {
   for (const dir of tmpDirs.splice(0)) {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
+  mocks.loadProject.mockClear();
 });
 
 // ============================================================
@@ -251,6 +286,7 @@ export const extensionManifest = {
       ),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     const result = await buildPackage(projectDir, { outputDir });
 
@@ -367,6 +403,7 @@ export const extensionManifest = {
       ),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     const result = await buildPackage(projectDir, { outputDir });
 
@@ -390,6 +427,7 @@ describe('buildPackage error cases', () => {
   it('throws BuildError phase validation when rill-config.json is missing [AC-47]', async () => {
     const outputDir = await makeTmpDir();
     const nonExistentDir = path.join(outputDir, 'does-not-exist');
+    await initRillNpm(nonExistentDir);
 
     await expect(buildPackage(nonExistentDir, { outputDir })).rejects.toSatisfy(
       (e: unknown) => {
@@ -409,6 +447,7 @@ describe('buildPackage error cases', () => {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();
 
+    await initRillNpm(projectDir);
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
       '{ this is not valid json }',
@@ -433,6 +472,7 @@ describe('buildPackage error cases', () => {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();
 
+    await initRillNpm(projectDir);
     // Write config but NOT the .rill file
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
@@ -458,6 +498,7 @@ describe('buildPackage error cases', () => {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();
 
+    await initRillNpm(projectDir);
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
       JSON.stringify({
@@ -522,6 +563,7 @@ export const extensionManifest = {
       MINIMAL_RILL_SCRIPT,
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
       (e: unknown): e is BuildError =>
@@ -539,6 +581,7 @@ export const extensionManifest = {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();
 
+    await initRillNpm(projectDir);
     // Write a config that references a non-existent npm extension
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
@@ -611,6 +654,7 @@ describe('buildPackage boundary conditions', () => {
     const outputDir = await makeTmpDir();
     const dirName = path.basename(projectDir);
 
+    await initRillNpm(projectDir);
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
       JSON.stringify({ version: '0.1.0', main: 'main.rill:run' }),
@@ -680,6 +724,7 @@ export const extensionManifest = {
       ),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     const result = await buildPackage(projectDir, { outputDir });
 
@@ -735,6 +780,7 @@ export const extensionManifest = {
       ),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     const result = await buildPackage(projectDir, { outputDir });
 
@@ -760,6 +806,7 @@ export const extensionManifest = {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();
 
+    await initRillNpm(projectDir);
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
       JSON.stringify({ name: 'test', main: 'main.rill:run' }),
@@ -818,6 +865,7 @@ export const extensionManifest = {
       }),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     await expect(buildPackage(projectDir, { outputDir })).rejects.toThrow(
       'Invalid extension version'
@@ -874,6 +922,7 @@ export const extensionManifest = {
       }),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     const result = await buildPackage(projectDir, { outputDir });
 
@@ -1241,6 +1290,77 @@ describe('findOffendingDynamicRequires', () => {
 });
 
 // ============================================================
+// PHASE 3.5 ERROR TESTS
+// ============================================================
+
+// ----------------------------------------------------------
+// AC-E7 / EC-33: .rill/npm/package.json missing on rill build
+// ----------------------------------------------------------
+
+describe('buildPackage EC-33: .rill/npm/package.json missing', () => {
+  it('throws BuildError phase compilation with FR-EXT-9 message [AC-E7/EC-33]', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    // Write rill-config.json and main.rill but do NOT call initRillNpm —
+    // .rill/npm/package.json is absent.
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({ name: 'test', version: '0.1.0', main: 'main.rill:run' }),
+      'utf-8'
+    );
+    await writeFile(path.join(projectDir, 'main.rill'), `"hello"`, 'utf-8');
+
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof BuildError &&
+        e.phase === 'compilation' &&
+        e.message.includes('rill bootstrap') &&
+        e.message.includes(
+          'Run ’rill bootstrap’ to initialize this project'
+            .replace('’', "'")
+            .replace('’', "'")
+        )
+    );
+  });
+
+  it('FR-EXT-9 message contains verbatim bootstrap instruction text', async () => {
+    const projectDir = await makeTmpDir();
+    const outputDir = await makeTmpDir();
+
+    await writeFile(
+      path.join(projectDir, 'rill-config.json'),
+      JSON.stringify({ name: 'test', version: '0.1.0', main: 'main.rill:run' }),
+      'utf-8'
+    );
+    await writeFile(path.join(projectDir, 'main.rill'), `"hello"`, 'utf-8');
+
+    await expect(buildPackage(projectDir, { outputDir })).rejects.toSatisfy(
+      (e: unknown) =>
+        e instanceof BuildError &&
+        e.phase === 'compilation' &&
+        e.message.includes('rill bootstrap') &&
+        e.message.includes('project-dir argument')
+    );
+  });
+});
+
+// AC-9: buildPackage passes prefix = <projectDir>/.rill/npm to loadProject
+describe('buildPackage AC-9: loadProject prefix', () => {
+  it('passes prefix = <projectDir>/.rill/npm to loadProject [AC-9]', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    await buildPackage(projectDir, { outputDir });
+
+    expect(mocks.loadProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prefix: path.join(path.resolve(projectDir), '.rill', 'npm'),
+      })
+    );
+  });
+});
+
+// ============================================================
 // INTEGRATION: createRequire wiring discriminator (build pipeline)
 // ============================================================
 
@@ -1278,6 +1398,7 @@ describe('buildPackage — createRequire wiring discriminator', () => {
       ),
       'utf-8'
     );
+    await initRillNpm(projectDir);
 
     await expect(
       buildPackage(projectDir, { outputDir })

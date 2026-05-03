@@ -15,12 +15,7 @@
     "build"
   ],
   "bin": {
-    "rill-build": "./dist/cli-build.js",
-    "rill-check": "./dist/cli-check.js",
-    "rill-describe": "./dist/cli-describe.js",
-    "rill-eval": "./dist/cli-eval.js",
-    "rill-exec": "./dist/cli-exec.js",
-    "rill-run": "./dist/cli-run.js"
+    "rill": "./dist/cli.js"
   },
   "engines": {
     "node": ">=22.16.0"
@@ -39,18 +34,18 @@
   },
   "dependencies": {
     "@rcrsr/rill": "~0.19.2",
-    "@rcrsr/rill-config": "~0.19.0",
+    "@rcrsr/rill-config": "~0.19.1",
     "dotenv": "^17.4.2",
     "esbuild": "^0.28.0"
   },
   "peerDependencies": {
     "@rcrsr/rill": "~0.19.2",
-    "@rcrsr/rill-config": "~0.19.0"
+    "@rcrsr/rill-config": "~0.19.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@rcrsr/rill": "~0.19.2",
-    "@rcrsr/rill-config": "~0.19.0",
+    "@rcrsr/rill-config": "~0.19.1",
     "@rcrsr/rill-ext-datetime": "~0.19.0",
     "@types/node": "^25.6.0",
     "@typescript-eslint/eslint-plugin": "^8.59.1",

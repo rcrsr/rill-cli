@@ -114,12 +114,12 @@ describe('rill-check CLI', () => {
     args: string[]
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
-      const checkPath = path.join(process.cwd(), 'dist', 'cli-check.js');
+      const cliPath = path.join(process.cwd(), 'dist', 'cli.js');
       const env = { ...process.env };
       delete env['VITEST'];
       delete env['VITEST_WORKER_ID'];
       delete env['NODE_ENV'];
-      const proc = spawn('node', [checkPath, ...args], {
+      const proc = spawn('node', [cliPath, 'check', ...args], {
         cwd: tempDir,
         env,
       });
@@ -165,11 +165,6 @@ describe('rill-check CLI', () => {
     it('parses --help flag [AC-S6]', () => {
       expect(parseCheckArgs(['--help'])).toEqual({ mode: 'help' });
       expect(parseCheckArgs(['-h'])).toEqual({ mode: 'help' });
-    });
-
-    it('parses --version flag [AC-S5]', () => {
-      expect(parseCheckArgs(['--version'])).toEqual({ mode: 'version' });
-      expect(parseCheckArgs(['-v'])).toEqual({ mode: 'version' });
     });
 
     it('parses --fix flag [AC-S2]', () => {
@@ -309,25 +304,11 @@ describe('rill-check CLI', () => {
       const result = await execCheck(['--help']);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('rill-check');
+      expect(result.stdout).toContain('rill check');
       expect(result.stdout).toContain('Usage:');
       expect(result.stdout).toContain('--fix');
       expect(result.stdout).toContain('--format');
       expect(result.stdout).toContain('--verbose');
-    });
-
-    it('shows version number [AC-S5]', async () => {
-      const result = await execCheck(['--version']);
-
-      expect(result.exitCode).toBe(0);
-
-      // Verify version output format: "rill-check <cli-version> (rill <core-version>)"
-      const { readFile } = await import('fs/promises');
-      const packageJsonPath = path.resolve(process.cwd(), 'package.json');
-      const packageJson = JSON.parse(
-        await readFile(packageJsonPath, 'utf-8')
-      ) as { version: string };
-      expect(result.stdout.trim()).toContain(packageJson.version);
     });
   });
 

@@ -1,11 +1,9 @@
-#!/usr/bin/env node
 /**
  * Rill CLI - Evaluate rill expressions
  *
  * Usage:
- *   rill-eval '"hello".len'
- *   rill-eval --help
- *   rill-eval --version
+ *   rill eval '"hello".len'
+ *   rill eval --help
  */
 
 import {
@@ -19,8 +17,6 @@ import {
 import {
   determineExitCode,
   formatStatus,
-  VERSION,
-  CLI_VERSION,
   detectHelpVersionFlag,
 } from './cli-shared.js';
 
@@ -32,15 +28,15 @@ function parseArgs(
 ):
   | { mode: 'exec'; file: string; args: string[] }
   | { mode: 'eval'; expression: string }
-  | { mode: 'help' | 'version' } {
-  // Check for --help and --version in any position (supports -h/-v shorthands)
+  | { mode: 'help' } {
+  // Check for --help in any position (supports -h shorthand). --version is handled by the dispatcher.
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    return helpVersionFlag;
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    return { mode: 'help' };
   }
 
   // Check for unknown flags (anything starting with -)
-  const knownFlags = new Set(['--help', '-h', '--version', '-v']);
+  const knownFlags = new Set(['--help', '-h']);
   for (const arg of argv) {
     if (arg.startsWith('-') && arg !== '-' && !knownFlags.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
@@ -85,39 +81,25 @@ function showHelp(): void {
   process.stdout.write(`Rill Expression Evaluator
 
 Usage:
-  rill-eval <expression>      Evaluate a Rill expression
-  rill-eval -h, --help        Show this help message
-  rill-eval -v, --version     Show version information
+  rill eval <expression>      Evaluate a Rill expression
+  rill eval -h, --help        Show this help message
 
 Examples:
-  rill-eval '"hello".len'
-  rill-eval '5 + 3'
-  rill-eval '[1, 2, 3] -> map |x|($x * 2)'\n`);
+  rill eval '"hello".len'
+  rill eval '5 + 3'
+  rill eval '[1, 2, 3] -> map |x|($x * 2)'\n`);
 }
 
 /**
- * Display version information
+ * Entry point for rill eval subcommand
  */
-function showVersion(): void {
-  process.stdout.write(`rill-eval ${CLI_VERSION} (rill ${VERSION})\n`);
-}
-
-/**
- * Entry point for rill-eval binary
- */
-async function main(): Promise<void> {
+export async function main(argv: string[]): Promise<number> {
   try {
-    const args = process.argv.slice(2);
-    const command = parseArgs(args);
+    const command = parseArgs(argv);
 
     if (command.mode === 'help') {
       showHelp();
-      return;
-    }
-
-    if (command.mode === 'version') {
-      showVersion();
-      return;
+      return 0;
     }
 
     if (command.mode === 'eval') {
@@ -125,7 +107,7 @@ async function main(): Promise<void> {
 
       if (isInvalid(result.result)) {
         process.stderr.write(formatStatus(result.result) + '\n');
-        process.exit(1);
+        return 1;
       }
 
       const nativeResult = toNative(result.result);
@@ -136,26 +118,16 @@ async function main(): Promise<void> {
       } else {
         console.log(JSON.stringify(nativeResult, null, 2));
       }
-      process.exit(code);
+      return code;
     }
 
     // Unreachable - exec mode not supported in rill-eval
     console.error('Unexpected command mode');
-    process.exit(1);
+    return 1;
   } catch (err) {
     process.stderr.write(
       (err instanceof Error ? err.message : String(err)) + '\n'
     );
-    process.exit(1);
+    return 1;
   }
-}
-
-// Only run main if this is the entry point (not imported)
-const shouldRunMain =
-  process.env['NODE_ENV'] !== 'test' &&
-  !process.env['VITEST'] &&
-  !process.env['VITEST_WORKER_ID'];
-
-if (shouldRunMain) {
-  main();
 }

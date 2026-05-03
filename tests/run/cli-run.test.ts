@@ -3,6 +3,7 @@
  * Tests parseCliArgs flag parsing and the loadProject-based main() flow.
  */
 
+import path from 'node:path';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { parseCliArgs } from '../../src/cli-run.js';
 
@@ -247,50 +248,6 @@ describe('parseCliArgs', () => {
     });
   });
 
-  describe('--version flag', () => {
-    it('exits 0 and prints rill-run version when --version is provided', () => {
-      vi.spyOn(process, 'exit').mockImplementation((_code) => {
-        throw new Error('process.exit called');
-      });
-
-      let stdout = '';
-      const origStdout = process.stdout.write.bind(process.stdout);
-      (process.stdout.write as unknown) = (chunk: string) => {
-        stdout += chunk;
-        return true;
-      };
-
-      try {
-        expect(() => parseCliArgs(['--version'])).toThrow(
-          'process.exit called'
-        );
-        expect(stdout).toContain('rill-run');
-      } finally {
-        (process.stdout.write as unknown) = origStdout;
-      }
-    });
-
-    it('exits 0 and prints rill-run version when -v is provided', () => {
-      vi.spyOn(process, 'exit').mockImplementation((_code) => {
-        throw new Error('process.exit called');
-      });
-
-      let stdout = '';
-      const origStdout = process.stdout.write.bind(process.stdout);
-      (process.stdout.write as unknown) = (chunk: string) => {
-        stdout += chunk;
-        return true;
-      };
-
-      try {
-        expect(() => parseCliArgs(['-v'])).toThrow('process.exit called');
-        expect(stdout).toContain('rill-run');
-      } finally {
-        (process.stdout.write as unknown) = origStdout;
-      }
-    });
-  });
-
   describe('--create-bindings flag', () => {
     it('sets createBindings to default dir when --create-bindings has no value', () => {
       expect(parseCliArgs(['--create-bindings']).createBindings).toBe(
@@ -405,12 +362,14 @@ describe('main() loadProject flow', () => {
   });
 
   async function runMain(argv: string[]): Promise<void> {
-    process.argv = ['node', 'rill-run', ...argv];
     const { main } = await import('../../src/cli-run.js');
     try {
-      await main();
+      const code = await main(argv);
+      // main() returns the exit code rather than calling process.exit().
+      // Assign to exitCode so existing assertions on exitCode still work.
+      exitCode = code;
     } catch {
-      // process.exit() throws in test environment
+      // process.exit() throws in test environment when the spy fires
     }
   }
 
@@ -426,6 +385,7 @@ describe('main() loadProject flow', () => {
         expect.objectContaining({
           configPath: '/project/rill-config.json',
           rillVersion: expect.any(String) as string,
+          prefix: path.join('/project', '.rill', 'npm'),
         })
       );
     });

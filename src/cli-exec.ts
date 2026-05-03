@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * CLI Execution Entry Point
  *
@@ -13,8 +12,6 @@ import type { ExecutionResult } from '@rcrsr/rill';
 import {
   formatError,
   determineExitCode,
-  VERSION,
-  CLI_VERSION,
   detectHelpVersionFlag,
 } from './cli-shared.js';
 import { explainError } from './cli-explain.js';
@@ -32,7 +29,7 @@ export type ParsedArgs =
       maxStackDepth: number;
     }
   | { mode: 'eval'; expression: string }
-  | { mode: 'help' | 'version' }
+  | { mode: 'help' }
   | { mode: 'explain'; errorId: string };
 
 /**
@@ -42,10 +39,10 @@ export type ParsedArgs =
  * @returns Parsed command object
  */
 export function parseArgs(argv: string[]): ParsedArgs {
-  // Check for --help or --version flags in any position
+  // Check for --help flag in any position. --version is handled by the dispatcher.
   const helpVersionFlag = detectHelpVersionFlag(argv);
-  if (helpVersionFlag !== null) {
-    return helpVersionFlag;
+  if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
+    return { mode: 'help' };
   }
 
   // Check for --explain flag (IC-11)
@@ -102,8 +99,6 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const knownFlags = [
     '--help',
     '-h',
-    '--version',
-    '-v',
     '--explain',
     '--format',
     '--verbose',
@@ -234,9 +229,9 @@ export async function executeScript(
  *
  * Parses command-line arguments, executes scripts, and handles errors.
  * Writes results to stdout and errors to stderr.
- * Sets process.exit(1) on any error.
+ * Returns a numeric exit code.
  */
-export async function main(): Promise<void> {
+export async function main(argv: string[]): Promise<number> {
   let source: string | undefined;
   let formatOptions:
     | {
@@ -247,16 +242,15 @@ export async function main(): Promise<void> {
     | undefined;
 
   try {
-    const parsed = parseArgs(process.argv.slice(2));
+    const parsed = parseArgs(argv);
 
     switch (parsed.mode) {
       case 'help':
         console.log(`Usage:
-  rill-exec <script.rill> [args...]  Execute a Rill script file
-  rill-exec -                        Read script from stdin
-  rill-exec --help                   Show this help message
-  rill-exec --version                Show version information
-  rill-exec --explain RILL-XXXX      Show error documentation
+  rill exec <script.rill> [args...]  Execute a Rill script file
+  rill exec -                        Read script from stdin
+  rill exec --help                   Show this help message
+  rill exec --explain RILL-XXXX      Show error documentation
 
 Options:
   --format <format>         Output format: human, json, compact (default: human)
@@ -267,18 +261,13 @@ Arguments:
   args are passed to the script as a list of strings in $ (pipe value)
 
 Examples:
-  rill-exec script.rill
-  rill-exec script.rill arg1 arg2
-  rill-exec --format json script.rill
-  rill-exec --verbose --max-stack-depth 20 script.rill
-  rill-exec --explain RILL-R009
-  echo "log(\\"hello\\")" | rill-exec -`);
-        return;
-
-      case 'version': {
-        console.log(`rill-exec ${CLI_VERSION} (rill ${VERSION})`);
-        return;
-      }
+  rill exec script.rill
+  rill exec script.rill arg1 arg2
+  rill exec --format json script.rill
+  rill exec --verbose --max-stack-depth 20 script.rill
+  rill exec --explain RILL-R009
+  echo "log(\\"hello\\")" | rill exec -`);
+        return 0;
 
       case 'explain': {
         // AC-16: Handle --explain command
@@ -289,11 +278,10 @@ Examples:
           console.error(
             'Error ID must be in format RILL-{L|P|R|C}{3-digit}, e.g., RILL-R009'
           );
-          process.exit(1);
-          return;
+          return 1;
         }
         console.log(documentation);
-        return;
+        return 0;
       }
 
       case 'eval':
@@ -301,8 +289,7 @@ Examples:
         console.error(
           'Eval mode not supported in rill-exec. Use rill-eval instead.'
         );
-        process.exit(1);
-        return;
+        return 1;
 
       case 'exec': {
         // Store format options for error handling
@@ -338,8 +325,7 @@ Examples:
           console.log(JSON.stringify(nativeResult, null, 2));
         }
 
-        // Exit with computed code
-        process.exit(code);
+        return code;
       }
     }
   } catch (err) {
@@ -363,16 +349,6 @@ Examples:
         })
       );
     }
-    process.exit(1);
+    return 1;
   }
-}
-
-// Only run main if not in test environment
-const shouldRunMain =
-  process.env['NODE_ENV'] !== 'test' &&
-  !process.env['VITEST'] &&
-  !process.env['VITEST_WORKER_ID'];
-
-if (shouldRunMain) {
-  main();
 }

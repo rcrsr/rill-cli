@@ -165,7 +165,7 @@ async function bundleExtensionToFile(
   if (!isLocal) {
     try {
       const projectRequire = createRequire(
-        pathToFileURL(path.resolve(projectDir, 'package.json')).href
+        pathToFileURL(path.resolve(projectDir, '.rill/npm/package.json')).href
       );
       const entryPath = projectRequire.resolve(srcPath);
       let dir = path.dirname(entryPath);
@@ -190,7 +190,7 @@ async function bundleExtensionToFile(
       platform: 'node',
       outfile: destPath,
       logLevel: 'silent',
-      absWorkingDir: projectDir,
+      absWorkingDir: path.join(projectDir, '.rill/npm'),
     });
 
     // Post-process: read bundled output, inline package.json _require shims
@@ -276,7 +276,7 @@ function resolveExtensionVersion(
   }
   try {
     const projectRequire = createRequire(
-      pathToFileURL(path.resolve(projectDir, 'package.json')).href
+      pathToFileURL(path.resolve(projectDir, '.rill/npm/package.json')).href
     );
     const entryPath = projectRequire.resolve(mountSpecifier);
     let dir = path.dirname(entryPath);
@@ -488,6 +488,13 @@ export async function buildPackage(
   const absProjectDir = path.resolve(projectDir);
   const outputDir = path.resolve(options?.outputDir ?? 'build');
 
+  if (!existsSync(path.resolve(absProjectDir, '.rill/npm/package.json'))) {
+    throw new BuildError(
+      "Run 'rill bootstrap' to initialize this project, or pass a project-dir argument pointing at an existing bootstrapped project.",
+      'compilation'
+    );
+  }
+
   // Validate rill-config.json exists
   const rillConfigSrc = path.join(absProjectDir, 'rill-config.json');
   if (!existsSync(rillConfigSrc)) {
@@ -674,6 +681,7 @@ export async function buildPackage(
     const dryRunResult = await loadProject({
       configPath: outputRillConfigPath,
       rillVersion,
+      prefix: path.join(absProjectDir, '.rill/npm'),
     });
     for (const dispose of dryRunResult.disposes) {
       await dispose();
@@ -982,7 +990,7 @@ export function describe() {
 export async function init(context = {}) {
   process.chdir(__dirname);
   const configPath = resolveConfigPath({ cwd: __dirname });
-  project = await loadProject({ configPath, rillVersion: VERSION });
+  project = await loadProject({ configPath, rillVersion: VERSION, prefix: __dirname });
 
   if (context.globalVars) {
     project = { ...project, config: interpolate(project.config, context.globalVars) };

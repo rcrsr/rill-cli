@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.3] - 2026-05-03
+
 ### Added
 
 - Unified `rill` CLI replaces six standalone binaries with a single entry point and new
@@ -157,7 +159,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.2...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.3...HEAD
+[0.19.3]: https://github.com/rcrsr/rill-cli/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/rcrsr/rill-cli/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/rcrsr/rill-cli/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/rcrsr/rill-cli/compare/v0.18.12...v0.19.0

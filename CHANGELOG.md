@@ -6,10 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.4] - 2026-05-03
+
 ### Added
 
 - `rill bootstrap` writes `.rill/tsconfig.rill.json` with `paths` mapping into `.rill/npm/node_modules/` so that `tsc --noEmit` and editors can resolve extension types. When a project-root `tsconfig.json` exists without an `extends` reference, bootstrap prints a one-shot hint to add `"extends": "./.rill/tsconfig.rill.json"` (P0-1)
-- `rill check --types` runs `tsc --noEmit` against the project's `tsconfig.json`. Resolves `tsc` from `<projectDir>/node_modules/.bin/` then `<projectDir>/.rill/npm/node_modules/.bin/`. Errors with an actionable hint when `tsc` is not installed locally (P0-1)
+- `rill check --types` runs `tsc --noEmit` against the project's `tsconfig.json`. Resolves `tsc` from `<projectDir>/node_modules/.bin/` then `<projectDir>/.rill/npm/node_modules/.bin/`. On Windows, probes `tsc.cmd` before `tsc`. Errors with an actionable hint when `tsc` is not installed locally (P0-1)
 - `rill describe project --stubs` walks `rill-config.json` for `${env.X}` references and stubs unset env vars to literal `"x"` before constructing extensions, unblocking surface enumeration before credentials are populated. Stubbed names are reported on stderr. String-typed config only; numeric/bool config may still cause factory construction to fail (P0-2)
 - `rill install ./extensions/foo.ts --as <mount>` installs single-file extensions (`.ts`, `.js`, `.mjs`, `.cjs`, `.tsx`, `.jsx`). The path is recorded verbatim in `rill-config.json`; npm is not invoked. `--as` is required; version flags are rejected. `rill list` labels the source as `local-file`; `rill uninstall` unregisters but leaves the file on disk (P0-3)
 - `rill install --dry-run <pkg-or-path>` prints the derived mount, target version, and would-be config write without touching disk or running npm (P2-2)
@@ -24,6 +26,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `rill upgrade <mount>` is a no-op when the mount value is pinned (e.g. `pkg@1.2.3` with no caret/range marker). Prints a notice and exits 0; user re-pins via `rill install <pkg>@latest --pin --as <mount>` (P2-3)
 - `rill install --exact` and `rill upgrade --exact` print a deprecation warning. The flag still works; will be removed in 0.20. Use `--pin` instead (P2-1)
 - `rill` CLI entry now fails fast with a clear message when running on Node < 22.16.0 instead of letting downstream errors surface as opaque module-resolution failures (P1-1)
+
+### Fixed
+
+- `rill describe project --stubs` now restores the previous `process.env` values in a `finally` block. Stubbed credentials no longer leak into subsequent `main()` invocations within the same Node process (#29)
+- `rill check --types` no longer silently ignores positional arguments and other flags. Combinations like `rill check foo.rill --types` or `rill check --types --min-severity warning` exit with a clear error (#29)
+- `rill check` min-severity notice no longer creates a hidden `.rill/` directory as a side effect in non-bootstrapped projects. The notice still prints; the suppression marker is only written when `.rill/` already exists (#29)
+- `rill bootstrap --force --reset` now exits with a clear error instead of silently letting `--reset` win and wipe `.rill/npm/` (#29)
+- `rill upgrade` help text shows `rill install <pkg>@latest --pin --as <mount>` so re-pinning a custom mount alias preserves the alias (#29)
+- `rill install` / `rill uninstall` / `rill list`: a local directory whose name ends in `.ts` / `.js` / `.mjs` / `.cjs` / `.tsx` / `.jsx` is no longer misclassified as a single-file extension. Single-file detection now stat-checks the path where it can; config-stored specifiers still use suffix-only matching (#29)
 
 ## [0.19.3] - 2026-05-03
 
@@ -178,7 +189,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.3...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.4...HEAD
+[0.19.4]: https://github.com/rcrsr/rill-cli/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/rcrsr/rill-cli/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/rcrsr/rill-cli/compare/v0.19.1...v0.19.2
 [0.19.1]: https://github.com/rcrsr/rill-cli/compare/v0.19.0...v0.19.1

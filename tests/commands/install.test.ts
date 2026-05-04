@@ -272,6 +272,46 @@ describe('install', () => {
   });
 
   // ============================================================
+  // FRICTION-NOTES 2026-05-03: install never invokes the extension factory
+  // ============================================================
+
+  describe('install does not run the extension factory', () => {
+    it('writes the mount, emits the configure hint, and never calls loadProject', async () => {
+      bootstrapProject(tmpDir);
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
+
+      // loadProject must never be called from install. If it were, this would
+      // throw and the test would fail.
+      mocks.loadProject.mockRejectedValue(
+        new Error('install must not invoke loadProject')
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(mocks.loadProject).not.toHaveBeenCalled();
+      expect(cap.stdout.join('')).toContain(
+        'Configure the mount in rill-config.json'
+      );
+
+      const config = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'rill-config.json'), 'utf8')
+      ) as { extensions: { mounts: Record<string, string> } };
+      expect(config.extensions.mounts['datetime']).toBe(
+        '@rcrsr/rill-ext-datetime@^0.19.0'
+      );
+    });
+  });
+
+  // ============================================================
   // AC-P2: config-edit + loadProject validation < 1s
   // ============================================================
 
@@ -402,18 +442,16 @@ describe('install', () => {
   // AC-E6 / EC-10: loadProject validation fails after install
   // ============================================================
 
-  describe('AC-E6/EC-10: loadProject validation fails after install', () => {
-    it('emits rollback messages; rill-config.json reverted; exits 1', async () => {
+  describe('AC-E6/EC-10: factory failures no longer block install (FRICTION-NOTES 2026-05-03)', () => {
+    it('install ignores factory errors entirely; loadProject is never invoked', async () => {
       bootstrapProject(tmpDir);
       const prefix = path.join(tmpDir, '.rill', 'npm');
       writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
 
-      const configBefore = fs.readFileSync(
-        path.join(tmpDir, 'rill-config.json'),
-        'utf8'
-      );
-
-      // npm succeeds; loadProject rejects with a validation error
+      // npm succeeds; loadProject would reject if called, but install must not
+      // call it. The previous AC-E6/EC-10 contract (rollback on factory error)
+      // is intentionally dropped: factory validation lives in 'rill describe
+      // project' and 'rill run', not install.
       mocks.spawn.mockImplementation(makeSpawnMock(0));
       const validationError = new Error('factory rejected: invalid manifest');
       validationError.name = 'MountValidationError';
@@ -428,17 +466,15 @@ describe('install', () => {
         cap.restore();
       }
 
-      expect(exitCode).toBe(1);
-      const err = cap.stderr.join('');
-      expect(err).toContain('Config validation failed');
-      expect(err).toContain('Rolled back rill-config.json');
+      expect(exitCode).toBe(0);
+      expect(mocks.loadProject).not.toHaveBeenCalled();
 
-      // Config must be reverted byte-for-byte
-      const configAfter = fs.readFileSync(
-        path.join(tmpDir, 'rill-config.json'),
-        'utf8'
+      const config = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'rill-config.json'), 'utf8')
+      ) as { extensions: { mounts: Record<string, string> } };
+      expect(config.extensions.mounts['datetime']).toBe(
+        '@rcrsr/rill-ext-datetime@^0.19.0'
       );
-      expect(configAfter).toBe(configBefore);
     });
   });
 

@@ -40,6 +40,12 @@ Usage: rill install <pkg-or-path> [--as <mount>] [--pin] [--range <semver>] [--d
 
 Install an extension package and mount it in rill-config.json.
 
+Workflow: bootstrap → install (one or more) → fill in each mount's config block
+in rill-config.json → validate by running 'rill describe project' or 'rill run'.
+Install does not invoke the extension factory, so missing config keys, unset
+env vars, or interdependent mounts never block the install step. Validation
+lives in 'rill describe project' and 'rill run'.
+
 Arguments:
   <pkg-or-path>   One of:
                     - npm package name        e.g. @rcrsr/rill-ext-datetime
@@ -47,13 +53,13 @@ Arguments:
                     - single-file source      e.g. ./extensions/crawler.ts (requires --as)
 
 Options:
-  --as <mount>    Override the mount path (default: derived from package name).
-                  Required when <pkg-or-path> is a single-file source.
-  --pin           Record exact installed version (no caret). Registry installs only.
-  --exact         Deprecated alias for --pin (will be removed in 0.20).
+  --as <mount>     Override the mount path (default: derived from package name).
+                   Required when <pkg-or-path> is a single-file source.
+  --pin            Record exact installed version (no caret). Registry installs only.
+  --exact          Deprecated alias for --pin (will be removed in 0.20).
   --range <semver> Record a custom semver range verbatim. Registry installs only.
-  --dry-run       Print what would be done without writing config or running npm.
-  --help          Show this help message
+  --dry-run        Print what would be done without writing config or running npm.
+  --help           Show this help message
 `;
 
 // ============================================================
@@ -114,22 +120,21 @@ async function installLocalFile(opts: {
     await applyMountEdit(
       snapshot,
       { kind, mount: asOverride, value: specifier },
-      prefix
+      prefix,
+      { skipValidation: true }
     );
   } catch (err) {
     if (err instanceof ConfigWriteError) {
       process.stderr.write('✗ Failed to write rill-config.json\n');
       return 1;
     }
-    const errName = err instanceof Error ? err.constructor.name : 'Error';
-    const errMsg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`✗ Config validation failed: ${errName}: ${errMsg}\n`);
-    process.stderr.write('✓ Rolled back rill-config.json\n');
-    return 1;
+    throw err;
   }
 
   process.stdout.write(`✓ Mounted as '${asOverride}' in rill-config.json\n`);
-  process.stdout.write('✓ Verified config loads cleanly\n');
+  process.stdout.write(
+    "ℹ Configure the mount in rill-config.json, then run 'rill describe project' or 'rill run' to validate.\n"
+  );
   return 0;
 }
 
@@ -395,9 +400,15 @@ export async function run(argv: string[]): Promise<number> {
     process.stdout.write(`✓ Installed to .rill/npm/node_modules/${pkgName}\n`);
   }
 
-  // ---- Step 9: Apply mount edit + validate ----
+  // ---- Step 9: Apply mount edit ----
+  // Install does not invoke the extension factory. Most extensions need
+  // configuration that doesn't exist at install time, so factory failures
+  // would block the common bootstrap → install → configure → validate flow.
+  // Validation lives in 'rill describe project' and 'rill run'.
   try {
-    await applyMountEdit(snapshot, { kind, mount, value }, prefix);
+    await applyMountEdit(snapshot, { kind, mount, value }, prefix, {
+      skipValidation: true,
+    });
   } catch (err) {
     if (err instanceof ConfigWriteError) {
       // EC-11: writeFileSync failed after npm install — out-of-sync state
@@ -409,21 +420,14 @@ export async function run(argv: string[]): Promise<number> {
       );
       return 1;
     }
-    // EC-10: validation error (MountValidationError / NamespaceCollisionError)
-    // applyMountEdit already performed rollback before re-throwing
-    const errName = err instanceof Error ? err.constructor.name : 'Error';
-    const errMsg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`✗ Config validation failed: ${errName}: ${errMsg}\n`);
-    process.stderr.write('✓ Rolled back rill-config.json\n');
-    process.stderr.write(
-      '  Check the extension or use --as to pick a different mount path\n'
-    );
-    return 1;
+    throw err;
   }
 
   // ---- Step 10: Success output ----
   process.stdout.write(`✓ Mounted as '${mount}' in rill-config.json\n`);
-  process.stdout.write('✓ Verified config loads cleanly\n');
+  process.stdout.write(
+    "ℹ Configure the mount in rill-config.json, then run 'rill describe project' or 'rill run' to validate.\n"
+  );
 
   // UXT-EXT-2: registry-only "Ready to use" line (not emitted for local path per UXT-EXT-3)
   if (!local) {

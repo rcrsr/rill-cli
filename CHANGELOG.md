@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `rill check` with no arguments now scans the project for `*.rill` files (skipping `.rill/`, `node_modules/`, `dist/`, `.git/`) and lints each. Aggregates exit codes; returns the worst per `--min-severity`. With `--format json`, scan emits a single envelope `{ files: [{ file, errors, summary }, ...], summary: { files, errors, warnings, info } }` (FRICTION-NOTES 2026-05-03).
+- `rill check [<file>] --types` is now combinable: lint runs first, then `tsc --noEmit`. The exit code reflects the worst of the two passes. `--fix` remains incompatible with `--types` (FRICTION-NOTES 2026-05-03).
+
+### Changed
+
+- **Breaking:** `rill install` no longer invokes the extension factory after writing the mount. The prior factory pass blocked the common bootstrap → install → configure → validate workflow because most extensions need configuration that doesn't exist at install time. Validation now lives exclusively in `rill describe project` and `rill run`. AC-E6/EC-10 (rollback-on-factory-error) is removed; install only rolls back when the disk write itself fails (FRICTION-NOTES 2026-05-03).
+- `rill check --fix` without a file argument now errors with `--fix requires a file argument` instead of `Missing file argument`. The bare no-arg form scans the project; `--fix` would be too aggressive a default for project-wide scans.
+
+### Fixed
+
+- `rill run` no longer swallows the value of an unknown handler-param flag as the project directory. Previously, `rill run --max_scan 5` set `rootDir='5'` and tried to load `./5/rill-config.json`. The pre-scan now identifies tokens that follow unknown long flags and excludes them from `rootDir` selection (FRICTION-NOTES 2026-05-03).
+
+### Documentation
+
+- `rill describe project --stubs` help text now documents the JSON output schema as a stable contract for build tools and skills.
+- `rill install --help` documents the new bootstrap → install → configure → validate workflow.
+
 ## [0.19.4] - 2026-05-03
 
 ### Added

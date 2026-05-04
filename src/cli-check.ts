@@ -40,8 +40,15 @@ export type ParsedCheckArgs =
       verbose: boolean;
       format: 'text' | 'json';
       minSeverity: MinSeverity;
+      runTypes: boolean;
     }
-  | { mode: 'types' }
+  | {
+      mode: 'scan';
+      verbose: boolean;
+      format: 'text' | 'json';
+      minSeverity: MinSeverity;
+      runTypes: boolean;
+    }
   | { mode: 'help' };
 
 /**
@@ -57,27 +64,13 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     return { mode: 'help' };
   }
 
-  // P0-1: --types runs `tsc --noEmit` against the user's tsconfig.json,
-  // resolving extension types out of .rill/npm/ via tsconfig.rill.json.
-  // --types is exclusive: reject positional args and incompatible flags.
-  if (argv.includes('--types')) {
-    const incompatibleFlags = [
-      '--fix',
-      '--verbose',
-      '--format',
-      '--min-severity',
-    ];
-    const hasIncompatible = incompatibleFlags.some((f) => argv.includes(f));
-    const hasPositional = argv.some(
-      (a) => a !== '--types' && !a.startsWith('-')
-    );
-    if (hasPositional || hasIncompatible) {
-      throw new Error(
-        '--types is exclusive: cannot be combined with file arguments or ' +
-          '--fix, --verbose, --format, --min-severity'
-      );
-    }
-    return { mode: 'types' };
+  // --types runs `tsc --noEmit` against the user's tsconfig.json, resolving
+  // extension types out of .rill/npm/ via tsconfig.rill.json. --types composes
+  // with file args and the no-arg project scan: lint runs first, then tsc.
+  // --fix has no semantic for a type pass and is rejected.
+  const runTypes = argv.includes('--types');
+  if (runTypes && argv.includes('--fix')) {
+    throw new Error('--types cannot be combined with --fix');
   }
 
   // Extract flags
@@ -171,10 +164,13 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
   }
 
   if (!file) {
-    throw new Error('Missing file argument');
+    if (fix) {
+      throw new Error('--fix requires a file argument');
+    }
+    return { mode: 'scan', verbose, format, minSeverity, runTypes };
   }
 
-  return { mode: 'check', file, fix, verbose, format, minSeverity };
+  return { mode: 'check', file, fix, verbose, format, minSeverity, runTypes };
 }
 
 /**
@@ -238,11 +234,11 @@ function formatDiagnosticsText(
  * Format diagnostics as JSON
  * Includes file, errors array, and summary
  */
-function formatDiagnosticsJSON(
+function buildFileJsonResult(
   file: string,
   diagnostics: Diagnostic[],
   verbose: boolean
-): string {
+): FileJsonResult {
   // Build category lookup map from validation rules
   const categoryMap = new Map<string, string>();
   for (const rule of VALIDATION_RULES) {
@@ -303,13 +299,23 @@ function formatDiagnosticsJSON(
     info: diagnostics.filter((d) => d.severity === 'info').length,
   };
 
-  const output = {
+  return {
     file,
     errors,
     summary,
   };
+}
 
-  return JSON.stringify(output, null, 2);
+function formatDiagnosticsJSON(
+  file: string,
+  diagnostics: Diagnostic[],
+  verbose: boolean
+): string {
+  return JSON.stringify(
+    buildFileJsonResult(file, diagnostics, verbose),
+    null,
+    2
+  );
 }
 
 // ============================================================
@@ -433,6 +439,200 @@ async function runTypeCheck(): Promise<number> {
 // ============================================================
 
 /**
+ * Discover *.rill files under cwd for the no-arg `rill check` scan.
+ * Skips conventional build/dependency directories so generated bindings and
+ * extension sources don't pollute project diagnostics.
+ */
+async function discoverProjectFiles(cwd: string): Promise<string[]> {
+  const skipDirs = new Set(['.rill', 'node_modules', 'dist', '.git']);
+  const entries = await fs.promises.readdir(cwd, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.endsWith('.rill')) continue;
+    const parentRel = path.relative(
+      cwd,
+      'parentPath' in entry && typeof entry.parentPath === 'string'
+        ? entry.parentPath
+        : ((entry as unknown as { path: string }).path ?? cwd)
+    );
+    const segments = parentRel.split(path.sep);
+    if (segments.some((s) => skipDirs.has(s))) continue;
+    files.push(
+      parentRel === '' ? entry.name : path.join(parentRel, entry.name)
+    );
+  }
+  files.sort();
+  return files;
+}
+
+/**
+ * Per-file JSON document shape emitted by `formatDiagnosticsJSON`.
+ * Used by scan mode to aggregate results into a single envelope.
+ */
+type FileJsonResult = {
+  file: string;
+  errors: unknown[];
+  summary: { total: number; errors: number; warnings: number; info: number };
+};
+
+/**
+ * Validate a single file. Returns the worst exit code observed
+ * (0 = clean, 1 = diagnostics, 2 = read error, 3 = parse error).
+ *
+ * In JSON format, when `collect` is provided, the per-file JSON object is
+ * pushed there instead of being written to stdout. Scan mode uses this so it
+ * can emit a single combined document instead of multiple back-to-back ones.
+ */
+async function checkFile(
+  file: string,
+  options: {
+    fix: boolean;
+    verbose: boolean;
+    format: 'text' | 'json';
+    minSeverity: MinSeverity;
+    config: ReturnType<typeof createDefaultConfig>;
+    collect?: FileJsonResult[];
+  }
+): Promise<number> {
+  let source: string;
+  try {
+    if (!fs.existsSync(file)) {
+      console.error(`Error [RILL-C001]: File not found: ${file}`);
+      return 2;
+    }
+    const stats = fs.statSync(file);
+    if (stats.isDirectory()) {
+      console.error(`Error [RILL-C002]: Path is a directory: ${file}`);
+      return 2;
+    }
+    source = fs.readFileSync(file, 'utf-8');
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      'code' in err &&
+      typeof (err as { code?: string }).code === 'string'
+    ) {
+      const code = (err as { code: string }).code;
+      if (code === 'ENOENT') {
+        console.error(`Error [RILL-C001]: File not found: ${file}`);
+      } else if (code === 'EISDIR') {
+        console.error(`Error [RILL-C002]: Path is a directory: ${file}`);
+      } else {
+        console.error(`Error [RILL-C002]: Cannot read file: ${file}`);
+      }
+    } else {
+      console.error(`Error [RILL-C002]: Cannot read file: ${file}`);
+    }
+    return 2;
+  }
+
+  const parseResult = parseWithRecovery(source);
+
+  const parseDiagnostics: Diagnostic[] = parseResult.errors
+    .slice(0, 1)
+    .map((err) => {
+      const location = err.location ?? { line: 1, column: 1, offset: 0 };
+      const lineContent = source.split('\n')[location.line - 1]?.trim() ?? '';
+      return {
+        code: 'parse-error',
+        severity: 'error' as const,
+        message: err.message.replace(/ at \d+:\d+$/, ''),
+        location,
+        context: lineContent,
+        fix: null,
+      };
+    });
+
+  if (parseDiagnostics.length > 0) {
+    if (options.format === 'json' && options.collect) {
+      options.collect.push(
+        buildFileJsonResult(file, parseDiagnostics, options.verbose)
+      );
+    } else {
+      const output = formatDiagnostics(
+        file,
+        parseDiagnostics,
+        options.format,
+        options.verbose
+      );
+      console.log(output);
+    }
+    if (options.fix) {
+      console.error('Cannot apply fixes: file has parse errors');
+    }
+    return 3;
+  }
+
+  const ast = parseResult.ast;
+  const diagnostics = validateScript(ast, source, options.config);
+
+  if (options.fix && diagnostics.length > 0) {
+    const result = applyFixes(source, diagnostics, {
+      source,
+      ast,
+      config: options.config,
+      diagnostics: [],
+      variables: new Map(),
+      assertedHostCalls: new Set(),
+      variableScopes: new Map(),
+      scopeStack: [],
+    });
+    if (result.applied > 0) {
+      fs.writeFileSync(file, result.modified, 'utf-8');
+    }
+    if (result.applied > 0 || result.skipped > 0) {
+      if (result.applied > 0) {
+        console.error(
+          `Applied ${result.applied} fix${result.applied === 1 ? '' : 'es'}`
+        );
+      }
+      if (result.skipped > 0) {
+        console.error(
+          `Skipped ${result.skipped} fix${result.skipped === 1 ? '' : 'es'}`
+        );
+      }
+    }
+  }
+
+  if (diagnostics.length === 0) {
+    if (options.format === 'json') {
+      const result = buildFileJsonResult(file, [], options.verbose);
+      if (options.collect) {
+        options.collect.push(result);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+    } else {
+      console.log(`${file}: No issues found`);
+    }
+    return 0;
+  }
+
+  if (options.format === 'json' && options.collect) {
+    options.collect.push(
+      buildFileJsonResult(file, diagnostics, options.verbose)
+    );
+  } else {
+    const output = formatDiagnostics(
+      file,
+      diagnostics,
+      options.format,
+      options.verbose
+    );
+    console.log(output);
+  }
+
+  const failingCount = diagnostics.filter((d) =>
+    meetsSeverityThreshold(d, options.minSeverity)
+  ).length;
+  return failingCount > 0 ? 1 : 0;
+}
+
+/**
  * Main entry point for rill-check CLI.
  * Orchestrates argument parsing, file reading, validation, fixing, and output.
  */
@@ -446,17 +646,19 @@ export async function main(argv: string[]): Promise<number> {
       console.log(`rill check - Validate Rill scripts
 
 Usage:
-  rill check [options] <file>     Lint a Rill script
+  rill check                      Scan project for *.rill files and lint each
+  rill check [options] <file>     Lint a single Rill script
   rill check --types              Run \`tsc --noEmit\` against tsconfig.json
+  rill check [<file>] --types     Lint then run tsc in one invocation
 
 Options:
-  --fix                    Apply automatic fixes
+  --fix                    Apply automatic fixes (incompatible with --types)
   --format <fmt>           Output format: text (default) or json
   --verbose                Include category and documentation references
   --min-severity <level>   Severity threshold for non-zero exit:
                            error (default), warning, or info
-  --types                  Run TypeScript type-check via local tsc.
-                           Requires tsconfig.json to extend
+  --types                  Run TypeScript type-check via local tsc after the
+                           lint pass. Requires tsconfig.json to extend
                            ./.rill/tsconfig.rill.json (written by bootstrap).
   -h, --help               Show this help message
 
@@ -466,16 +668,6 @@ Exit codes:
   2   File not found or path is a directory
   3   Parse error in source`);
       return 0;
-    }
-
-    if (args.mode === 'types') {
-      return await runTypeCheck();
-    }
-
-    // At this point, args.mode must be 'check'
-    // TypeScript needs explicit assertion after early returns
-    if (args.mode !== 'check') {
-      throw new Error('Unexpected mode');
     }
 
     // Load configuration from cwd (null if not present)
@@ -488,160 +680,59 @@ Exit codes:
       maybePrintMinSeverityNotice();
     }
 
-    // Read source file
-    let source: string;
-    try {
-      const fs = await import('node:fs');
+    let lintExit = 0;
 
-      // Check if file exists
-      if (!fs.existsSync(args.file)) {
-        console.error(`Error [RILL-C001]: File not found: ${args.file}`);
-        return 2;
-      }
-
-      // Check if path is a directory
-      const stats = fs.statSync(args.file);
-      if (stats.isDirectory()) {
-        console.error(`Error [RILL-C002]: Path is a directory: ${args.file}`);
-        return 2;
-      }
-
-      // Read file contents
-      source = fs.readFileSync(args.file, 'utf-8');
-    } catch (err) {
-      // Handle read errors (permissions, etc.)
-      if (
-        err instanceof Error &&
-        'code' in err &&
-        typeof (err as { code?: string }).code === 'string'
-      ) {
-        const code = (err as { code: string }).code;
-        if (code === 'ENOENT') {
-          console.error(`Error [RILL-C001]: File not found: ${args.file}`);
-        } else if (code === 'EISDIR') {
-          console.error(`Error [RILL-C002]: Path is a directory: ${args.file}`);
-        } else {
-          console.error(`Error [RILL-C002]: Cannot read file: ${args.file}`);
-        }
-      } else {
-        console.error(`Error [RILL-C002]: Cannot read file: ${args.file}`);
-      }
-      return 2;
-    }
-
-    // Parse AST with recovery to collect all errors
-    const parseResult = parseWithRecovery(source);
-
-    // Convert parse errors to diagnostics
-    // Only report the first parse error; subsequent errors are usually cascade noise
-    const parseDiagnostics: Diagnostic[] = parseResult.errors
-      .slice(0, 1)
-      .map((err) => {
-        const location = err.location ?? { line: 1, column: 1, offset: 0 };
-        const lineContent = source.split('\n')[location.line - 1]?.trim() ?? '';
-        return {
-          code: 'parse-error',
-          severity: 'error' as const,
-          message: err.message.replace(/ at \d+:\d+$/, ''),
-          location,
-          context: lineContent,
-          fix: null,
-        };
-      });
-
-    // If there are parse errors, report them and exit
-    if (parseDiagnostics.length > 0) {
-      const output = formatDiagnostics(
-        args.file,
-        parseDiagnostics,
-        args.format,
-        args.verbose
-      );
-      console.log(output);
-
-      // If --fix was requested, report that fixes cannot be applied
-      if (args.fix) {
-        console.error('Cannot apply fixes: file has parse errors');
-      }
-
-      return 3;
-    }
-
-    const ast = parseResult.ast;
-
-    // Run validation
-    const diagnostics = validateScript(ast, source, config);
-
-    // Apply fixes if requested
-    if (args.fix && diagnostics.length > 0) {
-      const result = applyFixes(source, diagnostics, {
-        source,
-        ast,
+    if (args.mode === 'scan') {
+      const files = await discoverProjectFiles(process.cwd());
+      // Aggregate per-file JSON results so scan emits a single envelope
+      // instead of multiple back-to-back documents that would break
+      // `JSON.parse` on the consuming side.
+      const collect: FileJsonResult[] = [];
+      const checkOpts: Parameters<typeof checkFile>[1] = {
+        fix: false,
+        verbose: args.verbose,
+        format: args.format,
+        minSeverity: args.minSeverity,
         config,
-        diagnostics: [],
-        variables: new Map(),
-        assertedHostCalls: new Set(),
-        variableScopes: new Map(),
-        scopeStack: [],
-      });
-
-      // Write fixed source back to file
-      if (result.applied > 0) {
-        const fs = await import('node:fs');
-        fs.writeFileSync(args.file, result.modified, 'utf-8');
+        ...(args.format === 'json' ? { collect } : {}),
+      };
+      for (const file of files) {
+        const result = await checkFile(file, checkOpts);
+        if (result > lintExit) lintExit = result;
       }
-
-      // Report fix results to stderr
-      if (result.applied > 0 || result.skipped > 0) {
-        if (result.applied > 0) {
-          console.error(
-            `Applied ${result.applied} fix${result.applied === 1 ? '' : 'es'}`
-          );
-        }
-        if (result.skipped > 0) {
-          console.error(
-            `Skipped ${result.skipped} fix${result.skipped === 1 ? '' : 'es'}`
-          );
-        }
-      }
-    }
-
-    // Format and output diagnostics
-    if (diagnostics.length === 0) {
-      // No diagnostics - success
       if (args.format === 'json') {
-        console.log(
-          JSON.stringify(
-            {
-              file: args.file,
-              errors: [],
-              summary: { total: 0, errors: 0, warnings: 0, info: 0 },
-            },
-            null,
-            2
-          )
+        const items = collect;
+        const summary = items.reduce(
+          (acc, r) => ({
+            files: acc.files + 1,
+            errors: acc.errors + r.summary.errors,
+            warnings: acc.warnings + r.summary.warnings,
+            info: acc.info + r.summary.info,
+          }),
+          { files: 0, errors: 0, warnings: 0, info: 0 }
         );
-      } else {
-        console.log('No issues found');
+        console.log(JSON.stringify({ files: items, summary }, null, 2));
+      } else if (files.length === 0) {
+        console.log('No *.rill files found in project');
       }
-      return 0;
+    } else if (args.mode === 'check') {
+      lintExit = await checkFile(args.file, {
+        fix: args.fix,
+        verbose: args.verbose,
+        format: args.format,
+        minSeverity: args.minSeverity,
+        config,
+      });
     }
 
-    // Output all diagnostics regardless of severity (still useful info).
-    // Exit code is gated by --min-severity threshold so info-level
-    // advisories (e.g. PREFER_MAP, SPACING_BRACES) don't fail CI.
-    const output = formatDiagnostics(
-      args.file,
-      diagnostics,
-      args.format,
-      args.verbose
-    );
-    console.log(output);
+    // --types pass runs after lint. Skip when lint hit a hard error
+    // (parse error or read failure) so users see the lint failure first.
+    if (args.runTypes && lintExit !== 2 && lintExit !== 3) {
+      const typesExit = await runTypeCheck();
+      if (typesExit > lintExit) lintExit = typesExit;
+    }
 
-    const failingCount = diagnostics.filter((d) =>
-      meetsSeverityThreshold(d, args.minSeverity)
-    ).length;
-    return failingCount > 0 ? 1 : 0;
+    return lintExit;
   } catch (err) {
     // Handle unexpected errors
     if (err instanceof Error) {

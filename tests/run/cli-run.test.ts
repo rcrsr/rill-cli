@@ -184,6 +184,48 @@ describe('parseCliArgs', () => {
     });
   });
 
+  describe('rootDir vs handler-param disambiguation (FRICTION-NOTES 2026-05-03)', () => {
+    // Regression: parseArgs(strict:false) treats unknown long flags as boolean
+    // and pushes the next token into positionals. Without the pre-scan,
+    // `rill run --max_scan 5` would set rootDir='5' and try to load ./5/.
+    it('does not treat the value of an unknown long flag as rootDir', () => {
+      const opts = parseCliArgs(['--max_scan', '5']);
+      expect(opts.rootDir).toBeUndefined();
+    });
+
+    it('honors rootDir when no unknown flags are present', () => {
+      const opts = parseCliArgs(['somedir']);
+      expect(opts.rootDir).toBe('somedir');
+    });
+
+    it('honors rootDir when it precedes an unknown flag and value', () => {
+      const opts = parseCliArgs(['somedir', '--max_scan', '5']);
+      expect(opts.rootDir).toBe('somedir');
+    });
+
+    it('honors rootDir when it follows --key=value form of an unknown flag', () => {
+      const opts = parseCliArgs(['--max_scan=5', 'somedir']);
+      expect(opts.rootDir).toBe('somedir');
+    });
+
+    it('treats positional after a known flag value correctly', () => {
+      // --config takes a value; the positional after that value is rootDir.
+      const opts = parseCliArgs(['--config', 'foo.json', 'somedir']);
+      expect(opts.rootDir).toBe('somedir');
+      expect(opts.config).toBe('foo.json');
+    });
+
+    it('handles multiple unknown flags before a final rootDir', () => {
+      const opts = parseCliArgs(['--max_scan', '5', '--other', 'x', 'somedir']);
+      expect(opts.rootDir).toBe('somedir');
+    });
+
+    it('does not pick a rootDir when only unknown-flag values are positional', () => {
+      const opts = parseCliArgs(['--alpha', 'a', '--beta', 'b']);
+      expect(opts.rootDir).toBeUndefined();
+    });
+  });
+
   describe('EC-1: missing script path (now handled in main via config)', () => {
     it('does not exit when no positional argument is provided', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {

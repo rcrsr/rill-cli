@@ -386,7 +386,7 @@ function maybePrintMinSeverityNotice(): void {
  * (written by `rill bootstrap`) so module resolution finds extension types
  * under .rill/npm/node_modules/.
  */
-async function runTypeCheck(): Promise<number> {
+async function runTypeCheck(format: 'text' | 'json' = 'text'): Promise<number> {
   const cwd = process.cwd();
   const tsconfigPath = path.join(cwd, 'tsconfig.json');
   if (!fs.existsSync(tsconfigPath)) {
@@ -422,10 +422,21 @@ async function runTypeCheck(): Promise<number> {
   }
 
   return await new Promise<number>((resolveExit) => {
+    // In JSON mode, route tsc's stdout to our stderr so the lint envelope on
+    // stdout stays a single parseable JSON document. tsc writes diagnostics
+    // to stdout by default; mixing it with the JSON output would break
+    // `JSON.parse` for any consumer of `rill check --types --format json`.
+    const stdio: ('inherit' | 'pipe')[] =
+      format === 'json'
+        ? ['inherit', 'pipe', 'inherit']
+        : ['inherit', 'inherit', 'inherit'];
     const child = spawn(tsc, ['--noEmit', '-p', tsconfigPath], {
       cwd,
-      stdio: 'inherit',
+      stdio,
     });
+    if (format === 'json' && child.stdout) {
+      child.stdout.pipe(process.stderr);
+    }
     child.on('exit', (code) => resolveExit(code ?? 1));
     child.on('error', (err) => {
       process.stderr.write(`error: failed to spawn tsc: ${err.message}\n`);
@@ -440,31 +451,30 @@ async function runTypeCheck(): Promise<number> {
 
 /**
  * Discover *.rill files under cwd for the no-arg `rill check` scan.
- * Skips conventional build/dependency directories so generated bindings and
- * extension sources don't pollute project diagnostics.
+ * Walks the tree manually and prunes conventional build/dependency
+ * directories at the directory level so we don't traverse into
+ * `node_modules/`, `.rill/`, `dist/`, or `.git/`. A `readdir` with
+ * `recursive: true` would walk those huge trees first and only filter
+ * after the fact.
  */
 async function discoverProjectFiles(cwd: string): Promise<string[]> {
   const skipDirs = new Set(['.rill', 'node_modules', 'dist', '.git']);
-  const entries = await fs.promises.readdir(cwd, {
-    recursive: true,
-    withFileTypes: true,
-  });
   const files: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    if (!entry.name.endsWith('.rill')) continue;
-    const parentRel = path.relative(
-      cwd,
-      'parentPath' in entry && typeof entry.parentPath === 'string'
-        ? entry.parentPath
-        : ((entry as unknown as { path: string }).path ?? cwd)
-    );
-    const segments = parentRel.split(path.sep);
-    if (segments.some((s) => skipDirs.has(s))) continue;
-    files.push(
-      parentRel === '' ? entry.name : path.join(parentRel, entry.name)
-    );
+
+  async function walk(dir: string, rel: string): Promise<void> {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (skipDirs.has(entry.name)) continue;
+        const childRel = rel === '' ? entry.name : path.join(rel, entry.name);
+        await walk(path.join(dir, entry.name), childRel);
+      } else if (entry.isFile() && entry.name.endsWith('.rill')) {
+        files.push(rel === '' ? entry.name : path.join(rel, entry.name));
+      }
+    }
   }
+
+  await walk(cwd, '');
   files.sort();
   return files;
 }
@@ -728,7 +738,7 @@ Exit codes:
     // --types pass runs after lint. Skip when lint hit a hard error
     // (parse error or read failure) so users see the lint failure first.
     if (args.runTypes && lintExit !== 2 && lintExit !== 3) {
-      const typesExit = await runTypeCheck();
+      const typesExit = await runTypeCheck(args.format);
       if (typesExit > lintExit) lintExit = typesExit;
     }
 

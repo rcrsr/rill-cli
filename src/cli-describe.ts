@@ -216,6 +216,20 @@ Options (project):
                     enumerate the surface before credentials are populated.
                     Note: only string-typed config is stubbed; numeric/bool
                     config may still cause factory construction to fail.
+
+                    Output schema (stable contract for build tools and skills):
+                      {
+                        "rillVersion": "<semver>",
+                        "configPath": "<absolute path>",
+                        "mounts": {
+                          "<mount-name>": {
+                            "<callable-name>": {
+                              "params": [...],
+                              "returnType": <type>
+                            }
+                          }
+                        }
+                      }
   --config <path>   Path to rill-config.json (defaults to ./rill-config.json)
 
 Options (handler):

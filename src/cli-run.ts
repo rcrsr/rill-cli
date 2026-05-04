@@ -134,7 +134,39 @@ export function parseCliArgs(
     strict: false,
   });
 
-  const rootDir = positionals[0];
+  // Distinguish positional `[project-dir]` from a value passed to an unknown
+  // long flag (a handler param). With `strict: false`, `parseArgs` treats an
+  // unknown `--foo` as a boolean and pushes the next token into `positionals`,
+  // which would otherwise be misread as `rootDir`. Walk argv: if a token sits
+  // immediately after an unknown long flag with no `=` and doesn't itself start
+  // with `-`, mark it consumed.
+  const knownLong = new Set(Object.keys(BASE_OPTIONS));
+  const consumedIdx = new Set<number>();
+  for (let i = 0; i < filteredArgv.length - 1; i++) {
+    const tok = filteredArgv[i];
+    if (
+      tok !== undefined &&
+      tok.startsWith('--') &&
+      !tok.includes('=') &&
+      !knownLong.has(tok.slice(2))
+    ) {
+      const next = filteredArgv[i + 1];
+      if (next !== undefined && !next.startsWith('-')) {
+        consumedIdx.add(i + 1);
+      }
+    }
+  }
+  const positionalSet = new Set(positionals);
+  let rootDir: string | undefined;
+  for (let i = 0; i < filteredArgv.length; i++) {
+    const tok = filteredArgv[i];
+    if (tok === undefined) continue;
+    if (consumedIdx.has(i)) continue;
+    if (tok.startsWith('-')) continue;
+    if (!positionalSet.has(tok)) continue;
+    rootDir = tok;
+    break;
+  }
   const scriptArgs: string[] = [];
 
   const rawFormat = values['format'];

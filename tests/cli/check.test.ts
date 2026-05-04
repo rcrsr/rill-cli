@@ -159,6 +159,7 @@ describe('rill-check CLI', () => {
         verbose: false,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -198,9 +199,15 @@ describe('rill-check CLI', () => {
       expect(() => parseCheckArgs(['-x'])).toThrow('Unknown option: -x');
     });
 
-    it('throws when missing file argument', () => {
-      expect(() => parseCheckArgs([])).toThrow('Missing file argument');
-      expect(() => parseCheckArgs(['--fix'])).toThrow('Missing file argument');
+    it('returns scan mode when no args [FRICTION-NOTES 2026-05-03]', () => {
+      const parsed = parseCheckArgs([]);
+      expect(parsed.mode).toBe('scan');
+    });
+
+    it('throws when --fix is supplied without a file', () => {
+      expect(() => parseCheckArgs(['--fix'])).toThrow(
+        '--fix requires a file argument'
+      );
     });
   });
 
@@ -656,21 +663,145 @@ dict[itemList: list[1, 2, 3]] => $data2
       });
     });
 
-    describe('EC-2: parseCheckArgs - missing file', () => {
-      it('throws error when no arguments provided', () => {
-        expect(() => parseCheckArgs([])).toThrow('Missing file argument');
+    describe('EC-2: parseCheckArgs - no-arg now scans (FRICTION-NOTES 2026-05-03)', () => {
+      it('returns scan mode when no arguments provided', () => {
+        expect(parseCheckArgs([])).toMatchObject({ mode: 'scan' });
       });
 
-      it('throws error when only flags provided', () => {
+      it('throws when --fix is provided without a file', () => {
         expect(() => parseCheckArgs(['--fix', '--verbose'])).toThrow(
-          'Missing file argument'
+          '--fix requires a file argument'
         );
       });
 
-      it('CLI exits with code 1 for missing file', async () => {
+      it('CLI exits 1 when --fix is supplied without a file', async () => {
         const result = await execCheck(['--fix']);
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('Missing file argument');
+        expect(result.stderr).toContain('--fix requires a file argument');
+      });
+    });
+
+    describe('scan mode - discoverProjectFiles + envelope (FRICTION-NOTES 2026-05-03)', () => {
+      /**
+       * Run `rill check` (no args) inside an isolated scan directory so the
+       * shared tempDir doesn't pollute results with files from other tests.
+       */
+      async function execScan(
+        scanDir: string,
+        args: string[]
+      ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+        return new Promise((resolve) => {
+          const cliPath = path.join(process.cwd(), 'dist', 'cli.js');
+          const env = { ...process.env };
+          delete env['VITEST'];
+          delete env['VITEST_WORKER_ID'];
+          delete env['NODE_ENV'];
+          const proc = spawn('node', [cliPath, 'check', ...args], {
+            cwd: scanDir,
+            env,
+          });
+          let stdout = '';
+          let stderr = '';
+          proc.stdout.on('data', (d) => {
+            stdout += d.toString();
+          });
+          proc.stderr.on('data', (d) => {
+            stderr += d.toString();
+          });
+          proc.on('close', (code) => {
+            resolve({ exitCode: code ?? 0, stdout, stderr });
+          });
+        });
+      }
+
+      let scanDir: string;
+
+      beforeAll(async () => {
+        scanDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rill-scan-test-'));
+        // Top-level file
+        await fs.writeFile(
+          path.join(scanDir, 'top.rill'),
+          'log "top"\n',
+          'utf-8'
+        );
+        // Nested file under a non-skipped subdirectory
+        await fs.mkdir(path.join(scanDir, 'src'), { recursive: true });
+        await fs.writeFile(
+          path.join(scanDir, 'src', 'nested.rill'),
+          'log "nested"\n',
+          'utf-8'
+        );
+        // File inside a skip-dir (should be ignored)
+        await fs.mkdir(path.join(scanDir, 'node_modules', 'pkg'), {
+          recursive: true,
+        });
+        await fs.writeFile(
+          path.join(scanDir, 'node_modules', 'pkg', 'ignored.rill'),
+          'log "ignored"\n',
+          'utf-8'
+        );
+        // File inside .rill (also a skip-dir)
+        await fs.mkdir(path.join(scanDir, '.rill'), { recursive: true });
+        await fs.writeFile(
+          path.join(scanDir, '.rill', 'cache.rill'),
+          'log "cache"\n',
+          'utf-8'
+        );
+      });
+
+      afterAll(async () => {
+        await fs.rm(scanDir, { recursive: true, force: true });
+      });
+
+      it('scans nested *.rill files and skips node_modules / .rill / dist / .git', async () => {
+        const result = await execScan(scanDir, []);
+        expect(result.exitCode).toBe(0);
+        // Both expected files appear in output
+        expect(result.stdout).toContain('top.rill');
+        expect(result.stdout).toContain(
+          path.join('src', 'nested.rill').replaceAll('\\', '/')
+        );
+        // Skipped files do not appear
+        expect(result.stdout).not.toContain('ignored.rill');
+        expect(result.stdout).not.toContain('cache.rill');
+      });
+
+      it('emits a single JSON envelope with files[] and aggregate summary', async () => {
+        const result = await execScan(scanDir, ['--format', 'json']);
+        expect(result.exitCode).toBe(0);
+        // Output must parse as a single JSON document
+        const parsed = JSON.parse(result.stdout) as {
+          files: { file: string; errors: unknown[] }[];
+          summary: {
+            files: number;
+            errors: number;
+            warnings: number;
+            info: number;
+          };
+        };
+        expect(parsed.summary.files).toBe(2);
+        expect(parsed.files).toHaveLength(2);
+        const fileNames = parsed.files.map((f) => f.file).sort();
+        expect(fileNames[0]).toMatch(/(^|[/\\])src[/\\]nested\.rill$/);
+        expect(fileNames[1]).toBe('top.rill');
+      });
+
+      it('emits empty-files envelope when no *.rill files are found', async () => {
+        const emptyDir = await fs.mkdtemp(
+          path.join(os.tmpdir(), 'rill-scan-empty-')
+        );
+        try {
+          const result = await execScan(emptyDir, ['--format', 'json']);
+          expect(result.exitCode).toBe(0);
+          const parsed = JSON.parse(result.stdout) as {
+            files: unknown[];
+            summary: { files: number };
+          };
+          expect(parsed.files).toEqual([]);
+          expect(parsed.summary.files).toBe(0);
+        } finally {
+          await fs.rm(emptyDir, { recursive: true, force: true });
+        }
       });
     });
 

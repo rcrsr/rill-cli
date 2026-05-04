@@ -46,13 +46,32 @@ describe('parseCheckArgs', () => {
       );
     });
 
-    it('throws error when file argument missing [TC-4]', () => {
-      expect(() => parseCheckArgs(['--fix'])).toThrow('Missing file argument');
+    it('throws when --fix supplied without a file argument [TC-4]', () => {
+      expect(() => parseCheckArgs(['--fix'])).toThrow(
+        '--fix requires a file argument'
+      );
     });
 
-    it('throws error when only flags provided [TC-4]', () => {
+    it('throws when --fix combined with other flags but no file [TC-4]', () => {
       expect(() => parseCheckArgs(['--fix', '--verbose'])).toThrow(
-        'Missing file argument'
+        '--fix requires a file argument'
+      );
+    });
+
+    it('returns scan mode when no file and no --fix [FRICTION-NOTES 2026-05-03]', () => {
+      const result = parseCheckArgs([]);
+      expect(result).toEqual({
+        mode: 'scan',
+        verbose: false,
+        format: 'text',
+        minSeverity: 'error',
+        runTypes: false,
+      });
+    });
+
+    it('throws when --types combined with --fix', () => {
+      expect(() => parseCheckArgs(['--types', '--fix'])).toThrow(
+        '--types cannot be combined with --fix'
       );
     });
 
@@ -85,6 +104,7 @@ describe('parseCheckArgs', () => {
         verbose: false,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -97,6 +117,7 @@ describe('parseCheckArgs', () => {
         verbose: false,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -109,6 +130,7 @@ describe('parseCheckArgs', () => {
         verbose: true,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -121,6 +143,7 @@ describe('parseCheckArgs', () => {
         verbose: false,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -133,6 +156,7 @@ describe('parseCheckArgs', () => {
         verbose: false,
         format: 'json',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -151,6 +175,7 @@ describe('parseCheckArgs', () => {
         verbose: true,
         format: 'json',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -163,6 +188,7 @@ describe('parseCheckArgs', () => {
         verbose: true,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
       });
     });
 
@@ -175,6 +201,31 @@ describe('parseCheckArgs', () => {
         verbose: false,
         format: 'text',
         minSeverity: 'error',
+        runTypes: false,
+      });
+    });
+
+    it('parses --types alongside a file argument [FRICTION-NOTES 2026-05-03]', () => {
+      const result = parseCheckArgs(['test.rill', '--types']);
+      expect(result).toEqual({
+        mode: 'check',
+        file: 'test.rill',
+        fix: false,
+        verbose: false,
+        format: 'text',
+        minSeverity: 'error',
+        runTypes: true,
+      });
+    });
+
+    it('parses bare --types as a scan with runTypes=true', () => {
+      const result = parseCheckArgs(['--types']);
+      expect(result).toEqual({
+        mode: 'scan',
+        verbose: false,
+        format: 'text',
+        minSeverity: 'error',
+        runTypes: true,
       });
     });
   });

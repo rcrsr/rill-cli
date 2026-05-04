@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.5] - 2026-05-04
+
 ### Added
 
 - `rill check` with no arguments now scans the project for `*.rill` files (skipping `.rill/`, `node_modules/`, `dist/`, `.git/`) and lints each. Aggregates exit codes; returns the worst per `--min-severity`. With `--format json`, scan emits a single envelope `{ files: [{ file, errors, summary }, ...], summary: { files, errors, warnings, info } }` (FRICTION-NOTES 2026-05-03).
@@ -208,7 +210,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.4...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.5...HEAD
+[0.19.5]: https://github.com/rcrsr/rill-cli/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/rcrsr/rill-cli/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/rcrsr/rill-cli/compare/v0.19.2...v0.19.3
 [0.19.2]: https://github.com/rcrsr/rill-cli/compare/v0.19.1...v0.19.2

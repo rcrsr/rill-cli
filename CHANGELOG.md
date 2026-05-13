@@ -6,14 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.6] - 2026-05-12
+
 ### Added
 
-- `rill build` emits `returnType` in the generated handler's introspection JSON when `@rcrsr/rill` provides it on `HandlerMetadataStatic`, so downstream consumers can read the handler's declared return type.
+- `rill build` emits `returnType` in the generated handler's introspection JSON when `@rcrsr/rill` provides it on `HandlerMetadataStatic`, so downstream consumers can read the handler's declared return type (#33).
 
 ### Changed
 
-- `rill build`-generated `handler.js` now binds `request.params` dict entries to positional arguments using the handler's introspection (mirroring the `rill run` CLI binding), so a closure like `|messages: list| { ... }` is invocable via `execute({ params: { messages: [...] } })`. Closures still read the full dict via `$` (`ctx.pipeValue`).
-- Upgrade `@rcrsr/rill` to `~0.19.3` and `@rcrsr/rill-config` to `~0.19.2`. The new rill release adds `returnType` to `HandlerMetadataStatic` (now consumed directly without a defensive cast) and introduces the `TimeoutBlock` AST node, which `rill check`'s visitor now traverses (visits `duration` and `body`).
+- `rill build`-generated `handler.js` now binds `request.params` dict entries to positional arguments using the handler's introspection (mirroring the `rill run` CLI binding), so a closure like `|messages: list| { ... }` is invocable via `execute({ params: { messages: [...] } })`. Closures still read the full dict via `$` (`ctx.pipeValue`) (#33).
+- `describe()` in generated handlers now returns a `structuredClone` of the introspection object so callers cannot mutate the shared object that `execute()` reads for positional binding (#33).
+- Upgrade `@rcrsr/rill` to `~0.19.3` and `@rcrsr/rill-config` to `~0.19.2`. The new rill release adds `returnType` to `HandlerMetadataStatic` (now consumed directly without a defensive cast) and introduces the `TimeoutBlock` AST node, which `rill check`'s visitor now traverses (visits `duration` and `body`) (#33).
 
 ## [0.19.5] - 2026-05-04
 
@@ -219,7 +222,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.5...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.6...HEAD
+[0.19.6]: https://github.com/rcrsr/rill-cli/compare/v0.19.5...v0.19.6
 [0.19.5]: https://github.com/rcrsr/rill-cli/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/rcrsr/rill-cli/compare/v0.19.3...v0.19.4
 [0.19.3]: https://github.com/rcrsr/rill-cli/compare/v0.19.2...v0.19.3

@@ -998,7 +998,7 @@ let handler;
 let ctx;
 
 export function describe() {
-  return introspection;
+  return introspection === null ? null : structuredClone(introspection);
 }
 
 export async function init(context = {}) {

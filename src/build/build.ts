@@ -776,14 +776,13 @@ export async function buildPackage(
         parsedMain.handlerName
       );
       if (metadata !== null) {
-        // returnType is not yet declared on @rcrsr/rill@0.19.2's HandlerMetadataStatic
-        // but is emitted at runtime; read it via cast so the build keeps compiling.
-        const returnType = (metadata as { returnType?: string }).returnType;
         introspectionJson = JSON.stringify({
           name: packageName,
           description: metadata.description,
           params: metadata.params,
-          ...(returnType !== undefined ? { returnType } : {}),
+          ...(metadata.returnType !== undefined
+            ? { returnType: metadata.returnType }
+            : {}),
         });
       }
     } catch {

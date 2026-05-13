@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - `rill build`-generated `handler.js` now binds `request.params` dict entries to positional arguments using the handler's introspection (mirroring the `rill run` CLI binding), so a closure like `|messages: list| { ... }` is invocable via `execute({ params: { messages: [...] } })`. Closures still read the full dict via `$` (`ctx.pipeValue`).
+- Upgrade `@rcrsr/rill` to `~0.19.3` and `@rcrsr/rill-config` to `~0.19.2`. The new rill release adds `returnType` to `HandlerMetadataStatic` (now consumed directly without a defensive cast) and introduces the `TimeoutBlock` AST node, which `rill check`'s visitor now traverses (visits `duration` and `body`).
 
 ## [0.19.5] - 2026-05-04
 

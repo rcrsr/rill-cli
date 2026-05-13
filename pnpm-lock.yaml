@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@rcrsr/rill':
-        specifier: ~0.19.2
-        version: 0.19.2
+        specifier: ~0.19.3
+        version: 0.19.3
       '@rcrsr/rill-config':
-        specifier: ~0.19.1
-        version: 0.19.1(@rcrsr/rill@0.19.2)
+        specifier: ~0.19.2
+        version: 0.19.2(@rcrsr/rill@0.19.3)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -26,7 +26,7 @@ importers:
         version: 10.0.1(eslint@10.2.1)
       '@rcrsr/rill-ext-datetime':
         specifier: ~0.19.0
-        version: 0.19.0(@rcrsr/rill@0.19.2)
+        version: 0.19.0(@rcrsr/rill@0.19.3)
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -290,8 +290,8 @@ packages:
   '@oxc-project/types@0.122.0':
     resolution: {integrity: sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==}
 
-  '@rcrsr/rill-config@0.19.1':
-    resolution: {integrity: sha512-HhqPNwpKQdBi4I3n5ApoE05iXZKTNAoyiSLWqga6DkTa3qV0mJ9fubPcJA5qA8/3Q0A7jT2NlK2rVVv8uGYfrw==}
+  '@rcrsr/rill-config@0.19.2':
+    resolution: {integrity: sha512-3J/L1nhaHfQmxWpLYYz5DiQWfwcuM8hq4UO5Pow0FyK32nkEVe5D5W+nOyCWnzIGr3+tXNlSuXYzsPPamDKaSA==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@rcrsr/rill': ~0.19.0
@@ -301,8 +301,8 @@ packages:
     peerDependencies:
       '@rcrsr/rill': ~0.19.0
 
-  '@rcrsr/rill@0.19.2':
-    resolution: {integrity: sha512-DX0mLHxpmuh55lGxvkohAkQahbzl1lPbSYt02MUatGYuLkvNnKTqMgZ3YzGZC2/fwISrOzg33806FOfX5KV7Xw==}
+  '@rcrsr/rill@0.19.3':
+    resolution: {integrity: sha512-AYCO/FUbZbE52ZY51XCnK8l8FxMBE22+EaWr3ioV3sJYeGJYDjv+spAGDxNBZqYejrcOk6mFoz0Vlxp3L1XA1Q==}
     engines: {node: '>=22.16.0'}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
@@ -1192,16 +1192,16 @@ snapshots:
 
   '@oxc-project/types@0.122.0': {}
 
-  '@rcrsr/rill-config@0.19.1(@rcrsr/rill@0.19.2)':
+  '@rcrsr/rill-config@0.19.2(@rcrsr/rill@0.19.3)':
     dependencies:
-      '@rcrsr/rill': 0.19.2
+      '@rcrsr/rill': 0.19.3
       semver: 7.7.4
 
-  '@rcrsr/rill-ext-datetime@0.19.0(@rcrsr/rill@0.19.2)':
+  '@rcrsr/rill-ext-datetime@0.19.0(@rcrsr/rill@0.19.3)':
     dependencies:
-      '@rcrsr/rill': 0.19.2
+      '@rcrsr/rill': 0.19.3
 
-  '@rcrsr/rill@0.19.2': {}
+  '@rcrsr/rill@0.19.3': {}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true

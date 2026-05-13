@@ -1187,7 +1187,73 @@ describe('handler lifecycle contract', () => {
       path.join(result.outputPath, 'handler.js'),
       'utf-8'
     );
-    expect(handlerJs).toContain('return null;');
+    expect(handlerJs).toContain('const introspection = null;');
+  });
+
+  // ----------------------------------------------------------
+  // execute() binds request.params to positional closure args
+  // ----------------------------------------------------------
+  it('execute() binds request.params dict to positional closure args', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture(
+      {},
+      {
+        'main.rill': `|x: number, y: number| { $x + $y } => $run`,
+      }
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerPath = path.join(result.outputPath, 'handler.js');
+    const handler = (await import(handlerPath)) as {
+      init: (ctx?: Record<string, unknown>) => Promise<void>;
+      execute: (
+        req?: Record<string, unknown>,
+        ctx?: Record<string, unknown>
+      ) => Promise<{
+        state: string;
+        result: unknown;
+        streamed: boolean;
+      }>;
+      dispose: () => Promise<void>;
+    };
+
+    const savedCwd = process.cwd();
+    await handler.init({});
+    try {
+      const out = await handler.execute({ params: { x: 20, y: 22 } }, {});
+      expect(out.result).toBe(42);
+    } finally {
+      await handler.dispose();
+      process.chdir(savedCwd);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // describe() returns a defensive copy (callers cannot mutate
+  // the shared introspection object)
+  // ----------------------------------------------------------
+  it('describe() returns a fresh copy on each call', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture(
+      {},
+      {
+        'main.rill': `|x: number| { $x } => $run`,
+      }
+    );
+
+    const result = await buildPackage(projectDir, { outputDir });
+
+    const handlerPath = path.join(result.outputPath, 'handler.js');
+    const handler = (await import(handlerPath)) as {
+      describe: () => { params: Array<{ name: string }> } | null;
+    };
+
+    const first = handler.describe();
+    expect(first).not.toBeNull();
+    first!.params.push({ name: 'injected' });
+
+    const second = handler.describe();
+    expect(second!.params.map((p) => p.name)).toEqual(['x']);
+    expect(first).not.toBe(second);
   });
 });
 

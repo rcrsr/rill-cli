@@ -391,6 +391,11 @@ export function visitNode(
       visitNode(node.body, context, visitor);
       break;
 
+    case 'TimeoutBlock':
+      visitNode(node.duration, context, visitor);
+      visitNode(node.body, context, visitor);
+      break;
+
     default: {
       // Exhaustive check: if we reach here, a node type is missing
       const _exhaustive: never = node;

@@ -1187,7 +1187,7 @@ describe('handler lifecycle contract', () => {
       path.join(result.outputPath, 'handler.js'),
       'utf-8'
     );
-    expect(handlerJs).toContain('return null;');
+    expect(handlerJs).toContain('const introspection = null;');
   });
 });
 

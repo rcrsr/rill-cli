@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `rill build` emits `returnType` in the generated handler's introspection JSON when `@rcrsr/rill` provides it on `HandlerMetadataStatic`, so downstream consumers can read the handler's declared return type.
+
+### Changed
+
+- `rill build`-generated `handler.js` now binds `request.params` dict entries to positional arguments using the handler's introspection (mirroring the `rill run` CLI binding), so a closure like `|messages: list| { ... }` is invocable via `execute({ params: { messages: [...] } })`. Closures still read the full dict via `$` (`ctx.pipeValue`).
+
 ## [0.19.5] - 2026-05-04
 
 ### Added

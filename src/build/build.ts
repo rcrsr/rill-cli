@@ -780,6 +780,9 @@ export async function buildPackage(
           name: packageName,
           description: metadata.description,
           params: metadata.params,
+          ...(metadata.returnType !== undefined
+            ? { returnType: metadata.returnType }
+            : {}),
         });
       }
     } catch {
@@ -978,10 +981,8 @@ function generateHandlerSource(
   mainField: string,
   introspectionJson: string | null
 ): string {
-  const describeBody =
-    introspectionJson !== null
-      ? `return ${introspectionJson};`
-      : `return null;`;
+  const introspectionLiteral =
+    introspectionJson !== null ? introspectionJson : 'null';
 
   return `import {
   readFileSync, resolve, __dirname,
@@ -990,12 +991,14 @@ function generateHandlerSource(
   parse, execute as rillExecute, createRuntimeContext, invokeCallable, isScriptCallable, isStream, toNative, drainStream, VERSION,
 } from './runtime.js';
 
+const introspection = ${introspectionLiteral};
+
 let project;
 let handler;
 let ctx;
 
 export function describe() {
-  ${describeBody}
+  return introspection;
 }
 
 export async function init(context = {}) {
@@ -1048,9 +1051,24 @@ export async function execute(request = {}, context = {}) {
     ctx.callbacks = { ...ctx.callbacks, onLog: context.onLog };
   }
 
-  ctx.pipeValue = request.params ?? {};
+  const requestParams = request.params ?? {};
+  ctx.pipeValue = requestParams;
 
-  let result = await invokeCallable(handler, [], ctx);
+  // Map request.params dict → positional args in the order declared by the
+  // handler's introspection. Mirrors the binding cli-run.ts uses so a single
+  // closure (e.g. \`|messages: list| { ... }\`) is invocable through either
+  // entry point. Falls back to zero args when introspection is unavailable
+  // (the closure body can still read \`$\` via pipeValue).
+  let positionalArgs = [];
+  if (introspection && Array.isArray(introspection.params)) {
+    positionalArgs = introspection.params.map((p) =>
+      Object.prototype.hasOwnProperty.call(requestParams, p.name)
+        ? requestParams[p.name]
+        : undefined
+    );
+  }
+
+  let result = await invokeCallable(handler, positionalArgs, ctx);
   if (isStream(result)) {
     if (context.onChunk) {
       await drainStream(result, ctx, async (chunk) => {

@@ -8,6 +8,10 @@ field pointing to the entry script) and one `.rill` source file.
 `rill run <dir>` discovers the config, parses the script, and executes
 it.
 
+> **Scaffold your own package:** run `rill init` at any directory to
+> generate a `rill-config.json` and the `.rill/npm/` extension folder.
+> For a multi-package workspace, run `rill init bundle [name]` instead.
+
 ## Prerequisites
 
 ```bash

@@ -1,42 +1,13 @@
 /**
- * rill bootstrap: Initialize a rill project.
- * Creates .rill/npm/, rill-config.json, gitignores, and tsconfig.rill.json.
- *
- * Constraints (FR-EXT-1, NFR-EXT-1):
- * - No-op when both .rill/npm/ and rill-config.json exist (without --force).
- * - --force overwrites rill-config.json only; preserves .rill/npm/ contents.
- * - --reset wipes .rill/npm/ entirely and rewrites all scaffolded files.
- * - File I/O completes in < 2s.
+ * rill bootstrap: Deprecated — use `rill init` instead.
+ * This module preserves scaffoldSinglePackage for use by src/commands/init.ts.
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseArgs } from 'node:util';
 
 // ============================================================
-// HELP TEXT
-// ============================================================
-
-const USAGE = `\
-Usage: rill bootstrap [--force | --reset]
-
-Initialize a rill project in the current directory.
-
-Creates:
-  .rill/                    Internal build artifacts directory
-  .rill/npm/                Private npm workspace for extensions
-  .rill/tsconfig.rill.json  Path mapping for tsc + IDE
-  rill-config.json          Project configuration file
-
-Options:
-  --force     Overwrite rill-config.json. .rill/npm/ contents are preserved.
-  --reset     Wipe .rill/npm/ entirely and rewrite all scaffolded files.
-              Deletes installed extensions; you must re-run 'rill install' for each.
-  --help      Show this help message
-`;
-
-// ============================================================
-// IMPLEMENTATION
+// SHARED SCAFFOLD LOGIC
 // ============================================================
 
 const TSCONFIG_RILL_CONTENT =
@@ -52,47 +23,19 @@ const TSCONFIG_RILL_CONTENT =
   ) + '\n';
 
 /**
- * Initialize a rill project: create .rill/npm/, rill-config.json, gitignores,
- * tsconfig.rill.json.
+ * Scaffold a single-package rill project at cwd.
  *
- * Constraints:
- * - File I/O completes in < 2s (NFR-EXT-1).
- * - No-op when both .rill/npm/ and rill-config.json exist (FR-EXT-1).
- * - --force rewrites rill-config.json; preserves .rill/npm/.
- * - --reset wipes .rill/npm/ and rewrites all scaffolded files.
- * - rill-config.json: name=basename(cwd), main="main.rill", extensions.mounts={}.
- * - Adds .rill/ to project-root .gitignore idempotently.
+ * Creates .rill/npm/, rill-config.json, gitignores, and tsconfig.rill.json.
+ * When force is true, overwrites rill-config.json while preserving .rill/npm/.
+ * When reset is true, wipes .rill/npm/ entirely and rewrites all scaffolded files.
+ *
+ * Returns 0 on success, 1 on error (writes error message to stderr).
  */
-export async function run(argv: string[]): Promise<number> {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      force: { type: 'boolean', default: false },
-      reset: { type: 'boolean', default: false },
-      help: { type: 'boolean', default: false },
-    },
-    strict: false,
-  });
-
-  if (values['help'] === true) {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-
-  const force = values['force'] === true;
-  const reset = values['reset'] === true;
-
-  if (force && reset) {
-    process.stderr.write(
-      'error: --force and --reset are mutually exclusive. ' +
-        'Use --force to overwrite rill-config.json only, ' +
-        'or --reset to wipe .rill/npm/ and rewrite all files.\n'
-    );
-    return 1;
-  }
-
-  const cwd = process.cwd();
-
+export async function scaffoldSinglePackage(
+  cwd: string,
+  force: boolean,
+  reset: boolean
+): Promise<number> {
   // Step 1: mkdir .rill/ (recursive, idempotent)
   const rillDir = path.join(cwd, '.rill');
   fs.mkdirSync(rillDir, { recursive: true });
@@ -117,7 +60,7 @@ export async function run(argv: string[]): Promise<number> {
     }
   }
 
-  // Step 4: mkdir .rill/npm/ (recursive) — EC-4: EACCES -> exit 1
+  // Step 4: mkdir .rill/npm/ (recursive)
   try {
     fs.mkdirSync(npmDir, { recursive: true });
   } catch (err) {
@@ -141,16 +84,14 @@ export async function run(argv: string[]): Promise<number> {
     fs.writeFileSync(npmGitignore, npmGitignoreContent, 'utf8');
   }
 
-  // Step 7: write .rill/tsconfig.rill.json — path mapping that lets `tsc` and
-  // editors resolve extension type imports out of .rill/npm/node_modules/.
+  // Step 7: write .rill/tsconfig.rill.json — path mapping for tsc and editors.
   // Always (re)written under --reset; otherwise only when missing.
   const tsconfigRill = path.join(rillDir, 'tsconfig.rill.json');
   if (reset || !fs.existsSync(tsconfigRill)) {
     fs.writeFileSync(tsconfigRill, TSCONFIG_RILL_CONTENT, 'utf8');
   }
 
-  // Step 8: write rill-config.json — EC-5: EACCES -> exit 1
-  // --force or --reset trigger overwrite.
+  // Step 8: write rill-config.json; --force or --reset trigger overwrite.
   const configPath = path.join(cwd, 'rill-config.json');
   const projectName = path.basename(cwd);
   const configContent =
@@ -194,8 +135,7 @@ export async function run(argv: string[]): Promise<number> {
     fs.appendFileSync(projectGitignore, `${prefix}${rillEntry}\n`, 'utf8');
   }
 
-  // Step 10: hint user to wire tsconfig.rill.json into their tsconfig.json so
-  // `tsc --noEmit` and editors can resolve extension types out of .rill/npm/.
+  // Step 10: hint user to wire tsconfig.rill.json into their tsconfig.json
   const userTsconfig = path.join(cwd, 'tsconfig.json');
   if (fs.existsSync(userTsconfig)) {
     let userTsconfigText = '';
@@ -220,4 +160,19 @@ export async function run(argv: string[]): Promise<number> {
   );
 
   return 0;
+}
+
+// ============================================================
+// PUBLIC COMMAND
+// ============================================================
+
+/**
+ * Deprecated. Prints a deprecation message and exits with code 1.
+ * Use `rill init` instead.
+ */
+export async function run(_argv: string[]): Promise<number> {
+  process.stderr.write(
+    'rill bootstrap has been renamed to rill init. Use `rill init` to create a single package, or `rill init bundle` to create a bundle.\n'
+  );
+  return 1;
 }

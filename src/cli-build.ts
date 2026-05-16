@@ -1,10 +1,19 @@
+/**
+ * rill build: Builds a rill project or bundle.
+ *
+ * When a rill-bundle.json is present at the resolved project directory,
+ * delegates to bundle mode (builds all packages, runs harness postBuild).
+ * Otherwise falls through to the single-package path (reads rill-config.json).
+ */
 import { buildPackage } from './build/build.js';
+import { detectBundleAtCwd } from './bundle/config.js';
+import { runBundleBuild } from './commands/bundle-build.js';
 import { detectHelpVersionFlag } from './cli-shared.js';
 
 const HELP_TEXT = `Usage: rill build [options] [project-dir]
 
 Arguments:
-  project-dir               Directory containing rill-config.json (default: cwd)
+  project-dir               Directory containing rill-config.json or rill-bundle.json (default: cwd)
 
 Options:
   --output <dir>            Output directory (default: build/)
@@ -56,6 +65,11 @@ export async function main(argv: string[]): Promise<number> {
     positionals[0] !== undefined && positionals[0] !== ''
       ? positionals[0]
       : process.cwd();
+
+  // Bundle-mode detection: if rill-bundle.json exists at projectDir, delegate.
+  if (detectBundleAtCwd(projectDir)) {
+    return runBundleBuild(projectDir, {});
+  }
 
   const outputIdx = argv.indexOf('--output');
   const outputDir =

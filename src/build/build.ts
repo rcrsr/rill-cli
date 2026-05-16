@@ -18,6 +18,10 @@ import { computeChecksum } from './checksum.js';
 // COMPILE ERROR
 // ============================================================
 
+/**
+ * Error thrown when the build pipeline fails.
+ * `phase` is one of `'compilation' | 'validation' | 'bundling' | 'harness'`.
+ */
 export class BuildError extends Error {
   readonly phase: string;
   constructor(message: string, phase: string) {

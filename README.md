@@ -12,12 +12,15 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 
 | Subcommand | Purpose |
 |------------|---------|
-| `rill bootstrap` | Initialize a new rill project (.rill/npm/, rill-config.json) |
+| `rill init` | Scaffold a new single-package project (`rill-config.json` + `.rill/npm/`) |
+| `rill init bundle [name]` | Scaffold a new multi-package bundle (`rill-bundle.json` + `packages/`) |
+| `rill init package <name>` | Add a package inside an existing bundle (or scaffold standalone) |
+| `rill bootstrap` | Initialize a new rill project (.rill/npm/, rill-config.json) — **deprecated, use `rill init`** |
 | `rill install <pkg>` | Install an extension into .rill/npm/ and mount it |
 | `rill uninstall <mount>` | Remove a mounted extension |
 | `rill upgrade <mount>` | Update a mounted extension to a newer version |
 | `rill list` | List installed extensions and their mount paths |
-| `rill build` | Bundle the project for production |
+| `rill build` | Compile the project (package or bundle) for production |
 | `rill check` | Validate rill-config.json and source files |
 | `rill describe` | Print callable contracts (handler signatures) |
 | `rill eval <expr>` | Evaluate a rill expression and print the result |
@@ -25,6 +28,18 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 | `rill run [project-dir]` | Execute the project entry from rill-config.json |
 
 Run `rill help <command>` or `rill <command> --help` for details.
+
+## Concepts
+
+Four terms appear throughout this documentation. They are defined here for clarity.
+
+**Package** — a single rill project. It has a `rill-config.json` at its root and produces one compiled output when you run `rill build`. This is the original and default project unit.
+
+**Bundle** — a multi-package workspace. It has a `rill-bundle.json` at its root and contains two or more packages under a `packages/` directory. Running `rill build` or `rill run` at the bundle root compiles or runs all member packages together.
+
+**Mount** — the short name under which an extension (or a package within a bundle) is accessible at runtime. For example, installing `@rcrsr/rill-ext-datetime --as dt` mounts the extension at `dt`. Bundle packages declare their mount in `rill-bundle.json` via the `mount` field.
+
+**Harness** — a TypeScript module that controls how a bundle is compiled and served. It receives compiled packages after `rill build` and decides how to start a server during `rill run`. The built-in harness handles common HTTP serving scenarios. Custom harnesses implement the `RillHarness` interface exported from `@rcrsr/rill-cli/harness`.
 
 ## Install
 
@@ -46,13 +61,48 @@ npm install @rcrsr/rill-cli
 rill bootstrap                      # initialize project + .rill/npm/
 rill install @rcrsr/rill-ext-datetime  # add an extension
 rill list                           # show installed extensions
-rill build                          # bundle for production
+rill build                          # compile for production
 rill run                            # execute the project
 ```
 
 ## Subcommands
 
+### rill init
+
+Scaffold a new project. The subcommand determines the project shape.
+
+```bash
+rill init                           # single-package project in cwd
+rill init bundle [name]             # multi-package bundle in cwd
+rill init package <name>            # add a package to a bundle (or standalone)
+rill init --help                    # list available subcommands
+```
+
+**`rill init` (no subcommand)**
+
+Creates `rill-config.json` and `.rill/npm/` in the current directory. Equivalent to `rill bootstrap` for single-package projects.
+
+**`rill init bundle [name]`**
+
+Creates `rill-bundle.json`, `.rill/npm/`, and a `packages/` directory in the current directory. The optional `name` argument sets the bundle name in `rill-bundle.json`. Use this when you want a workspace that compiles and serves multiple packages together under one harness.
+
+**`rill init package <name>`**
+
+When run inside a bundle (any parent directory contains `rill-bundle.json`), creates a new package directory at `<bundle-root>/packages/<name>/`. When run outside a bundle, creates a standalone single-package project in the current directory under a `<name>/` subdirectory.
+
+**TypeScript types for custom extensions.** `rill init` writes `.rill/tsconfig.rill.json` with a `paths` mapping into `.rill/npm/node_modules/`. Add this line to your `tsconfig.json` so editors and `tsc --noEmit` resolve extension imports:
+
+```json
+{ "extends": "./.rill/tsconfig.rill.json" }
+```
+
+Or use `rill check --types` (see below) to typecheck without managing tsconfig directly.
+
+---
+
 ### rill bootstrap
+
+> **Deprecated.** Use `rill init` instead. `rill bootstrap` remains functional for backward compatibility.
 
 Initialize a new rill project. Creates `.rill/npm/`, `.rill/tsconfig.rill.json`, and a starter `rill-config.json` in the current directory.
 
@@ -68,14 +118,6 @@ rill bootstrap --reset              # wipe .rill/npm/ and rewrite all scaffolded
 |------|-------------|
 | `--force` | Overwrite existing `rill-config.json`. `.rill/npm/` and installed extensions are preserved. |
 | `--reset` | Wipe `.rill/npm/` and rewrite all scaffolded files. Deletes installed extensions; re-run `rill install` for each. |
-
-**TypeScript types for custom extensions.** Bootstrap writes `.rill/tsconfig.rill.json` with a `paths` mapping into `.rill/npm/node_modules/`. Add this line to your `tsconfig.json` so editors and `tsc --noEmit` resolve extension imports:
-
-```json
-{ "extends": "./.rill/tsconfig.rill.json" }
-```
-
-Or use `rill check --types` (see below) to typecheck without managing tsconfig directly.
 
 ### rill install
 
@@ -98,6 +140,11 @@ rill install --dry-run @rcrsr/rill-ext-anthropic   # preview without writing
 | `--exact` | **Deprecated** alias for `--pin`. Will be removed in 0.20. |
 | `--range <semver>` | Specify a custom semver range. Registry installs only. |
 | `--dry-run` | Print what would be done without writing config or running npm. |
+| `--for <mount>` | Target a specific package mount when installing an extension from a bundle root. |
+| `--role extension\|harness` | Disambiguate packages that export both an extension and a harness. |
+| `--replace` | Atomically swap the declared harness in `rill-bundle.json` with the installed package. |
+
+**Bundle-aware install.** When run at a bundle root (where `rill-bundle.json` exists), use `--for <mount>` to install an extension into a specific member package rather than the bundle root. Use `--role harness` combined with `--replace` to swap the active harness in one operation.
 
 **Mount name derivation.** When `--as` is omitted, the mount name comes from:
 
@@ -246,21 +293,34 @@ Rule states: `"on"` (enabled), `"off"` (disabled), `"warn"` (downgrade to warnin
 
 ### rill run
 
-Config-driven execution. Loads extensions and settings from `rill-config.json`, then runs a script or named handler.
+Config-driven execution. The active mode (package or bundle) is determined by which config files exist in the current working directory.
+
+**Mode detection:**
+
+| Files present | Active mode | Behavior |
+|---------------|-------------|----------|
+| `rill-bundle.json` | bundle | Runs all packages via the configured harness |
+| `rill-config.json` only | package | Runs the single-package entry as usual |
+| Both present | bundle | Bundle mode takes precedence |
+| Neither | error | `rill-config.json not found` |
 
 ```bash
 rill run [project-dir] [--config <path>] [handler-args...]
 ```
 
-**Module mode:** When `main` points to a script file, `rill run` executes it. Positional arguments forward as `$`.
+**Package mode — module mode:** When `main` points to a script file, `rill run` executes it. Positional arguments forward as `$`.
 
-**Handler mode:** When `main` names a handler (e.g., `"script.rill:processOrder"`), parameters come from `--param_name value` flags. Run `rill run --help` to print the parameter list.
+**Package mode — handler mode:** When `main` names a handler (e.g., `"script.rill:processOrder"`), parameters come from `--param_name value` flags. Run `rill run --help` to print the parameter list.
+
+**Bundle mode:** `rill run` invokes the harness `serve` hook, which receives all compiled packages and returns a port number when the server is ready. The built-in harness starts an HTTP server; custom harnesses can do anything.
 
 See [CLI Reference](https://github.com/rcrsr/rill/blob/main/docs/integration-cli.md) and [Config Reference](https://github.com/rcrsr/rill/blob/main/docs/ref-config.md) for details.
 
 ### rill build
 
-Compile a rill project into a self-contained output directory. Bundles extensions via esbuild, copies entry and module files, and writes an enriched `rill-config.json` with build metadata.
+Compile a rill project into a self-contained output directory. Packages extensions via esbuild, copies entry and module files, and writes an enriched `rill-config.json` with build metadata.
+
+**Mode detection** follows the same file-driven rules as `rill run`.
 
 ```bash
 rill build [project-dir] [--output <dir>] [--flat]
@@ -273,20 +333,32 @@ rill build [project-dir] [--output <dir>] [--flat]
 | `--output <dir>` | Output directory (default: `build/`) |
 | `--flat` | Write directly into `<output>` without a package-name subdirectory. |
 
-**Output structure (default):**
+**Package mode — output structure (default):**
 
 ```
 build/<package-name>/
   main.rill              # entry script
   rill-config.json       # enriched with build section
-  extensions/            # bundled extension JS files
+  extensions/            # packaged extension JS files
   modules/               # copied module .rill files
-  runtime.js             # bundled rill runtime
+  runtime.js             # packaged rill runtime
   run.js                 # CLI wrapper
   handler.js             # handler export for harness consumption
 ```
 
-**Output structure (`--flat`):** identical contents written directly into `<output>` without the package-name level. Use when you control the output dir and don't need to compose multiple packages.
+**Package mode — output structure (`--flat`):** identical contents written directly into `<output>` without the package-name level. Use when you control the output dir and don't need to compose multiple packages.
+
+**Bundle mode — output structure:**
+
+```
+build/
+  <package-a>/           # one subdirectory per bundle member package
+    ...                  # same layout as single-package output
+  <package-b>/
+    ...
+```
+
+After building all packages, `rill build` calls the harness `postBuild` hook, which receives the list of compiled packages and their output directories.
 
 The `build` section in the output `rill-config.json` contains a SHA-256 checksum, rill runtime version, and config version.
 
@@ -339,6 +411,123 @@ When no subcommand is given, `project` is assumed.
 |------|---------|
 | 0 | Contract emitted |
 | 1 | Config error, unknown mount, missing handler, or `--strict` violation |
+
+## Harness Authoring
+
+A harness controls how a bundle is compiled and served. The built-in harness (`@rcrsr/rill-cli/builtin`) covers common HTTP serving scenarios. To write a custom harness, implement the `RillHarness` interface and export it from a package that declares `"role": "harness"` in its `rill-bundle.json` entry.
+
+### Import
+
+```typescript
+import type { RillHarness, PostBuildContext, ServeContext } from '@rcrsr/rill-cli/harness';
+```
+
+### RillHarness interface
+
+```typescript
+interface RillHarness {
+  name: string;
+  postBuild?: (ctx: PostBuildContext) => Promise<void>;
+  serve?: (ctx: ServeContext) => Promise<number>;
+}
+```
+
+| Member | Required | Description |
+|--------|----------|-------------|
+| `name` | yes | Identifier used in log output |
+| `postBuild` | no | Called after all packages compile; receives compiled package list |
+| `serve` | no | Called by `rill run`; must return the port number when the server is ready |
+
+### Context types
+
+**`HarnessContext`** — base context passed to all hooks:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `bundleDir` | `string` | Absolute path to the bundle root |
+| `bundle` | `RillBundleConfig` | Parsed `rill-bundle.json` |
+| `config` | `unknown` | Value of `config` from `rill-bundle.json`, if set |
+| `logger` | `Logger` | Minimal logger (`info`, `warn`, `error`) |
+
+**`PostBuildContext`** extends `HarnessContext` and adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outputDir` | `string` | Root output directory for the build |
+| `packages` | `CompiledPackage[]` | All compiled packages in this run |
+
+**`ServeContext`** extends `HarnessContext` and adds:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `packages` | `CompiledPackage[]` | Compiled packages available to serve |
+| `compile` | `() => Promise<CompiledPackage[]>` | Trigger a fresh build of all packages |
+| `onSourceChange` | `(cb: () => void) => void` | Register a callback for file-system changes |
+| `onShutdown` | `(cb: () => void) => void` | Register a cleanup callback |
+
+**`CompiledPackage`**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mount` | `string` | Mount name declared in `rill-bundle.json` |
+| `packageName` | `string` | Package name from `rill-config.json` |
+| `packageDir` | `string` | Source directory of the package |
+| `buildOutput` | `string` | Output directory for this package's compiled files |
+
+**`Logger`**:
+
+```typescript
+interface Logger {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+}
+```
+
+### Bundle config shape (`rill-bundle.json`)
+
+```json
+{
+  "name": "my-bundle",
+  "version": "1.0.0",
+  "harness": "@acme/my-harness",
+  "config": { "port": 3000 },
+  "defaultPackage": "api",
+  "packages": [
+    { "mount": "api",      "project": "packages/api" },
+    { "mount": "frontend", "project": "packages/frontend" }
+  ]
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Bundle identifier |
+| `version` | yes | SemVer string |
+| `harness` | no | Package name of a custom harness. Omit to use the built-in harness. |
+| `config` | no | Arbitrary config object forwarded to `HarnessContext.config` |
+| `defaultPackage` | no | Mount name to use when no `--for` flag is given at bundle root |
+| `packages` | yes | Array of `{ mount, project }` entries |
+
+### Minimal example
+
+```typescript
+import type { RillHarness, ServeContext } from '@rcrsr/rill-cli/harness';
+import { createServer } from 'http';
+
+export const harness: RillHarness = {
+  name: 'my-harness',
+  async serve(ctx: ServeContext): Promise<number> {
+    const port = 3000;
+    const server = createServer((req, res) => {
+      res.end('ok');
+    });
+    ctx.onShutdown(() => server.close());
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    return port;
+  },
+};
+```
 
 ## Documentation
 

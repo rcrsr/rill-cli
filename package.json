@@ -14,6 +14,16 @@
     "eval",
     "build"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    },
+    "./harness": {
+      "types": "./dist/harness.d.ts",
+      "import": "./dist/harness.js"
+    }
+  },
   "bin": {
     "rill": "./dist/cli.js"
   },

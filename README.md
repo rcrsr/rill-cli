@@ -58,7 +58,7 @@ npm install @rcrsr/rill-cli
 ## Quickstart
 
 ```bash
-rill bootstrap                      # initialize project + .rill/npm/
+rill init                           # initialize project + .rill/npm/
 rill install @rcrsr/rill-ext-datetime  # add an extension
 rill list                           # show installed extensions
 rill build                          # compile for production

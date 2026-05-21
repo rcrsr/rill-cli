@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `rill build` and `rill run` now support multi-package bundles via `rill-bundle.json`, with `rill init bundle` and `rill init package` subcommands for scaffolding new projects. `rill bootstrap` is renamed to `rill init` with a deprecation stub
+- `rill install` now accepts `--for`, `--role`, and `--replace` flags for bundle-aware package management with built-in dispatch harness support
+- `rill install` rejects packages that do not declare `"rill": { "role": "extension" | "harness" }` in their `package.json`. The role is probed before `npm install` runs (registry via `npm view`, local directory via direct read), preventing non-rill packages from entering `.rill/npm/`
+
 ## [0.19.6] - 2026-05-12
 
 ### Added

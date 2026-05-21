@@ -156,17 +156,35 @@ function writeInstalledPackageFixture(
  * Build a spawn mock that writes the package fixture into node_modules before
  * emitting the 'close' event with exit code 0.
  *
- * This simulates npm install completing and landing the files.
+ * Attaches a stdout EventEmitter so that npmView (which uses stdio: pipe and
+ * reads child.stdout) does not crash. For 'npm view' calls the mock emits the
+ * declared rill role JSON on stdout so probePackageRole passes the gate check.
+ * For 'npm install' calls the fixture files are written before close is emitted.
+ *
+ * Dual-role packages declare 'extension' as their rill.role field — the
+ * 'ambiguous' outcome comes from post-install export detection, not the
+ * declared role field.
  */
 function makeSpawnMockWithFixture(
   prefix: string,
   pkgName: string,
   role: 'extension' | 'harness' | 'dual'
-): () => EventEmitter {
-  return () => {
-    const child = new EventEmitter();
+): (_cmd: string, args: string[]) => EventEmitter & { stdout: EventEmitter } {
+  return (_cmd: string, args: string[]) => {
+    const stdout = new EventEmitter();
+    const child = Object.assign(new EventEmitter(), { stdout });
     process.nextTick(() => {
-      writeInstalledPackageFixture(prefix, pkgName, role);
+      if (args[0] === 'view') {
+        // Emit the raw rill field value (not wrapped in a package.json object).
+        // probePackageRole parses this and reads .role directly.
+        const declaredRole = role === 'dual' ? 'extension' : role;
+        stdout.emit(
+          'data',
+          Buffer.from(JSON.stringify({ role: declaredRole }))
+        );
+      } else {
+        writeInstalledPackageFixture(prefix, pkgName, role);
+      }
       child.emit('close', 0);
     });
     return child;

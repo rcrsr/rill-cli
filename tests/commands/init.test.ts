@@ -451,6 +451,9 @@ describe('init', () => {
       expect(bundleConfig.name).toBe('demo');
 
       expect(fs.existsSync(path.join(tmpDir, '.rill', 'npm'))).toBe(true);
+      expect(
+        fs.existsSync(path.join(tmpDir, '.rill', 'npm', '.gitignore'))
+      ).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, 'packages'))).toBe(true);
     });
 

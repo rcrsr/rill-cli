@@ -228,7 +228,7 @@ describe('list', () => {
   // ============================================================
 
   describe('EC-22: rill-config.json missing emits bootstrap hint and exits 1', () => {
-    it('writes "Run rill bootstrap first" to stderr and exits 1', async () => {
+    it('writes "Run rill init first" to stderr and exits 1', async () => {
       // No rill-config.json written — tmpDir is empty
       const { run } = await import('../../src/commands/list.js');
       const cap = captureOutput();
@@ -240,7 +240,7 @@ describe('list', () => {
       }
 
       expect(exitCode).toBe(1);
-      expect(cap.stderr.join('')).toContain("Run 'rill bootstrap' first");
+      expect(cap.stderr.join('')).toContain("Run 'rill init' first");
     });
   });
 
@@ -249,7 +249,7 @@ describe('list', () => {
   // ============================================================
 
   describe('EC-23: .rill/npm/ missing in --json mode emits bootstrap hint and exits 1', () => {
-    it('writes "Run rill bootstrap first" to stderr and exits 1', async () => {
+    it('writes "Run rill init first" to stderr and exits 1', async () => {
       // Write rill-config.json but no .rill/npm/package.json
       fs.writeFileSync(
         path.join(tmpDir, 'rill-config.json'),
@@ -273,7 +273,7 @@ describe('list', () => {
       }
 
       expect(exitCode).toBe(1);
-      expect(cap.stderr.join('')).toContain("Run 'rill bootstrap' first");
+      expect(cap.stderr.join('')).toContain("Run 'rill init' first");
     });
   });
 

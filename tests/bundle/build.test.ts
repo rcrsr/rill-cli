@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runBundleBuild } from '../../src/commands/bundle-build.js';
+import { detectBundleAtCwd } from '../../src/bundle/config.js';
 import { captureOutput } from '../helpers/cli-fixtures.js';
 
 // ============================================================
@@ -449,5 +450,27 @@ describe('runBundleBuild', () => {
     ).resolves.toBeUndefined();
     // runBundleBuild must not have written a duplicate node_modules at bundleDir root
     expect(existsSync(path.join(bundleDir, 'node_modules'))).toBe(false);
+  });
+});
+
+// ============================================================
+// TEST: detectBundleAtCwd — packages/<name>/ subdirectory
+// ============================================================
+
+describe('detectBundleAtCwd', () => {
+  it('returns false when cwd is inside packages/<name>/ within a bundle', async () => {
+    const bundleDir = await makeTmpDir();
+    await writeBundleJson(bundleDir, {
+      name: 'test-bundle',
+      version: '1.0.0',
+      packages: [],
+    });
+    await mkdir(path.join(bundleDir, 'packages', 'pkg-one'), {
+      recursive: true,
+    });
+
+    expect(detectBundleAtCwd(path.join(bundleDir, 'packages', 'pkg-one'))).toBe(
+      false
+    );
   });
 });

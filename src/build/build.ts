@@ -14,6 +14,10 @@ import {
 import { parse, introspectHandlerFromAST } from '@rcrsr/rill';
 import { computeChecksum } from './checksum.js';
 
+// Serializes the process.chdir/loadProject/restore critical section across
+// concurrent buildPackage invocations.
+let chdirQueue: Promise<void> = Promise.resolve();
+
 // ============================================================
 // COMPILE ERROR
 // ============================================================
@@ -499,7 +503,7 @@ export async function buildPackage(
 
   if (!existsSync(path.resolve(absProjectDir, '.rill/npm/package.json'))) {
     throw new BuildError(
-      "Run 'rill bootstrap' to initialize this project, or pass a project-dir argument pointing at an existing bootstrapped project.",
+      "Run 'rill init' to initialize this project, or pass a project-dir argument pointing at an existing bootstrapped project.",
       'compilation'
     );
   }
@@ -690,18 +694,30 @@ export async function buildPackage(
   const outputRillConfigPath = path.join(packageOutDir, 'rill-config.json');
   const rillVersion = readRillVersion();
 
-  const originalCwd = process.cwd();
-  try {
-    process.chdir(packageOutDir);
-    const dryRunResult = await loadProject({
-      configPath: outputRillConfigPath,
-      rillVersion,
-      prefix: path.join(absProjectDir, '.rill/npm'),
-    });
-    for (const dispose of dryRunResult.disposes) {
-      await dispose();
+  let chdirError: unknown;
+  const myTask = chdirQueue.then(async () => {
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(packageOutDir);
+      const dryRunResult = await loadProject({
+        configPath: outputRillConfigPath,
+        rillVersion,
+        prefix: path.join(absProjectDir, '.rill/npm'),
+      });
+      for (const dispose of dryRunResult.disposes) {
+        await dispose();
+      }
+    } catch (err) {
+      chdirError = err;
+    } finally {
+      process.chdir(originalCwd);
     }
-  } catch (err) {
+  });
+  chdirQueue = myTask;
+  await myTask;
+
+  if (chdirError !== undefined) {
+    const err = chdirError;
     if (
       err instanceof ConfigEnvError ||
       (err instanceof ExtensionLoadError &&
@@ -715,8 +731,6 @@ export async function buildPackage(
       const msg = err instanceof Error ? err.message : String(err);
       throw new BuildError(`Bundle validation failed: ${msg}`, 'validation');
     }
-  } finally {
-    process.chdir(originalCwd);
   }
 
   // Compute checksum over all output files EXCEPT rill-config.json

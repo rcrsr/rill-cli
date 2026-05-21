@@ -166,7 +166,7 @@ export async function runBundleServe(
   const ctx: ServeContext = {
     bundleDir,
     bundle,
-    config: bundle.config ?? {},
+    config: bundle.config,
     logger,
     get packages() {
       return packagesArray as readonly CompiledPackage[];

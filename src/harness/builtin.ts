@@ -130,7 +130,7 @@ async function postBuild(ctx: PostBuildContext): Promise<void> {
     .join('\n');
 
   // Determine the fallback mount for when no argv mount is provided.
-  const defaultMount = bundle.defaultPackage ?? packages[0]?.mount ?? '';
+  const defaultMount = bundle.defaultPackage || packages[0]?.mount || '';
 
   const unknownMountMessage = (mountExpr: string): string =>
     `\`Unknown package: \${${mountExpr}}. Available: ${packages.map((p) => p.mount).join(', ')}.\``;

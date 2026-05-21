@@ -126,7 +126,7 @@ export async function run(argv: string[]): Promise<number> {
     if (err instanceof BootstrapMissingError) {
       process.stderr.write('✗ .rill/npm/ not found\n');
       process.stderr.write(
-        "  Run 'rill bootstrap' first to initialize the project\n"
+        "  Run 'rill init' first to initialize the project\n"
       );
       return 1;
     }

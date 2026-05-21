@@ -39,11 +39,24 @@ vi.mock('../../src/cli-shared.js', () => ({
 // HELPERS
 // ============================================================
 
-/** Returns a spawn mock that emits close with the given exit code. */
-function makeSpawnMock(exitCode: number): () => EventEmitter {
-  return () => {
-    const child = new EventEmitter();
+/**
+ * Returns a spawn mock that emits close with the given exit code.
+ * Attaches a stdout EventEmitter so that npmView (which uses stdio: pipe and
+ * reads child.stdout) does not crash. For 'npm view' calls the mock emits a
+ * rill extension-role JSON payload; for 'npm install' calls stdout is idle.
+ */
+function makeSpawnMock(
+  exitCode: number
+): (_cmd: string, args: string[]) => EventEmitter & { stdout: EventEmitter } {
+  return (_cmd: string, args: string[]) => {
+    const stdout = new EventEmitter();
+    const child = Object.assign(new EventEmitter(), { stdout });
     process.nextTick(() => {
+      // Emit rill role JSON on stdout for 'npm view' calls so probePackageRole
+      // receives a valid extension declaration and does not gate-reject.
+      if (args[0] === 'view') {
+        stdout.emit('data', Buffer.from(JSON.stringify({ role: 'extension' })));
+      }
       child.emit('close', exitCode);
     });
     return child;
@@ -363,9 +376,7 @@ describe('install', () => {
       expect(exitCode).toBe(1);
       const err = cap.stderr.join('');
       expect(err).toContain('✗ .rill/npm/ not found');
-      expect(err).toContain(
-        "Run 'rill bootstrap' first to initialize the project"
-      );
+      expect(err).toContain("Run 'rill init' first to initialize the project");
       // npm subprocess must not have been invoked
       expect(mocks.spawn).not.toHaveBeenCalled();
     });
@@ -529,9 +540,11 @@ describe('install', () => {
     it('emits "npm not found on PATH" to stderr and exits 1', async () => {
       bootstrapProject(tmpDir);
 
-      // Simulate spawn failing with ENOENT by emitting 'error' event
+      // Simulate spawn failing with ENOENT by emitting 'error' event.
+      // stdout EventEmitter is attached so npmView does not crash on .on('data').
       mocks.spawn.mockImplementation(() => {
-        const child = new EventEmitter();
+        const stdout = new EventEmitter();
+        const child = Object.assign(new EventEmitter(), { stdout });
         process.nextTick(() => {
           const err = new Error('spawn npm ENOENT') as Error & {
             code?: string;
@@ -555,6 +568,105 @@ describe('install', () => {
       expect(cap.stderr.join('')).toContain(
         'npm not found on PATH; install Node.js with npm'
       );
+    });
+  });
+
+  // ============================================================
+  // Pre-install role probe
+  // ============================================================
+
+  describe('pre-install role probe: rejects packages without rill.role', () => {
+    it('rejects a registry package that returns no rill field from npm view', async () => {
+      bootstrapProject(tmpDir);
+
+      // npm view emits empty stdout (simulates a package with no rill field published)
+      mocks.spawn.mockImplementation((_cmd: string, args: string[]) => {
+        const stdout = new EventEmitter();
+        const child = Object.assign(new EventEmitter(), { stdout });
+        process.nextTick(() => {
+          if (args[0] === 'view') {
+            // Empty stdout — no rill field in package.json
+            stdout.emit('data', Buffer.from(''));
+          }
+          child.emit('close', 0);
+        });
+        return child;
+      });
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain('does not declare a rill role');
+      // npm install must not have been reached
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a registry package that returns an unknown role value', async () => {
+      bootstrapProject(tmpDir);
+
+      // npm view emits a rill field with an unrecognised role value
+      mocks.spawn.mockImplementation((_cmd: string, args: string[]) => {
+        const stdout = new EventEmitter();
+        const child = Object.assign(new EventEmitter(), { stdout });
+        process.nextTick(() => {
+          if (args[0] === 'view') {
+            stdout.emit(
+              'data',
+              Buffer.from(JSON.stringify({ role: 'unknown-value' }))
+            );
+          }
+          child.emit('close', 0);
+        });
+        return child;
+      });
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain('does not declare a rill role');
+      // npm install must not have been reached
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a local directory package without a rill.role in its package.json', async () => {
+      bootstrapProject(tmpDir);
+
+      // Create a local package directory with a package.json that has no rill field
+      const localExtDir = path.join(tmpDir, 'local-ext');
+      fs.mkdirSync(localExtDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(localExtDir, 'package.json'),
+        JSON.stringify({ name: 'my-local-ext', version: '1.0.0' }),
+        'utf8'
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./local-ext', '--as', 'myext']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain('does not declare a rill role');
+      // npm install must not have been reached
+      expect(mocks.spawn).not.toHaveBeenCalled();
     });
   });
 
@@ -739,7 +851,7 @@ describe('install', () => {
       expect(exitCode).toBe(1);
       const err = cap.stderr.join('');
       expect(err).toContain('rill-config.json not found');
-      expect(err).toContain("Run 'rill bootstrap'");
+      expect(err).toContain("Run 'rill init'");
     });
   });
 });

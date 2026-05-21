@@ -1,7 +1,10 @@
-import type { RillBundleConfig } from './bundle/config.js';
+import type { ResolvedRillBundleConfig } from './bundle/config.js';
 import type { BuildResult } from './build/build.js';
 
-export type { RillBundleConfig } from './bundle/config.js';
+export type {
+  RillBundleConfig,
+  ResolvedRillBundleConfig,
+} from './bundle/config.js';
 
 // ============================================================
 // LOGGER
@@ -30,7 +33,7 @@ export interface CompiledPackage {
 
 export interface HarnessContext {
   readonly bundleDir: string;
-  readonly bundle: RillBundleConfig;
+  readonly bundle: ResolvedRillBundleConfig;
   readonly config: Record<string, unknown>;
   readonly logger: Logger;
 }

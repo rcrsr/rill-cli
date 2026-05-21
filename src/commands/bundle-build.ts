@@ -153,7 +153,7 @@ export async function runBundleBuild(
   const ctx: PostBuildContext = {
     bundleDir,
     bundle: bundleConfig,
-    config: bundleConfig.config ?? {},
+    config: bundleConfig.config,
     logger,
     outputDir: path.join(bundleDir, 'build'),
     packages: compiledPackages,

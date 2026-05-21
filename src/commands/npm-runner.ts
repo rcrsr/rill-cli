@@ -56,6 +56,51 @@ function runNpm(
 }
 
 /**
+ * Result returned by npmView.
+ * stdout contains the captured output; exitCode is the npm subprocess exit code.
+ */
+export interface NpmViewResult {
+  readonly stdout: string;
+  readonly exitCode: number;
+}
+
+/**
+ * Run `npm view <spec> <field> --json` and capture stdout.
+ *
+ * Resolves with NpmViewResult containing the captured output and exit code.
+ * Rejects with NpmNotFoundError when npm is absent from PATH.
+ */
+export function npmView(spec: string, field: string): Promise<NpmViewResult> {
+  return new Promise<NpmViewResult>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+
+    const child = spawn('npm', ['view', spec, field, '--json'], {
+      stdio: ['inherit', 'pipe', 'inherit'],
+      shell: false,
+    });
+
+    child.stdout!.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    child.on('error', (err: Error & { code?: string }) => {
+      if (err.code === 'ENOENT') {
+        reject(new NpmNotFoundError());
+      } else {
+        reject(err);
+      }
+    });
+
+    child.on('close', (code: number | null) => {
+      resolve({
+        stdout: Buffer.concat(chunks).toString('utf8').trim(),
+        exitCode: code ?? 1,
+      });
+    });
+  });
+}
+
+/**
  * Run `npm install <spec> --prefix <prefix>`.
  *
  * Resolves with NpmResult containing the exit code.

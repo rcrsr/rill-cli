@@ -56,6 +56,16 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
+  // Write .rill/npm/.gitignore if not already present
+  const rillNpmGitignorePath = path.join(rillNpmDir, '.gitignore');
+  if (!fs.existsSync(rillNpmGitignorePath)) {
+    fs.writeFileSync(
+      rillNpmGitignorePath,
+      'node_modules/\npackage-lock.json\n',
+      'utf8'
+    );
+  }
+
   // Ensure packages/ exists
   const packagesDir = path.join(cwd, 'packages');
   try {

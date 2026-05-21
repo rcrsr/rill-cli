@@ -123,7 +123,7 @@ export async function run(argv: string[]): Promise<number> {
     snapshot = await readConfigSnapshot(projectDir);
   } catch (err) {
     if (err instanceof ConfigNotFoundError) {
-      process.stderr.write("Run 'rill bootstrap' first\n");
+      process.stderr.write("Run 'rill init' first\n");
       return 1;
     }
     throw err;
@@ -133,7 +133,7 @@ export async function run(argv: string[]): Promise<number> {
   if (jsonMode) {
     const prefixPkgJson = path.join(prefix, 'package.json');
     if (!fs.existsSync(prefixPkgJson)) {
-      process.stderr.write("Run 'rill bootstrap' first\n");
+      process.stderr.write("Run 'rill init' first\n");
       return 1;
     }
   }

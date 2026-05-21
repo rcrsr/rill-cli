@@ -10,7 +10,9 @@
  */
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
   assertBootstrapped,
@@ -30,7 +32,7 @@ import {
   ConfigNotFoundError,
   ConfigWriteError,
 } from './config-edit.js';
-import { npmInstall, NpmNotFoundError } from './npm-runner.js';
+import { npmInstall, npmView, NpmNotFoundError } from './npm-runner.js';
 import {
   findBundleRoot,
   readBundleConfig,
@@ -107,7 +109,7 @@ async function installLocalFile(opts: {
     if (err instanceof ConfigNotFoundError) {
       process.stderr.write('✗ rill-config.json not found\n');
       process.stderr.write(
-        "  Run 'rill bootstrap' first to initialize the project\n"
+        "  Run 'rill init' first to initialize the project\n"
       );
       return 1;
     }
@@ -165,6 +167,10 @@ async function installLocalFile(opts: {
  * Returns 'unknown' when neither shape is detected.
  *
  * Uses static `import()` only. Factory functions are never invoked.
+ * `createRequire` resolves the package directory to its entry file before
+ * importing, then a timestamp query parameter is appended to the file URL to
+ * bypass the Node.js ESM module cache, preventing stale results across
+ * repeated calls to the same path.
  */
 async function detectPackageRole(
   prefix: string,
@@ -173,7 +179,11 @@ async function detectPackageRole(
   const pkgMainPath = path.join(prefix, 'node_modules', pkgName);
   let mod: Record<string, unknown>;
   try {
-    mod = (await import(pkgMainPath)) as Record<string, unknown>;
+    const require = createRequire(import.meta.url);
+    const resolvedPath = require.resolve(pkgMainPath);
+    const moduleUrl = pathToFileURL(resolvedPath);
+    moduleUrl.searchParams.set('t', Date.now().toString());
+    mod = (await import(moduleUrl.href)) as Record<string, unknown>;
   } catch {
     return 'unknown';
   }
@@ -190,6 +200,68 @@ async function detectPackageRole(
   if (hasExtensionManifest) return 'extension';
   if (hasHarnessShape) return 'harness';
   return 'unknown';
+}
+
+/**
+ * Probes the declared rill role from a package's manifest before installation.
+ *
+ * For registry specifiers, runs `npm view <spec> rill --json` to read the
+ * `rill` field from the published package.json without downloading the package.
+ * For local directory paths, reads the package.json directly from disk.
+ *
+ * Returns 'extension' or 'harness' when the package declares a valid role.
+ * Returns 'not-a-rill-package' when the field is absent or has an unrecognised value.
+ */
+async function probePackageRole(
+  specifier: string,
+  isLocal: boolean,
+  projectDir: string
+): Promise<'extension' | 'harness' | 'not-a-rill-package'> {
+  if (isLocal) {
+    const pkgJsonPath = path.join(
+      path.resolve(projectDir, specifier),
+      'package.json'
+    );
+    let pkgJson: Record<string, unknown>;
+    try {
+      const text = fs.readFileSync(pkgJsonPath, 'utf8');
+      pkgJson = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return 'not-a-rill-package';
+    }
+    return extractRillRole(pkgJson);
+  }
+
+  const result = await npmView(specifier, 'rill');
+  if (
+    result.exitCode !== 0 ||
+    result.stdout === '' ||
+    result.stdout === 'undefined'
+  ) {
+    return 'not-a-rill-package';
+  }
+  let rill: unknown;
+  try {
+    rill = JSON.parse(result.stdout);
+  } catch {
+    return 'not-a-rill-package';
+  }
+  if (typeof rill !== 'object' || rill === null) return 'not-a-rill-package';
+  const role = (rill as Record<string, unknown>)['role'];
+  if (role === 'extension') return 'extension';
+  if (role === 'harness') return 'harness';
+  return 'not-a-rill-package';
+}
+
+function extractRillRole(
+  pkgJson: Record<string, unknown>
+): 'extension' | 'harness' | 'not-a-rill-package' {
+  const rill = pkgJson['rill'];
+  if (typeof rill !== 'object' || rill === null) return 'not-a-rill-package';
+  const role = (rill as Record<string, unknown>)['role'];
+  if (role === 'extension') return 'extension';
+  if (role === 'harness') return 'harness';
+  return 'not-a-rill-package';
 }
 
 // ============================================================
@@ -314,7 +386,7 @@ export async function run(argv: string[]): Promise<number> {
     if (err instanceof BootstrapMissingError) {
       process.stderr.write('✗ .rill/npm/ not found\n');
       process.stderr.write(
-        "  Run 'rill bootstrap' first to initialize the project\n"
+        "  Run 'rill init' first to initialize the project\n"
       );
       return 1;
     }
@@ -371,6 +443,30 @@ export async function run(argv: string[]): Promise<number> {
     );
     process.stdout.write(`[dry-run] would run: ${plannedNpm}\n`);
     return 0;
+  }
+
+  // ---- Step 4b: Pre-install role probe ----
+  // Reject packages that do not declare a rill role in their package.json.
+  // This prevents non-rill packages from entering .rill/npm/.
+  let declaredRole: Awaited<ReturnType<typeof probePackageRole>>;
+  try {
+    declaredRole = await probePackageRole(specifier, local, projectDir);
+  } catch (err) {
+    if (err instanceof NpmNotFoundError) {
+      // npm absent means we cannot probe and cannot install; surface it before spawning.
+      process.stderr.write('npm not found on PATH; install Node.js with npm\n');
+      return 1;
+    }
+    throw err;
+  }
+  if (declaredRole === 'not-a-rill-package') {
+    process.stderr.write(
+      `✗ '${specifier}' does not declare a rill role in its package.json\n`
+    );
+    process.stderr.write(
+      '  Add "rill": { "role": "extension" } or "rill": { "role": "harness" } to its package.json\n'
+    );
+    return 1;
   }
 
   if (local) {
@@ -498,18 +594,15 @@ export async function run(argv: string[]): Promise<number> {
       forMount,
       roleFlag,
       replaceFlag,
+      declaredRole,
     });
   }
 
   // ---- Step 9 (package mode): Harness guard ----
-  // Harness packages cannot be installed outside a bundle. Detect role from
-  // the installed package exports and reject harness installs early, before
-  // any config write.
-  const noBundleRole = await detectPackageRole(effectivePrefix, pkgName);
+  // Harness packages cannot be installed outside a bundle. Reject based on
+  // the pre-install declared role; no post-install detection needed.
   const noBundleIsHarness =
-    noBundleRole === 'harness' ||
-    roleFlag === 'harness' ||
-    (noBundleRole === 'ambiguous' && roleFlag === 'harness');
+    declaredRole === 'harness' || roleFlag === 'harness';
   if (noBundleIsHarness) {
     process.stderr.write(
       'Cannot install harness outside a bundle. A bundle requires rill-bundle.json at the root.\n'
@@ -581,6 +674,7 @@ async function applyBundleInstall(opts: {
   forMount: string | undefined;
   roleFlag: string | undefined;
   replaceFlag: boolean;
+  declaredRole: 'extension' | 'harness';
 }): Promise<number> {
   const {
     bundleRoot,
@@ -594,7 +688,9 @@ async function applyBundleInstall(opts: {
     replaceFlag,
   } = opts;
 
-  // Detect role from installed package exports.
+  // Detect role from installed package exports, using the pre-install declared
+  // role as the authoritative source. Post-install detection supplements for
+  // ambiguity resolution only.
   const detectedRole = await detectPackageRole(effectivePrefix, pkgName);
 
   // Resolve the effective role, honouring --role flag for disambiguation.
@@ -615,8 +711,10 @@ async function applyBundleInstall(opts: {
   } else if (detectedRole === 'harness') {
     effectiveRole = 'harness';
   } else {
-    // Unknown role: fall back to extension (today's default behaviour).
-    effectiveRole = 'extension';
+    process.stderr.write(
+      `✗ Installed package does not export a recognisable rill shape\n`
+    );
+    return 1;
   }
 
   // Override with explicit --role when detection gave a definitive answer.

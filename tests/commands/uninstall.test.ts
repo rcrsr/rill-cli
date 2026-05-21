@@ -258,9 +258,7 @@ describe('uninstall', () => {
       expect(exitCode).toBe(1);
       const err = cap.stderr.join('');
       expect(err).toContain('✗ .rill/npm/ not found');
-      expect(err).toContain(
-        "Run 'rill bootstrap' first to initialize the project"
-      );
+      expect(err).toContain("Run 'rill init' first to initialize the project");
       expect(mocks.spawn).not.toHaveBeenCalled();
     });
   });

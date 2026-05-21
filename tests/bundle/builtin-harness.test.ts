@@ -10,7 +10,7 @@ import type {
   PostBuildContext,
   Logger,
 } from '../../src/harness.js';
-import type { RillBundleConfig } from '../../src/bundle/config.js';
+import type { ResolvedRillBundleConfig } from '../../src/bundle/config.js';
 
 // ============================================================
 // FIXTURE HELPERS
@@ -22,10 +22,12 @@ const SILENT_LOGGER: Logger = {
   error: () => undefined,
 };
 
-const MINIMAL_BUNDLE: RillBundleConfig = {
+const MINIMAL_BUNDLE: ResolvedRillBundleConfig = {
   name: 'test-bundle',
   version: '1.0.0',
   packages: [],
+  config: {},
+  defaultPackage: '',
 };
 
 function makeCompiledPackage(
@@ -56,7 +58,7 @@ function writeHandlerJs(outputDir: string, mount: string, exitCode = 0): void {
 function makePostBuildContext(
   outputDir: string,
   packages: readonly CompiledPackage[],
-  bundle: RillBundleConfig = MINIMAL_BUNDLE
+  bundle: ResolvedRillBundleConfig = MINIMAL_BUNDLE
 ): PostBuildContext {
   return {
     bundleDir: outputDir,
@@ -155,7 +157,7 @@ describe('emitted main.js dispatch', () => {
 
   async function buildMain(
     mounts: string[],
-    bundle: RillBundleConfig = MINIMAL_BUNDLE
+    bundle: ResolvedRillBundleConfig = MINIMAL_BUNDLE
   ): Promise<void> {
     for (const mount of mounts) {
       writeHandlerJs(tmpDir, mount);
@@ -213,7 +215,7 @@ describe('emitted main.js dispatch', () => {
 
   describe('no mount argument', () => {
     it('routes to defaultPackage when no argv mount is provided', async () => {
-      const bundle: RillBundleConfig = {
+      const bundle: ResolvedRillBundleConfig = {
         ...MINIMAL_BUNDLE,
         defaultPackage: 'beta',
         packages: [

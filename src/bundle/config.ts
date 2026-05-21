@@ -25,6 +25,11 @@ export interface RillBundleConfig {
   readonly packages: ReadonlyArray<BundlePackageEntry>;
 }
 
+export interface ResolvedRillBundleConfig extends RillBundleConfig {
+  readonly config: Record<string, unknown>;
+  readonly defaultPackage: string;
+}
+
 // ============================================================
 // BUNDLE CONFIG ERROR
 // ============================================================
@@ -149,7 +154,7 @@ function validateProjectPath(
 
 export async function readBundleConfig(
   bundleDir: string
-): Promise<RillBundleConfig> {
+): Promise<ResolvedRillBundleConfig> {
   const filePath = bundleFilePath(bundleDir);
 
   // Read file
@@ -312,7 +317,7 @@ export async function readBundleConfig(
   }
   const defaultPackage = defaultPackageRaw ?? firstPackage.mount;
 
-  const result: RillBundleConfig = {
+  const result: ResolvedRillBundleConfig = {
     name,
     version,
     packages,

@@ -6,8 +6,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
-import { findBundleRoot } from '../bundle/config.js';
+import { writeFile } from 'node:fs/promises';
+import {
+  findBundleRoot,
+  readRawBundleJson,
+  BundleConfigError,
+} from '../bundle/config.js';
 
 // ============================================================
 // CONSTANTS
@@ -121,33 +125,21 @@ function scaffoldPackageDir(targetDir: string, packageName: string): void {
 }
 
 /**
- * Read, update, and write rill-bundle.json to append a new package entry.
- * Uses the raw JSON approach (like writeBundleHarness) to preserve formatting
- * and avoid the strict validation that readBundleConfig applies to packages[].
+ * Update and write rill-bundle.json to append a new package entry.
+ * Accepts the already-parsed object and raw text (from readRawBundleJson) to
+ * avoid a second read+parse of the file. Uses the raw JSON approach (like
+ * writeBundleHarness) to preserve formatting and avoid the strict validation
+ * that readBundleConfig applies to packages[].
  */
 async function appendPackageToBundle(
   bundleDir: string,
-  name: string
+  name: string,
+  parsed: Record<string, unknown>,
+  rawText: string
 ): Promise<void> {
   const filePath = path.join(bundleDir, 'rill-bundle.json');
 
-  const rawText = await readFile(filePath, 'utf8');
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawText);
-  } catch (err) {
-    throw new Error(
-      `Failed to parse rill-bundle.json: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err }
-    );
-  }
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('rill-bundle.json must be a JSON object');
-  }
-
-  const obj = { ...(parsed as Record<string, unknown>) };
+  const obj = { ...parsed };
 
   const existing = Array.isArray(obj['packages'])
     ? (obj['packages'] as unknown[])
@@ -194,29 +186,23 @@ export async function run(argv: string[]): Promise<number> {
     // Bundle-aware path
     const targetDir = path.join(bundleRoot, 'packages', name);
 
-    // Read existing bundle config raw to check for mount collision
-    const bundleConfigPath = path.join(bundleRoot, 'rill-bundle.json');
+    // Read and parse rill-bundle.json once, to check for mount collision and
+    // to reuse when appending the new package entry below.
+    let parsed: Record<string, unknown>;
     let rawText: string;
     try {
-      rawText = await readFile(bundleConfigPath, 'utf8');
+      ({ parsed, text: rawText } = await readRawBundleJson(bundleRoot));
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`Cannot read rill-bundle.json: ${message}\n`);
+      const message =
+        err instanceof BundleConfigError || err instanceof Error
+          ? err.message
+          : String(err);
+      process.stderr.write(`Cannot read/parse rill-bundle.json: ${message}\n`);
       return 1;
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`Cannot parse rill-bundle.json: ${message}\n`);
-      return 1;
-    }
-
-    const obj = parsed as Record<string, unknown>;
-    const existingPackages = Array.isArray(obj['packages'])
-      ? (obj['packages'] as Array<Record<string, unknown>>)
+    const existingPackages = Array.isArray(parsed['packages'])
+      ? (parsed['packages'] as Array<Record<string, unknown>>)
       : [];
 
     // Check for mount collision
@@ -225,6 +211,15 @@ export async function run(argv: string[]): Promise<number> {
     );
     if (collision) {
       process.stderr.write(`packages[] already contains mount '${name}'\n`);
+      return 1;
+    }
+
+    // Reject when targetDir already exists and is non-empty; mkdirSync with
+    // recursive:true would otherwise silently merge the scaffold into it.
+    if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
+      process.stderr.write(
+        `Directory already exists and is not empty: ${targetDir}\n`
+      );
       return 1;
     }
 
@@ -241,7 +236,7 @@ export async function run(argv: string[]): Promise<number> {
 
     // Append entry to bundle config
     try {
-      await appendPackageToBundle(bundleRoot, name);
+      await appendPackageToBundle(bundleRoot, name, parsed, rawText);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Cannot update rill-bundle.json: ${message}\n`);
@@ -252,6 +247,15 @@ export async function run(argv: string[]): Promise<number> {
   } else {
     // Non-bundle path: standalone package at <cwd>/<name>/
     const targetDir = path.join(cwd, name);
+
+    // Reject when targetDir already exists and is non-empty; mkdirSync with
+    // recursive:true would otherwise silently merge the scaffold into it.
+    if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
+      process.stderr.write(
+        `Directory already exists and is not empty: ${targetDir}\n`
+      );
+      return 1;
+    }
 
     try {
       fs.mkdirSync(targetDir, { recursive: true });

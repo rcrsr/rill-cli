@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -70,11 +70,7 @@ function bundleFilePath(dir: string): string {
   return path.resolve(dir, BUNDLE_FILE);
 }
 
-function requireString(
-  raw: unknown,
-  field: string,
-  allowEmpty = false
-): string {
+function requireString(raw: unknown, field: string): string {
   if (raw === null) {
     throw new BundleConfigError({
       code: 'SCHEMA',
@@ -96,7 +92,7 @@ function requireString(
       message: `Field '${field}' must be a string`,
     });
   }
-  if (!allowEmpty && raw.length === 0) {
+  if (raw.length === 0) {
     throw new BundleConfigError({
       code: 'SCHEMA',
       field,
@@ -126,14 +122,27 @@ function validateName(name: string): void {
   }
 }
 
+function resolveRealPath(candidate: string): string {
+  try {
+    return realpathSync(candidate);
+  } catch (err) {
+    if ((err as { code?: string }).code === 'ENOENT') {
+      // Fall back to the lexically-resolved path when the target does not
+      // exist on disk (e.g. a package not yet materialized).
+      return candidate;
+    }
+    throw err;
+  }
+}
+
 function validateProjectPath(
   project: string,
   index: number,
   bundleDir: string
 ): void {
   const field = `packages[${index}].project`;
-  const resolved = path.resolve(bundleDir, project);
-  const normalizedBundleDir = path.resolve(bundleDir);
+  const resolved = resolveRealPath(path.resolve(bundleDir, project));
+  const normalizedBundleDir = resolveRealPath(path.resolve(bundleDir));
   // Ensure the resolved path starts with bundleDir (with trailing sep to
   // prevent a prefix match like /foo/bar matching /foo/barbaz).
   const prefix = normalizedBundleDir.endsWith(path.sep)
@@ -149,18 +158,37 @@ function validateProjectPath(
 }
 
 // ============================================================
-// readBundleConfig
+// readRawBundleJson
 // ============================================================
 
-export async function readBundleConfig(
+const ROOT_ALLOWED_KEYS: ReadonlySet<string> = new Set([
+  '$schema',
+  'name',
+  'version',
+  'harness',
+  'config',
+  'defaultPackage',
+  'packages',
+]);
+
+const PACKAGE_ENTRY_ALLOWED_KEYS: ReadonlySet<string> = new Set([
+  'mount',
+  'project',
+]);
+
+/**
+ * Reads and parses the bundle config file at `bundleDir`, returning both the
+ * parsed object and the raw text. The raw text is load-bearing for callers
+ * that need to preserve formatting details such as a trailing newline.
+ */
+export async function readRawBundleJson(
   bundleDir: string
-): Promise<ResolvedRillBundleConfig> {
+): Promise<{ parsed: Record<string, unknown>; text: string }> {
   const filePath = bundleFilePath(bundleDir);
 
-  // Read file
-  let rawText: string;
+  let text: string;
   try {
-    rawText = await readFile(filePath, 'utf8');
+    text = await readFile(filePath, 'utf8');
   } catch (err) {
     if ((err as { code?: string }).code === 'ENOENT') {
       throw new BundleConfigError({
@@ -172,10 +200,9 @@ export async function readBundleConfig(
     throw err;
   }
 
-  // Parse JSON
   let raw: unknown;
   try {
-    raw = JSON.parse(rawText);
+    raw = JSON.parse(text);
   } catch (err) {
     throw new BundleConfigError({
       code: 'PARSE',
@@ -192,7 +219,28 @@ export async function readBundleConfig(
     });
   }
 
-  const obj = raw as Record<string, unknown>;
+  return { parsed: raw as Record<string, unknown>, text };
+}
+
+// ============================================================
+// readBundleConfig
+// ============================================================
+
+export async function readBundleConfig(
+  bundleDir: string
+): Promise<ResolvedRillBundleConfig> {
+  const { parsed: obj } = await readRawBundleJson(bundleDir);
+
+  // Reject unknown root keys
+  for (const key of Object.keys(obj)) {
+    if (!ROOT_ALLOWED_KEYS.has(key)) {
+      throw new BundleConfigError({
+        code: 'SCHEMA',
+        field: key,
+        message: `Unknown field '${key}' in ${BUNDLE_FILE}`,
+      });
+    }
+  }
 
   // Validate name
   const name = requireString(obj['name'], 'name');
@@ -275,6 +323,16 @@ export async function readBundleConfig(
       });
     }
     const entryObj = entry as Record<string, unknown>;
+
+    for (const key of Object.keys(entryObj)) {
+      if (!PACKAGE_ENTRY_ALLOWED_KEYS.has(key)) {
+        throw new BundleConfigError({
+          code: 'SCHEMA',
+          field: `packages[${i}].${key}`,
+          message: `Unknown field '${key}' in packages[${i}]`,
+        });
+      }
+    }
 
     const mount = requireString(entryObj['mount'], `packages[${i}].mount`);
     const project = requireString(
@@ -368,16 +426,13 @@ export async function writeBundleHarness(
   const filePath = bundleFilePath(bundleDir);
 
   // Read the existing raw text to preserve formatting conventions
+  let parsed: Record<string, unknown>;
   let rawText: string;
   try {
-    rawText = await readFile(filePath, 'utf8');
+    ({ parsed, text: rawText } = await readRawBundleJson(bundleDir));
   } catch (err) {
-    if ((err as { code?: string }).code === 'ENOENT') {
-      throw new BundleConfigError({
-        code: 'NOT_FOUND',
-        message: `Bundle config not found: ${filePath}`,
-        cause: err,
-      });
+    if (err instanceof BundleConfigError) {
+      throw err;
     }
     throw new BundleConfigError({
       code: 'WRITE',
@@ -386,26 +441,7 @@ export async function writeBundleHarness(
     });
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawText);
-  } catch (err) {
-    throw new BundleConfigError({
-      code: 'PARSE',
-      message: `Failed to parse ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
-      cause: err,
-    });
-  }
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new BundleConfigError({
-      code: 'SCHEMA',
-      field: '(root)',
-      message: `${BUNDLE_FILE} must be a JSON object`,
-    });
-  }
-
-  const obj = { ...(parsed as Record<string, unknown>) };
+  const obj = { ...parsed };
 
   if (harnessName === null) {
     delete obj['harness'];

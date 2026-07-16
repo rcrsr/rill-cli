@@ -149,22 +149,12 @@ export default harness;
       installFakeHarness(bundleDir, 'fake-harness', harnessSource);
       stubBuildPackageSuccess(bundleDir);
 
-      // Intercept process.exit so it records the code rather than terminating.
-      let capturedExitCode: number | undefined;
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((
-        code?: number
-      ) => {
-        capturedExitCode = code ?? 0;
-      }) as never);
-
       const { runBundleServe } =
         await import('../../src/commands/bundle-run.js');
 
-      // Start serve without awaiting — it never resolves on its own.
+      // Start serve without awaiting — it never resolves on its own until
+      // the shutdown signal promise resolves runBundleServe's internal race.
       const servePromise = runBundleServe(bundleDir, {});
-      // Suppress the dangling rejection (the serve promise never settles
-      // normally because process.exit is stubbed to a no-op).
-      servePromise.catch(() => undefined);
 
       // Allow the event loop to advance so SIGINT/SIGTERM listeners register
       // and the harness shutdown handler registers inside serve().
@@ -179,18 +169,16 @@ export default harness;
       // Emit SIGINT — the once-listener fires handleSignal() asynchronously.
       process.emit('SIGINT');
 
-      // Yield enough microtask/macrotask turns for handleSignal to complete.
-      await new Promise<void>((r) => setTimeout(r, 100));
-
-      // process.exit(0) must have been called by handleSignal.
-      expect(capturedExitCode).toBe(0);
+      // runBundleServe must resolve to 0 once the signal handler runs the
+      // shutdown handlers and resolves the shutdown promise.
+      const result = await servePromise;
+      expect(result).toBe(0);
 
       // The shutdown handler registered via ctx.onShutdown must have run.
       expect((globalThis as Record<string, unknown>).__shutdown_ran__).toBe(
         true
       );
 
-      exitSpy.mockRestore();
       delete (globalThis as Record<string, unknown>).__shutdown_ran__;
     } finally {
       fs.rmSync(bundleDir, { recursive: true, force: true });

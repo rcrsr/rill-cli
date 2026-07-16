@@ -23,6 +23,26 @@ function toSafeIdentifier(value: string): string {
 }
 
 /**
+ * Verify that a handler file exists at the given path. If the file is
+ * missing (ENOENT), throws BuildError with phase 'harness'. Any other
+ * error (e.g. permission errors) is rethrown unchanged.
+ */
+async function assertHandlerFile(handlerPath: string): Promise<void> {
+  try {
+    await access(handlerPath);
+  } catch (err) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      (err as { code?: unknown }).code === 'ENOENT'
+    ) {
+      throw new BuildError(`missing handler file: ${handlerPath}`, 'harness');
+    }
+    throw err;
+  }
+}
+
+/**
  * Resolve the effective mount from process.argv[2], falling back to
  * the bundle's defaultPackage or the first available package mount.
  */
@@ -71,11 +91,7 @@ async function dispatchByMount(
 
   const handlerPath = path.join(pkg.buildOutput.outputPath, 'handler.js');
 
-  try {
-    await access(handlerPath);
-  } catch {
-    throw new BuildError(`missing handler file: ${handlerPath}`, 'harness');
-  }
+  await assertHandlerFile(handlerPath);
 
   const handlerUrl = pathToFileURL(handlerPath).href;
   const mod = (await import(handlerUrl)) as {
@@ -103,14 +119,11 @@ async function postBuild(ctx: PostBuildContext): Promise<void> {
   logger.info('[builtin harness] verifying handler files');
 
   // Verify each package's handler.js exists in the output directory.
-  for (const pkg of packages) {
-    const handlerFile = path.join(outputDir, pkg.packageName, 'handler.js');
-    try {
-      await access(handlerFile);
-    } catch {
-      throw new BuildError(`missing handler file: ${handlerFile}`, 'harness');
-    }
-  }
+  await Promise.all(
+    packages.map((pkg) =>
+      assertHandlerFile(path.join(outputDir, pkg.packageName, 'handler.js'))
+    )
+  );
 
   logger.info('[builtin harness] emitting main.js');
 

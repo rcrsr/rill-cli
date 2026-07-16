@@ -54,6 +54,12 @@ export interface PostBuildContext extends HarnessContext {
 export interface ServeContext extends HarnessContext {
   readonly packages: readonly CompiledPackage[];
   readonly compile: () => Promise<CompiledPackage[]>;
+  /**
+   * Register a handler to run when a source file changes.
+   * NOT YET IMPLEMENTED: no filesystem watcher currently invokes registered
+   * handlers. Registration is accepted so harnesses can call this method
+   * without error, but handlers are never triggered.
+   */
   readonly onSourceChange: (handler: () => void | Promise<void>) => void;
   readonly onShutdown: (handler: () => void | Promise<void>) => void;
 }

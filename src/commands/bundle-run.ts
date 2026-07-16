@@ -1,15 +1,8 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { buildPackage, BuildError } from '../build/build.js';
+import { BuildError } from '../build/build.js';
 import { readBundleConfig, BundleConfigError } from '../bundle/config.js';
 import { builtinHarness } from '../harness/builtin.js';
-import type {
-  RillHarness,
-  CompiledPackage,
-  ServeContext,
-  Logger,
-} from '../harness.js';
+import { makeLogger, resolveHarness, buildPackages } from './bundle-shared.js';
+import type { RillHarness, CompiledPackage, ServeContext } from '../harness.js';
 
 // ============================================================
 // PUBLIC TYPES
@@ -17,97 +10,6 @@ import type {
 
 export interface BundleRunOptions {
   readonly [key: string]: unknown;
-}
-
-// ============================================================
-// INTERNAL HELPERS
-// ============================================================
-
-function makeLogger(): Logger {
-  return {
-    info: (...args: unknown[]) => console.log(...args),
-    warn: (...args: unknown[]) => console.warn(...args),
-    error: (...args: unknown[]) => console.error(...args),
-  };
-}
-
-async function resolveHarness(
-  harnessName: string,
-  bundleDir: string
-): Promise<RillHarness> {
-  const npmRoot = path.resolve(bundleDir, '.rill/npm');
-  const npmPkgJson = path.join(npmRoot, 'package.json');
-  try {
-    const req = createRequire(pathToFileURL(npmPkgJson).href);
-    const resolvedPath = req.resolve(harnessName);
-    const mod = (await import(pathToFileURL(resolvedPath).href)) as {
-      default?: RillHarness;
-    };
-    const harness = mod.default;
-    if (harness === undefined || typeof harness !== 'object') {
-      throw new BuildError(
-        `cannot resolve harness module '${harnessName}': module has no default export`,
-        'harness'
-      );
-    }
-    return harness;
-  } catch (err) {
-    if (err instanceof BuildError) throw err;
-    const cause = err instanceof Error ? err.message : String(err);
-    throw new BuildError(
-      `cannot resolve harness module '${harnessName}': ${cause}`,
-      'harness'
-    );
-  }
-}
-
-async function buildPackages(
-  bundleDir: string,
-  packageEntries: ReadonlyArray<{ mount: string; project: string }>
-): Promise<{ packages: CompiledPackage[] | null; exitCode: number }> {
-  const buildOutputDir = path.join(bundleDir, 'build');
-  const settled = await Promise.allSettled(
-    packageEntries.map((p) =>
-      buildPackage(path.resolve(bundleDir, p.project), {
-        outputDir: buildOutputDir,
-      })
-    )
-  );
-
-  const failures: Array<{ index: number; reason: unknown }> = [];
-  for (let i = 0; i < settled.length; i++) {
-    const result = settled[i]!;
-    if (result.status === 'rejected') {
-      failures.push({ index: i, reason: result.reason });
-    }
-  }
-
-  if (failures.length > 0) {
-    for (const { index, reason } of failures) {
-      const mount = packageEntries[index]?.mount ?? `packages[${index}]`;
-      const msg = reason instanceof Error ? reason.message : String(reason);
-      process.stderr.write(`package '${mount}' build failed: ${msg}\n`);
-    }
-    return { packages: null, exitCode: 1 };
-  }
-
-  const compiled: CompiledPackage[] = [];
-  for (let i = 0; i < packageEntries.length; i++) {
-    const entry = packageEntries[i]!;
-    const result = settled[i]!;
-    if (result.status !== 'fulfilled') continue;
-    const buildOutput = result.value;
-    const packageName = path.basename(buildOutput.outputPath);
-    const packageDir = path.resolve(bundleDir, entry.project);
-    compiled.push({
-      mount: entry.mount,
-      packageName,
-      packageDir,
-      buildOutput,
-    });
-  }
-
-  return { packages: compiled, exitCode: 0 };
 }
 
 // ============================================================
@@ -194,7 +96,14 @@ export async function runBundleServe(
     },
   };
 
-  // Step 6: Register process signal handlers
+  // Step 6: Register process signal handlers. The signal handler resolves a
+  // shutdown promise after running shutdown handlers instead of calling
+  // process.exit() directly — the caller (cli.ts) owns the actual exit.
+  let resolveShutdown: (() => void) | undefined;
+  const shutdownSignal = new Promise<void>((resolve) => {
+    resolveShutdown = resolve;
+  });
+
   const handleSignal = async (): Promise<void> => {
     logger.info('shutting-down');
     for (const h of shutdownHandlers) {
@@ -206,7 +115,7 @@ export async function runBundleServe(
         );
       }
     }
-    process.exit(0);
+    resolveShutdown?.();
   };
 
   const handleSigint = () => void handleSignal();
@@ -225,11 +134,15 @@ export async function runBundleServe(
     return 1;
   }
 
-  // Step 8: Invoke serve and return its exit code
+  // Step 8: Race serve() against the signal-triggered shutdown promise and
+  // return its exit code
   logger.info('serving');
   let exitCode: number;
   try {
-    exitCode = await harness.serve(ctx);
+    exitCode = await Promise.race([
+      harness.serve(ctx),
+      shutdownSignal.then(() => 0),
+    ]);
   } catch (err) {
     if (err instanceof BuildError) {
       logger.error('error');

@@ -18,6 +18,10 @@ import { computeChecksum } from './checksum.js';
 // concurrent buildPackage invocations.
 let chdirQueue: Promise<void> = Promise.resolve();
 
+// Memoized result of readRillVersion(), including the 'unknown' fallback:
+// installed version is process-invariant; avoids a sync fs walk per package.
+let cachedRillVersion: string | undefined;
+
 // ============================================================
 // COMPILE ERROR
 // ============================================================
@@ -59,11 +63,25 @@ export interface BuildResult {
 // ============================================================
 
 /**
- * Read the installed @rcrsr/rill version via createRequire.
+ * Read the installed @rcrsr/rill version, memoized at module scope: the
+ * installed version is process-invariant, avoiding a sync fs walk per
+ * package. Caches the first computed value, including the 'unknown'
+ * fallback.
+ */
+function readRillVersion(): string {
+  if (cachedRillVersion !== undefined) {
+    return cachedRillVersion;
+  }
+  cachedRillVersion = computeRillVersion();
+  return cachedRillVersion;
+}
+
+/**
+ * Resolve the installed @rcrsr/rill version via createRequire.
  * Resolves the main entry point and walks up to the package.json.
  * Falls back to 'unknown' if the package.json cannot be resolved.
  */
-function readRillVersion(): string {
+function computeRillVersion(): string {
   try {
     const require = createRequire(import.meta.url);
     const mainPath = require.resolve('@rcrsr/rill');

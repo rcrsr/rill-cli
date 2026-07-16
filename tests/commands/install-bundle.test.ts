@@ -506,4 +506,88 @@ describe('install (bundle-aware)', () => {
       ).toBe(configBefore);
     });
   });
+
+  // ============================================================
+  // Error: harness install with a corrupt rill-bundle.json
+  // ============================================================
+
+  describe('harness install with a corrupt rill-bundle.json emits a bundle-config error', () => {
+    it('writes a ✗-prefixed parse error to stderr and exits 1', async () => {
+      bootstrapBundle(tmpDir, {
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      // Corrupt the bundle config after bootstrap so findBundleRoot still
+      // detects the file (existsSync only), but readBundleConfig fails to
+      // parse it once the harness-install branch is reached.
+      fs.writeFileSync(
+        path.join(tmpDir, 'rill-bundle.json'),
+        '{ not valid json',
+        'utf8'
+      );
+      process.chdir(tmpDir);
+
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      const pkgName = 'rill-harness-bundle-err-corrupt-7';
+
+      mocks.spawn.mockImplementation(
+        makeSpawnMockWithFixture(prefix, pkgName, 'harness')
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([pkgName]);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      const stderr = cap.stderr.join('');
+      expect(stderr).toMatch(/^✗ /);
+      expect(stderr).toContain('Failed to parse');
+    });
+  });
+
+  // ============================================================
+  // Error: extension install with --for against a corrupt rill-bundle.json
+  // ============================================================
+
+  describe('extension install with --for against a corrupt rill-bundle.json emits a bundle-config error', () => {
+    it('writes a ✗-prefixed parse error to stderr and exits 1', async () => {
+      bootstrapBundle(tmpDir, {
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      // Corrupt the bundle config after bootstrap so findBundleRoot still
+      // detects the file (existsSync only), but readBundleConfig fails to
+      // parse it once the --for resolution branch is reached.
+      fs.writeFileSync(
+        path.join(tmpDir, 'rill-bundle.json'),
+        '{ not valid json',
+        'utf8'
+      );
+      process.chdir(tmpDir);
+
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      const pkgName = 'bundle-test-extension-err-corrupt-8';
+
+      mocks.spawn.mockImplementation(
+        makeSpawnMockWithFixture(prefix, pkgName, 'extension')
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([pkgName, '--for', 'app']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      const stderr = cap.stderr.join('');
+      expect(stderr).toMatch(/^✗ /);
+      expect(stderr).toContain('Failed to parse');
+    });
+  });
 });

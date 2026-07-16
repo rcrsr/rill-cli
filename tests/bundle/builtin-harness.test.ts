@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
+import * as fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTmpDir } from '../helpers/cli-fixtures.js';
@@ -8,9 +9,21 @@ import { BuildError } from '../../src/build/build.js';
 import type {
   CompiledPackage,
   PostBuildContext,
+  ServeContext,
   Logger,
 } from '../../src/harness.js';
 import type { ResolvedRillBundleConfig } from '../../src/bundle/config.js';
+
+// `access` is mocked module-wide so individual tests can simulate
+// non-ENOENT filesystem errors (e.g. EACCES) via mockRejectedValueOnce,
+// while other exports (writeFile, etc.) keep their real implementation.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    access: vi.fn(actual.access),
+  };
+});
 
 // ============================================================
 // FIXTURE HELPERS
@@ -79,6 +92,29 @@ function writeEsmPackageJson(dir: string): void {
   );
 }
 
+function makeServeContext(
+  packages: readonly CompiledPackage[],
+  bundle: ResolvedRillBundleConfig = MINIMAL_BUNDLE
+): ServeContext {
+  return {
+    bundleDir: '',
+    bundle,
+    config: {},
+    logger: SILENT_LOGGER,
+    packages,
+    compile: () => Promise.resolve([...packages]),
+    onSourceChange: () => undefined,
+    onShutdown: () => undefined,
+  };
+}
+
+/** Build a fake Node.js error carrying the given errno-style code. */
+function makeFsError(code: string): Error & { code: string } {
+  const err = new Error(`simulated ${code}`) as Error & { code: string };
+  err.code = code;
+  return err;
+}
+
 // ============================================================
 // postBuild: emits main.js with handler imports
 // ============================================================
@@ -136,6 +172,71 @@ describe('builtinHarness.postBuild', () => {
         (err: unknown) => err instanceof BuildError && err.phase === 'harness'
       );
     });
+  });
+
+  // ============================================================
+  // postBuild: non-ENOENT access errors are rethrown as-is
+  // ============================================================
+
+  describe('non-ENOENT access error', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('rethrows the original error when access rejects with EACCES', async () => {
+      writeHandlerJs(tmpDir, 'alpha');
+
+      const eaccesError = makeFsError('EACCES');
+      vi.mocked(fsPromises.access).mockRejectedValueOnce(eaccesError);
+
+      const packages = [makeCompiledPackage('alpha', tmpDir)];
+      const ctx = makePostBuildContext(tmpDir, packages);
+
+      await expect(builtinHarness.postBuild!(ctx)).rejects.toBe(eaccesError);
+    });
+  });
+});
+
+// ============================================================
+// dispatchByMount (via serve): handler file access errors
+// ============================================================
+
+describe('builtinHarness.serve handler file access', () => {
+  let tmpDir: string;
+  const originalArgv = process.argv;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    process.argv = originalArgv;
+    vi.restoreAllMocks();
+  });
+
+  it('rejects with BuildError phase harness when the handler file does not exist', async () => {
+    // deliberately omit alpha/handler.js
+    const packages = [makeCompiledPackage('alpha', tmpDir)];
+    process.argv = [...originalArgv.slice(0, 2), 'alpha'];
+    const ctx = makeServeContext(packages);
+
+    await expect(builtinHarness.serve!(ctx)).rejects.toSatisfy(
+      (err: unknown) => err instanceof BuildError && err.phase === 'harness'
+    );
+  });
+
+  it('rethrows the original error when access rejects with EACCES', async () => {
+    writeHandlerJs(tmpDir, 'alpha');
+
+    const eaccesError = makeFsError('EACCES');
+    vi.mocked(fsPromises.access).mockRejectedValueOnce(eaccesError);
+
+    const packages = [makeCompiledPackage('alpha', tmpDir)];
+    process.argv = [...originalArgv.slice(0, 2), 'alpha'];
+    const ctx = makeServeContext(packages);
+
+    await expect(builtinHarness.serve!(ctx)).rejects.toBe(eaccesError);
   });
 });
 

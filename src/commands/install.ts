@@ -37,6 +37,7 @@ import {
   findBundleRoot,
   readBundleConfig,
   writeBundleHarness,
+  BundleConfigError,
 } from '../bundle/config.js';
 
 // ============================================================
@@ -723,7 +724,16 @@ async function applyBundleInstall(opts: {
 
   if (effectiveRole === 'harness') {
     // Read the bundle config to check for an existing harness declaration.
-    const bundleConfig = await readBundleConfig(bundleRoot);
+    let bundleConfig: Awaited<ReturnType<typeof readBundleConfig>>;
+    try {
+      bundleConfig = await readBundleConfig(bundleRoot);
+    } catch (err) {
+      if (err instanceof BundleConfigError) {
+        process.stderr.write(`✗ ${err.message}\n`);
+        return 1;
+      }
+      throw err;
+    }
 
     if (bundleConfig.harness !== undefined && !replaceFlag) {
       process.stderr.write(
@@ -752,7 +762,16 @@ async function applyBundleInstall(opts: {
   let targetPackageDir: string;
   if (forMount !== undefined) {
     // Resolve the target package dir from the bundle config.
-    const bundleConfig = await readBundleConfig(bundleRoot);
+    let bundleConfig: Awaited<ReturnType<typeof readBundleConfig>>;
+    try {
+      bundleConfig = await readBundleConfig(bundleRoot);
+    } catch (err) {
+      if (err instanceof BundleConfigError) {
+        process.stderr.write(`✗ ${err.message}\n`);
+        return 1;
+      }
+      throw err;
+    }
     const entry = bundleConfig.packages.find((p) => p.mount === forMount);
     if (entry === undefined) {
       process.stderr.write(

@@ -7,6 +7,7 @@ import {
   detectBundleAtCwd,
   findBundleRoot,
   writeBundleHarness,
+  readRawBundleJson,
   BundleConfigError,
 } from '../../src/bundle/config.js';
 
@@ -364,6 +365,171 @@ describe('readBundleConfig', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
+
+    it.skipIf(process.platform === 'win32')(
+      'throws BundleConfigError when a symlinked project resolves outside bundleDir',
+      async () => {
+        const tmpDir = makeTmpDir();
+        const outsideDir = makeTmpDir();
+        try {
+          const linkPath = path.join(tmpDir, 'linked-pkg');
+          fs.symlinkSync(outsideDir, linkPath, 'dir');
+
+          writeBundleJson(tmpDir, {
+            name: 'symlink-bundle',
+            version: '1.0.0',
+            packages: [{ mount: 'linked', project: 'linked-pkg' }],
+          });
+
+          await expect(readBundleConfig(tmpDir)).rejects.toMatchObject({
+            code: 'SCHEMA',
+          });
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          fs.rmSync(outsideDir, { recursive: true, force: true });
+        }
+      }
+    );
+  });
+
+  // ============================================================
+  // readBundleConfig: error cases — unknown fields
+  // ============================================================
+
+  describe('unknown field rejection', () => {
+    it('throws BundleConfigError with code SCHEMA for an unknown root key', async () => {
+      const tmpDir = makeTmpDir();
+      try {
+        writeBundleJson(tmpDir, {
+          name: 'unknown-root-bundle',
+          version: '1.0.0',
+          packages: [{ mount: 'pkg', project: 'packages/pkg' }],
+          notAllowed: true,
+        });
+
+        await expect(readBundleConfig(tmpDir)).rejects.toMatchObject({
+          code: 'SCHEMA',
+          field: 'notAllowed',
+        });
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('accepts $schema as a known root key', async () => {
+      const tmpDir = makeTmpDir();
+      try {
+        writeBundleJson(tmpDir, {
+          $schema: './rill-bundle.schema.json',
+          name: 'schema-bundle',
+          version: '1.0.0',
+          packages: [{ mount: 'pkg', project: 'packages/pkg' }],
+        });
+
+        const result = await readBundleConfig(tmpDir);
+        expect(result.$schema).toBe('./rill-bundle.schema.json');
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it('throws BundleConfigError with code SCHEMA for an unknown per-entry key', async () => {
+      const tmpDir = makeTmpDir();
+      try {
+        writeBundleJson(tmpDir, {
+          name: 'unknown-entry-bundle',
+          version: '1.0.0',
+          packages: [{ mount: 'pkg', project: 'packages/pkg', extra: 'nope' }],
+        });
+
+        await expect(readBundleConfig(tmpDir)).rejects.toMatchObject({
+          code: 'SCHEMA',
+          field: 'packages[0].extra',
+        });
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+// ============================================================
+// readRawBundleJson
+// ============================================================
+
+describe('readRawBundleJson', () => {
+  it('returns the parsed object and raw text', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      writeBundleJson(tmpDir, {
+        name: 'raw-bundle',
+        version: '1.0.0',
+        packages: [{ mount: 'pkg', project: 'packages/pkg' }],
+      });
+
+      const { parsed, text } = await readRawBundleJson(tmpDir);
+
+      expect(parsed['name']).toBe('raw-bundle');
+      expect(text).toContain('"name": "raw-bundle"');
+      expect(text.endsWith('\n')).toBe(true);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws BundleConfigError with code NOT_FOUND when the file is absent', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      await expect(readRawBundleJson(tmpDir)).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      await expect(readRawBundleJson(tmpDir)).rejects.toBeInstanceOf(
+        BundleConfigError
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws BundleConfigError with code PARSE for invalid JSON', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, BUNDLE_FILE),
+        '{ invalid json !!!',
+        'utf8'
+      );
+
+      await expect(readRawBundleJson(tmpDir)).rejects.toMatchObject({
+        code: 'PARSE',
+      });
+      await expect(readRawBundleJson(tmpDir)).rejects.toBeInstanceOf(
+        BundleConfigError
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws BundleConfigError with code SCHEMA when the root is not an object', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, BUNDLE_FILE),
+        JSON.stringify(['not', 'an', 'object']),
+        'utf8'
+      );
+
+      await expect(readRawBundleJson(tmpDir)).rejects.toMatchObject({
+        code: 'SCHEMA',
+        field: '(root)',
+      });
+      await expect(readRawBundleJson(tmpDir)).rejects.toBeInstanceOf(
+        BundleConfigError
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

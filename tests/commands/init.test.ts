@@ -602,6 +602,182 @@ describe('init', () => {
       // No new directory created
       expect(fs.existsSync(path.join(tmpDir, 'packages', 'hello'))).toBe(false);
     });
+
+    it('exits 1 with stderr when packages/<name> already exists and is non-empty (bundle mode)', async () => {
+      const bundleConfigPath = path.join(tmpDir, 'rill-bundle.json');
+      const originalContent =
+        JSON.stringify(
+          { name: 'my-bundle', version: '0.0.0', packages: [] },
+          null,
+          2
+        ) + '\n';
+      fs.writeFileSync(bundleConfigPath, originalContent, 'utf8');
+
+      // Pre-create a non-empty packages/hello directory
+      const pkgDir = path.join(tmpDir, 'packages', 'hello');
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(pkgDir, 'existing-file.txt'),
+        'keep me',
+        'utf8'
+      );
+
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['package', 'hello']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        `Directory already exists and is not empty: ${pkgDir}`
+      );
+      // Existing file must be untouched, and bundle config must be unchanged
+      expect(
+        fs.readFileSync(path.join(pkgDir, 'existing-file.txt'), 'utf8')
+      ).toBe('keep me');
+      expect(fs.readFileSync(bundleConfigPath, 'utf8')).toBe(originalContent);
+    });
+
+    it('exits 1 with stderr when <cwd>/<name> already exists and is non-empty (non-bundle mode)', async () => {
+      // No rill-bundle.json anywhere (tmpDir is isolated in os.tmpdir())
+      const pkgDir = path.join(tmpDir, 'hello');
+      fs.mkdirSync(pkgDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(pkgDir, 'existing-file.txt'),
+        'keep me',
+        'utf8'
+      );
+
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['package', 'hello']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        `Directory already exists and is not empty: ${pkgDir}`
+      );
+      expect(
+        fs.readFileSync(path.join(pkgDir, 'existing-file.txt'), 'utf8')
+      ).toBe('keep me');
+      // No scaffold files were added
+      expect(fs.existsSync(path.join(pkgDir, 'src', 'index.ts'))).toBe(false);
+    });
+
+    it('scaffolds successfully when packages/<name> exists but is empty (bundle mode)', async () => {
+      const bundleConfigPath = path.join(tmpDir, 'rill-bundle.json');
+      const originalContent =
+        JSON.stringify(
+          { name: 'my-bundle', version: '0.0.0', packages: [] },
+          null,
+          2
+        ) + '\n';
+      fs.writeFileSync(bundleConfigPath, originalContent, 'utf8');
+
+      // Pre-create an empty packages/hello directory
+      const pkgDir = path.join(tmpDir, 'packages', 'hello');
+      fs.mkdirSync(pkgDir, { recursive: true });
+
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['package', 'hello']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(fs.existsSync(path.join(pkgDir, 'src', 'index.ts'))).toBe(true);
+
+      const updatedConfig = JSON.parse(
+        fs.readFileSync(bundleConfigPath, 'utf8')
+      ) as { packages: Array<{ mount: string; project: string }> };
+      expect(updatedConfig.packages).toContainEqual({
+        mount: 'hello',
+        project: './packages/hello',
+      });
+    });
+
+    it('scaffolds successfully when <cwd>/<name> exists but is empty (non-bundle mode)', async () => {
+      const pkgDir = path.join(tmpDir, 'hello');
+      fs.mkdirSync(pkgDir, { recursive: true });
+
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['package', 'hello']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(fs.existsSync(path.join(pkgDir, 'src', 'index.ts'))).toBe(true);
+      expect(fs.existsSync(path.join(pkgDir, 'rill-config.json'))).toBe(true);
+    });
+
+    it('preserves trailing newline in rill-bundle.json when appending (bundle mode)', async () => {
+      const bundleConfigPath = path.join(tmpDir, 'rill-bundle.json');
+      const originalContent =
+        JSON.stringify(
+          { name: 'my-bundle', version: '0.0.0', packages: [] },
+          null,
+          2
+        ) + '\n';
+      fs.writeFileSync(bundleConfigPath, originalContent, 'utf8');
+
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['package', 'hello']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      const updatedText = fs.readFileSync(bundleConfigPath, 'utf8');
+      expect(updatedText.endsWith('\n')).toBe(true);
+      const updatedConfig = JSON.parse(updatedText) as {
+        packages: Array<{ mount: string; project: string }>;
+      };
+      expect(updatedConfig.packages).toContainEqual({
+        mount: 'hello',
+        project: './packages/hello',
+      });
+    });
+
+    it('does not add a trailing newline in rill-bundle.json when original had none', async () => {
+      const bundleConfigPath = path.join(tmpDir, 'rill-bundle.json');
+      const originalContent = JSON.stringify(
+        { name: 'my-bundle', version: '0.0.0', packages: [] },
+        null,
+        2
+      );
+      fs.writeFileSync(bundleConfigPath, originalContent, 'utf8');
+
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['package', 'hello']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      const updatedText = fs.readFileSync(bundleConfigPath, 'utf8');
+      expect(updatedText.endsWith('\n')).toBe(false);
+    });
   });
 
   // ============================================================

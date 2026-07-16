@@ -82,7 +82,7 @@ describe('cli dispatch', () => {
       const out = cap.stdout.join('');
       // Spot-check key strings from UXT-EXT-11 (printHelp output)
       expect(out).toContain('Usage: rill <command>');
-      expect(out).toContain('bootstrap');
+      expect(out).toContain('init');
       expect(out).toContain('install');
       expect(out).toContain('uninstall');
       expect(out).toContain('upgrade');
@@ -102,7 +102,7 @@ describe('cli dispatch', () => {
       expect(exitCode).toBe(0);
       const out = cap.stdout.join('');
       expect(out).toContain('Usage: rill <command>');
-      expect(out).toContain('bootstrap');
+      expect(out).toContain('init');
     });
 
     it('main(["-h"]) outputs help text and exits 0', async () => {
@@ -280,7 +280,7 @@ describe('cli dispatch', () => {
       expect(exitCode).toBe(0);
       const out = cap.stdout.join('');
       expect(out).toContain('Usage: rill <command> [options]');
-      expect(out).toContain('bootstrap');
+      expect(out).toContain('init');
       expect(out).toContain('install <pkg>');
       expect(out).toContain('uninstall <mount>');
       expect(out).toContain('upgrade <mount>');

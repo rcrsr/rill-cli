@@ -41,13 +41,14 @@ vi.mock('../../src/cli-shared.js', () => ({
 /**
  * Create a minimal local extension directory.
  * The npmInstall mock will create the node_modules symlink fixture.
+ * Includes a `rill` field so the pre-install role probe accepts the package.
  */
 function makeLocalExt(parentDir: string, name: string): string {
   const extDir = path.join(parentDir, name);
   fs.mkdirSync(extDir, { recursive: true });
   fs.writeFileSync(
     path.join(extDir, 'package.json'),
-    JSON.stringify({ name, version: '0.0.1' }),
+    JSON.stringify({ name, version: '0.0.1', rill: { role: 'extension' } }),
     'utf8'
   );
   return extDir;

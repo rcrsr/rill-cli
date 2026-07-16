@@ -2,11 +2,18 @@
 /**
  * Unified rill CLI entry point.
  * Parses argv[0] as the subcommand name and dispatches to the matching handler.
- * With no subcommand, prints UXT-EXT-11 help and exits 0.
+ * With no subcommand, prints top-level help and exits 0.
+ *
+ * Dispatch operates in two modes:
+ * - Bundle mode: commands run against a self-contained bundle artifact.
+ * - Package mode: commands operate on an npm package in the local workspace.
+ * PHASE2_COMMANDS (bootstrap, init, install, uninstall, upgrade, list) handle
+ * both modes; PHASE3_COMMANDS (build, check, describe, eval, exec, run) are
+ * bundle-mode pipeline commands.
  *
  * Constraints:
- * - Dispatch overhead < 100ms before subcommand body executes (NFR-EXT-5).
- * - `rill help <cmd>` and `rill <cmd> --help` produce equivalent output (FR-EXT-8).
+ * - Dispatch overhead < 100ms before subcommand body executes.
+ * - `rill help <cmd>` and `rill <cmd> --help` produce equivalent output.
  * - Unknown subcommand: exit 1, error message names the subcommand, prints help hint.
  */
 
@@ -17,6 +24,7 @@ import { run as bootstrapRun } from './commands/bootstrap.js';
 import { run as installRun } from './commands/install.js';
 import { run as uninstallRun } from './commands/uninstall.js';
 import { run as upgradeRun } from './commands/upgrade.js';
+import { run as initRun } from './commands/init.js';
 import { run as listRun } from './commands/list.js';
 import { main as buildMain } from './cli-build.js';
 import { main as checkMain } from './cli-check.js';
@@ -33,6 +41,7 @@ type CommandHandler = (argv: string[]) => Promise<number>;
 
 const PHASE2_COMMANDS: Record<string, CommandHandler> = {
   bootstrap: bootstrapRun,
+  init: initRun,
   install: installRun,
   uninstall: uninstallRun,
   upgrade: upgradeRun,

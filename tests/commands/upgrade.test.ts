@@ -75,6 +75,59 @@ function makeUpgradeSpawnMock(
   };
 }
 
+/** Write a minimal rill-bundle.json at the given directory. */
+function writeBundleJson(
+  dir: string,
+  opts: {
+    harness?: string;
+    packages?: Array<{ mount: string; project: string }>;
+  } = {}
+): void {
+  const packages = opts.packages ?? [{ mount: 'app', project: 'packages/app' }];
+  const content: Record<string, unknown> = {
+    name: 'test-bundle',
+    version: '1.0.0',
+    packages,
+  };
+  if (opts.harness !== undefined) {
+    content['harness'] = opts.harness;
+  }
+  fs.writeFileSync(
+    path.join(dir, 'rill-bundle.json'),
+    JSON.stringify(content, null, 2) + '\n',
+    'utf8'
+  );
+}
+
+/**
+ * Bootstrap a bundle: write rill-bundle.json, create .rill/npm/ at the bundle
+ * root, and write rill-config.json in each package sub-directory.
+ */
+function bootstrapBundle(
+  bundleRoot: string,
+  opts: {
+    harness?: string;
+    packages?: Array<{ mount: string; project: string }>;
+  } = {}
+): void {
+  const packages = opts.packages ?? [{ mount: 'app', project: 'packages/app' }];
+  writeBundleJson(bundleRoot, { harness: opts.harness, packages });
+
+  const rillNpm = path.join(bundleRoot, '.rill', 'npm');
+  fs.mkdirSync(rillNpm, { recursive: true });
+  fs.writeFileSync(
+    path.join(rillNpm, 'package.json'),
+    '{"name":"rill-extensions","private":true}\n',
+    'utf8'
+  );
+
+  for (const pkg of packages) {
+    const pkgDir = path.join(bundleRoot, pkg.project);
+    fs.mkdirSync(pkgDir, { recursive: true });
+    bootstrapProject(pkgDir);
+  }
+}
+
 // ============================================================
 // TESTS
 // ============================================================
@@ -257,9 +310,7 @@ describe('upgrade', () => {
       expect(exitCode).toBe(1);
       const err = cap.stderr.join('');
       expect(err).toContain('✗ .rill/npm/ not found');
-      expect(err).toContain(
-        "Run 'rill bootstrap' first to initialize the project"
-      );
+      expect(err).toContain("Run 'rill init' first to initialize the project");
       expect(mocks.spawn).not.toHaveBeenCalled();
     });
   });
@@ -481,6 +532,174 @@ describe('upgrade', () => {
         cap.restore();
       }
       expect(cap.stderr.join('')).toContain('--exact is deprecated');
+    });
+  });
+
+  // ============================================================
+  // Bundle-aware behavior: --harness and --for
+  // ============================================================
+
+  describe('bundle mode', () => {
+    describe('--harness upgrades the declared harness', () => {
+      it('prints the upgraded version and does not touch rill-bundle.json harness field', async () => {
+        const harnessName = 'my-bundle-harness-pkg-up1';
+        bootstrapBundle(tmpDir, {
+          harness: harnessName,
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+        const bundlePrefix = path.join(tmpDir, '.rill', 'npm');
+        writeInstalledPkg(bundlePrefix, harnessName, '1.0.0');
+
+        const bundleBefore = fs.readFileSync(
+          path.join(tmpDir, 'rill-bundle.json'),
+          'utf8'
+        );
+
+        mocks.spawn.mockImplementation(
+          makeUpgradeSpawnMock(bundlePrefix, harnessName, '2.0.0')
+        );
+
+        const { run } = await import('../../src/commands/upgrade.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(0);
+        expect(cap.stdout.join('')).toContain(
+          `✓ Upgraded harness '${harnessName}' to 2.0.0`
+        );
+
+        // The harness field in rill-bundle.json is unchanged (no config rewrite).
+        expect(
+          fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
+        ).toBe(bundleBefore);
+      });
+    });
+
+    describe('--harness already at latest', () => {
+      it('prints "Already at latest" and exits 0 when the reinstalled version is unchanged', async () => {
+        const harnessName = 'my-bundle-harness-pkg-up2';
+        bootstrapBundle(tmpDir, {
+          harness: harnessName,
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+        const bundlePrefix = path.join(tmpDir, '.rill', 'npm');
+        writeInstalledPkg(bundlePrefix, harnessName, '1.0.0');
+
+        // Reinstall mock keeps the same version installed.
+        mocks.spawn.mockImplementation(
+          makeUpgradeSpawnMock(bundlePrefix, harnessName, '1.0.0')
+        );
+
+        const { run } = await import('../../src/commands/upgrade.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(0);
+        expect(cap.stdout.join('')).toContain('Already at latest');
+      });
+    });
+
+    describe('--harness outside a bundle', () => {
+      it('exits 1 with the no-bundle error', async () => {
+        const { run } = await import('../../src/commands/upgrade.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(1);
+        expect(cap.stderr.join('')).toContain('--harness requires a bundle');
+        expect(mocks.spawn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('--harness with no harness declared', () => {
+      it('exits 1 with the no-harness-declared error', async () => {
+        bootstrapBundle(tmpDir, {
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+
+        const { run } = await import('../../src/commands/upgrade.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(1);
+        expect(cap.stderr.join('')).toContain(
+          '✗ No harness declared in rill-bundle.json.'
+        );
+        expect(mocks.spawn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('extension --for <mount> from the bundle root', () => {
+      it('upgrades the mount in the target package config and prefix (not cwd)', async () => {
+        bootstrapBundle(tmpDir, {
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+
+        const pkgDir = path.join(tmpDir, 'packages', 'app');
+        const pkgConfigPath = path.join(pkgDir, 'rill-config.json');
+        const pkgConfig = JSON.parse(
+          fs.readFileSync(pkgConfigPath, 'utf8')
+        ) as { extensions: { mounts: Record<string, string> } };
+        pkgConfig.extensions.mounts['datetime'] =
+          '@rcrsr/rill-ext-datetime@^0.19.0';
+        fs.writeFileSync(
+          pkgConfigPath,
+          JSON.stringify(pkgConfig, null, 2) + '\n',
+          'utf8'
+        );
+
+        const pkgPrefix = path.join(pkgDir, '.rill', 'npm');
+
+        mocks.spawn.mockImplementation(
+          makeUpgradeSpawnMock(pkgPrefix, '@rcrsr/rill-ext-datetime', '0.20.1')
+        );
+
+        const { run } = await import('../../src/commands/upgrade.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['datetime', '--for', 'app']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(0);
+
+        const updatedConfig = JSON.parse(
+          fs.readFileSync(pkgConfigPath, 'utf8')
+        ) as { extensions: { mounts: Record<string, string> } };
+        expect(updatedConfig.extensions.mounts['datetime']).toBe(
+          '@rcrsr/rill-ext-datetime@^0.20.1'
+        );
+
+        // The bundle-root has no rill-config.json; the package's own prefix
+        // must have received the install.
+        expect(
+          fs.existsSync(
+            path.join(pkgPrefix, 'node_modules', '@rcrsr/rill-ext-datetime')
+          )
+        ).toBe(true);
+      });
     });
   });
 });

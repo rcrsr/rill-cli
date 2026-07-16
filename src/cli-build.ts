@@ -1,10 +1,19 @@
+/**
+ * rill build: Builds a rill project or bundle.
+ *
+ * When a rill-bundle.json is present at the resolved project directory,
+ * delegates to bundle mode (builds all packages, runs harness postBuild).
+ * Otherwise falls through to the single-package path (reads rill-config.json).
+ */
 import { buildPackage } from './build/build.js';
+import { detectBundleAtCwd } from './bundle/config.js';
+import { runBundleBuild } from './commands/bundle-build.js';
 import { detectHelpVersionFlag } from './cli-shared.js';
 
 const HELP_TEXT = `Usage: rill build [options] [project-dir]
 
 Arguments:
-  project-dir               Directory containing rill-config.json (default: cwd)
+  project-dir               Directory containing rill-config.json or rill-bundle.json (default: cwd)
 
 Options:
   --output <dir>            Output directory (default: build/)
@@ -66,6 +75,25 @@ export async function main(argv: string[]): Promise<number> {
       : undefined;
 
   const flat = argv.includes('--flat');
+
+  // Bundle-mode detection: if rill-bundle.json exists at projectDir, delegate.
+  if (detectBundleAtCwd(projectDir)) {
+    // Bundle mode does not (yet) support --output/--flat; reject explicitly
+    // rather than silently ignoring them.
+    const unsupportedFlags = [
+      outputDir !== undefined ? '--output' : null,
+      flat ? '--flat' : null,
+    ].filter((flag): flag is string => flag !== null);
+
+    if (unsupportedFlags.length > 0) {
+      process.stderr.write(
+        `rill build: ${unsupportedFlags.join(', ')} not supported in bundle mode\n`
+      );
+      return 1;
+    }
+
+    return runBundleBuild(projectDir, {});
+  }
 
   try {
     const result = await buildPackage(projectDir, {

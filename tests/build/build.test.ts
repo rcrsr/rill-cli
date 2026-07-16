@@ -1434,12 +1434,8 @@ describe('buildPackage EC-33: .rill/npm/package.json missing', () => {
       (e: unknown) =>
         e instanceof BuildError &&
         e.phase === 'compilation' &&
-        e.message.includes('rill bootstrap') &&
-        e.message.includes(
-          'Run ’rill bootstrap’ to initialize this project'
-            .replace('’', "'")
-            .replace('’', "'")
-        )
+        e.message.includes('rill init') &&
+        e.message.includes("Run 'rill init' to initialize this project")
     );
   });
 
@@ -1458,7 +1454,7 @@ describe('buildPackage EC-33: .rill/npm/package.json missing', () => {
       (e: unknown) =>
         e instanceof BuildError &&
         e.phase === 'compilation' &&
-        e.message.includes('rill bootstrap') &&
+        e.message.includes('rill init') &&
         e.message.includes('project-dir argument')
     );
   });
@@ -1522,5 +1518,52 @@ describe('buildPackage — createRequire wiring discriminator', () => {
     await expect(
       buildPackage(projectDir, { outputDir })
     ).resolves.toBeDefined();
+  });
+});
+
+// ============================================================
+// BuildError CONSTRUCTION
+// ============================================================
+
+describe('BuildError construction', () => {
+  it('constructs BuildError with phase harness and correct properties', () => {
+    const err = new BuildError('harness phase test', 'harness');
+
+    expect(err).toBeInstanceOf(BuildError);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.phase).toBe('harness');
+    expect(err.name).toBe('BuildError');
+    expect(err.message).toBe('harness phase test');
+  });
+});
+
+// ============================================================
+// CONCURRENCY
+// ============================================================
+
+describe('buildPackage concurrency', () => {
+  it('two concurrent builds both succeed', async () => {
+    const [fixtureA, fixtureB] = await Promise.all([
+      makeProjectFixture({ name: 'concurrent-a' }),
+      makeProjectFixture({ name: 'concurrent-b' }),
+    ]);
+
+    const results = await Promise.allSettled([
+      buildPackage(fixtureA.projectDir, { outputDir: fixtureA.outputDir }),
+      buildPackage(fixtureB.projectDir, { outputDir: fixtureB.outputDir }),
+    ]);
+
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1].status).toBe('fulfilled');
+
+    const valueA = (
+      results[0] as PromiseFulfilledResult<{ outputPath: string }>
+    ).value;
+    const valueB = (
+      results[1] as PromiseFulfilledResult<{ outputPath: string }>
+    ).value;
+
+    expect(valueA.outputPath).toContain('concurrent-a');
+    expect(valueB.outputPath).toContain('concurrent-b');
   });
 });

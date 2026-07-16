@@ -13,21 +13,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import {
-  assertBootstrapped,
-  BootstrapMissingError,
-  resolvePrefix,
-} from './prefix.js';
+import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
 import { extractPackageName, isLocalPath } from './mount-derive.js';
 import { readConfigSnapshot, applyMountEdit, hasMount } from './config-edit.js';
 import { npmInstall, NpmNotFoundError } from './npm-runner.js';
+import {
+  resolveExtensionTarget,
+  resolveHarnessTarget,
+} from './bundle-resolve.js';
 
 // ============================================================
 // HELP TEXT
 // ============================================================
 
 const USAGE = `\
-Usage: rill upgrade <mount> [--pin] [--range <semver>]
+Usage: rill upgrade <mount> [--for <mount>] [--pin] [--range <semver>]
+       rill upgrade --harness [--range <semver>]
 
 Upgrade an installed extension to a newer version. Pinned mounts (e.g.
 "pkg@1.2.3" with no caret/range) are a no-op; re-pin with
@@ -37,6 +38,8 @@ Arguments:
   <mount>          Mount name as it appears in rill-config.json (e.g. datetime)
 
 Options:
+  --for <mount>    Target a specific package's mount within a bundle
+  --harness        Upgrade the bundle's declared harness instead of an extension mount
   --pin            Record exact installed version (no caret)
   --exact          Deprecated alias for --pin (will be removed in 0.20)
   --range <semver> Install and record a custom semver range verbatim
@@ -79,6 +82,8 @@ export async function run(argv: string[]): Promise<number> {
       pin: { type: 'boolean', default: false },
       exact: { type: 'boolean', default: false },
       range: { type: 'string' },
+      for: { type: 'string' },
+      harness: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
     allowPositionals: true,
@@ -88,13 +93,6 @@ export async function run(argv: string[]): Promise<number> {
   if (values['help'] === true) {
     process.stdout.write(USAGE);
     return 0;
-  }
-
-  const mount = positionals[0];
-  if (mount === undefined || mount === '') {
-    process.stderr.write('Usage: rill upgrade <mount>\n');
-    process.stderr.write('  Missing required argument: <mount>\n');
-    return 1;
   }
 
   // P2-1: --exact is deprecated; warn once before continuing.
@@ -116,18 +114,123 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
+  const forMount =
+    typeof values['for'] === 'string' ? values['for'] : undefined;
+  const harnessMode = values['harness'] === true;
+
   const projectDir = process.cwd();
-  const prefix = resolvePrefix(projectDir);
+
+  // ---- Harness mode: upgrade the bundle's declared harness ----
+  if (harnessMode) {
+    const resolvedHarness = await resolveHarnessTarget(projectDir);
+    if ('error' in resolvedHarness) {
+      return resolvedHarness.error;
+    }
+    const { target } = resolvedHarness;
+
+    try {
+      assertBootstrapped(target.bundleRoot);
+    } catch (err) {
+      if (err instanceof BootstrapMissingError) {
+        process.stderr.write('✗ .rill/npm/ not found\n');
+        process.stderr.write(
+          "  Run 'rill init' first to initialize the project\n"
+        );
+        return 1;
+      }
+      throw err;
+    }
+
+    const installedPkgJsonPath = path.join(
+      target.prefix,
+      'node_modules',
+      target.harnessName,
+      'package.json'
+    );
+
+    // The harness may not be physically installed yet; treat unreadable as
+    // undefined rather than hard-failing before the install attempt.
+    let currentVersion: string | undefined;
+    try {
+      const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
+      const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
+      currentVersion = pkgJson.version;
+    } catch {
+      currentVersion = undefined;
+    }
+
+    const installSpec =
+      rangeArg !== undefined
+        ? `${target.harnessName}@${rangeArg}`
+        : `${target.harnessName}@latest`;
+
+    process.stdout.write(`ℹ Installing ${installSpec}...\n`);
+
+    let npmResult: { exitCode: number };
+    try {
+      npmResult = await npmInstall({
+        spec: installSpec,
+        prefix: target.prefix,
+      });
+    } catch (err) {
+      if (err instanceof NpmNotFoundError) {
+        process.stderr.write(
+          'npm not found on PATH; install Node.js with npm\n'
+        );
+        return 1;
+      }
+      throw err;
+    }
+
+    if (npmResult.exitCode !== 0) {
+      return npmResult.exitCode;
+    }
+
+    let newVersion: string;
+    try {
+      const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
+      const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
+      newVersion = pkgJson.version ?? '';
+    } catch {
+      process.stderr.write(
+        `✗ Failed to read installed package.json at ${installedPkgJsonPath}\n`
+      );
+      return 1;
+    }
+
+    if (newVersion === currentVersion) {
+      process.stdout.write('Already at latest\n');
+      return 0;
+    }
+
+    process.stdout.write(
+      `✓ Upgraded harness '${target.harnessName}' to ${newVersion}\n`
+    );
+    return 0;
+  }
+
+  const mount = positionals[0];
+  if (mount === undefined || mount === '') {
+    process.stderr.write('Usage: rill upgrade <mount>\n');
+    process.stderr.write('  Missing required argument: <mount>\n');
+    return 1;
+  }
+
+  const resolved = await resolveExtensionTarget({ projectDir, forMount });
+  if ('error' in resolved) {
+    return resolved.error;
+  }
+  const { targetDir, prefix } = resolved.target;
 
   // ---- Step 1: assertBootstrapped ----
   // EC-17: .rill/npm/ missing -> UXT-EXT-5 verbatim, exit 1
   try {
-    assertBootstrapped(projectDir);
+    assertBootstrapped(targetDir);
   } catch (err) {
     if (err instanceof BootstrapMissingError) {
       process.stderr.write('✗ .rill/npm/ not found\n');
       process.stderr.write(
-        "  Run 'rill bootstrap' first to initialize the project\n"
+        "  Run 'rill init' first to initialize the project\n"
       );
       return 1;
     }
@@ -135,7 +238,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // ---- Step 2: Read config snapshot + mount existence check ----
-  const snapshot = await readConfigSnapshot(projectDir);
+  const snapshot = await readConfigSnapshot(targetDir);
 
   // EC-18: Mount not in config -> UXT-EXT-8 verbatim, exit 1
   if (!hasMount(snapshot, mount)) {

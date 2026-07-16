@@ -1,6 +1,9 @@
 /**
- * rill-run: Extension-aware rill script runner.
- * Loads extensions from rill-config.json, generates bindings, and executes scripts.
+ * rill run: Runs a rill project or bundle.
+ *
+ * When a rill-bundle.json is present at the resolved project directory,
+ * delegates to bundle mode (builds all packages, invokes harness serve).
+ * Otherwise falls through to the single-package path (reads rill-config.json).
  */
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -31,6 +34,8 @@ import {
   type HandlerParam,
 } from '@rcrsr/rill-config';
 import { detectHelpVersionFlag } from './cli-shared.js';
+import { detectBundleAtCwd } from './bundle/config.js';
+import { runBundleServe } from './commands/bundle-run.js';
 import { resolvePrefix } from './commands/prefix.js';
 import { explainError } from './cli-explain.js';
 import {
@@ -269,6 +274,32 @@ export async function main(argv: string[]): Promise<number> {
   const hasExplicitConfig = opts.config !== './rill-config.json';
 
   const rootDir = opts.rootDir ?? process.cwd();
+
+  // Bundle-mode detection: if rill-bundle.json exists at rootDir, delegate.
+  if (detectBundleAtCwd(rootDir)) {
+    // Bundle mode does not (yet) support the single-package flags below;
+    // reject explicitly rather than silently ignoring them.
+    const unsupportedFlags = [
+      hasExplicitConfig ? '--config' : null,
+      argv.includes('--format') ? '--format' : null,
+      argv.includes('--verbose') ? '--verbose' : null,
+      argv.includes('--max-stack-depth') ? '--max-stack-depth' : null,
+      argv.includes('--trace') ? '--trace' : null,
+      argv.includes('--no-trace') ? '--no-trace' : null,
+      argv.includes('--show-recovered') ? '--show-recovered' : null,
+      argv.includes('--atom-only') ? '--atom-only' : null,
+      opts.createBindings !== undefined ? '--create-bindings' : null,
+    ].filter((flag): flag is string => flag !== null);
+
+    if (unsupportedFlags.length > 0) {
+      process.stderr.write(
+        `rill run: ${unsupportedFlags.join(', ')} not supported in bundle mode\n`
+      );
+      return 1;
+    }
+
+    return runBundleServe(rootDir, {});
+  }
 
   let configPath: string;
   try {

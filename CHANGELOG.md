@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Install role gate:** `rill install` rejects packages without `"rill": { "role": "extension" | "harness" }`, probed before `npm install`. ([#35](https://github.com/rcrsr/rill-cli/pull/35))
 - **Bundle-aware uninstall/upgrade/list:** `rill uninstall` and `rill upgrade` accept `--for <mount>` to target a bundle package's extension and `--harness` to remove or upgrade the recorded harness. `rill list` shows the bundle harness and aggregates each package's mounts. ([#35](https://github.com/rcrsr/rill-cli/pull/35))
 
+### Changed
+
+- **Dev tooling:** Updated to TypeScript 7, oxlint, oxfmt, lefthook, and knip; no runtime changes. ([#36](https://github.com/rcrsr/rill-cli/pull/36))
+
 ## [0.19.6] - 2026-05-12
 
 ### Added

@@ -1,9 +1,0 @@
-{
-  "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["tests/**/fixtures/**"],
-  "ignoreDependencies": [
-    "@rcrsr/rill",
-    "@rcrsr/rill-config",
-    "@rcrsr/rill-ext-datetime"
-  ]
-}

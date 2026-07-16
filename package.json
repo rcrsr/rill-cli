@@ -43,7 +43,7 @@
     "lint": "oxlint --config .oxlintrc.json src/ tests/",
     "check": "pnpm run build && pnpm run test && pnpm run check:lint",
     "check:types": "tsc --noEmit",
-    "check:lint": "oxlint --config .oxlintrc.json src/ tests/",
+    "check:lint": "pnpm run lint",
     "check:format": "oxfmt --check",
     "check:deps": "knip",
     "fix:lint": "oxlint --config .oxlintrc.json --fix src/ tests/",

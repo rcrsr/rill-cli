@@ -53,58 +53,6 @@ import {
 } from './errors.js';
 
 // ============================================================
-// RE-EXPORT INDIVIDUAL RULES
-// ============================================================
-
-export { NAMING_SNAKE_CASE } from './naming.js';
-export { CAPTURE_INLINE_CHAIN, CAPTURE_BEFORE_BRANCH } from './flow.js';
-export {
-  BREAK_IN_PARALLEL,
-  PREFER_MAP,
-  FOLD_INTERMEDIATES,
-  FILTER_NEGATION,
-  METHOD_SHORTHAND,
-} from './collections.js';
-export { LOOP_ACCUMULATOR, PREFER_DO_WHILE, USE_EACH } from './loops.js';
-export { USE_DEFAULT_OPERATOR, CONDITION_TYPE } from './conditionals.js';
-export {
-  CLOSURE_BARE_DOLLAR,
-  CLOSURE_BRACES,
-  CLOSURE_LATE_BINDING,
-} from './closures.js';
-export { UNNECESSARY_ASSERTION, VALIDATE_EXTERNAL } from './types.js';
-export { USE_EMPTY_METHOD } from './strings.js';
-export {
-  AVOID_REASSIGNMENT,
-  COMPLEX_CONDITION,
-  LOOP_OUTER_CAPTURE,
-  STREAM_PRE_ITERATION,
-} from './anti-patterns.js';
-export {
-  SPACING_OPERATOR,
-  SPACING_BRACES,
-  SPACING_BRACKETS,
-  SPACING_CLOSURE,
-  INDENT_CONTINUATION,
-  IMPLICIT_DOLLAR_METHOD,
-  IMPLICIT_DOLLAR_FUNCTION,
-  IMPLICIT_DOLLAR_CLOSURE,
-  THROWAWAY_CAPTURE,
-} from './formatting.js';
-export {
-  USE_DYNAMIC_IDENTIFIER,
-  USE_UNTYPED_HOST_REF,
-} from './use-expressions.js';
-export {
-  GUARD_BARE,
-  RETRY_TRIVIAL,
-  ATOM_UNREGISTERED,
-  STATUS_PROBE_NO_FIELD,
-  PRESENCE_OVER_NULL_GUARD,
-  GUARD_OVER_TRY_CATCH,
-} from './errors.js';
-
-// ============================================================
 // RULE REGISTRY
 // ============================================================
 

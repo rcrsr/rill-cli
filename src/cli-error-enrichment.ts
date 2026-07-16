@@ -16,7 +16,7 @@ export interface SourceSnippet {
   readonly highlightSpan: SourceSpan;
 }
 
-export interface SnippetLine {
+interface SnippetLine {
   readonly lineNumber: number;
   readonly content: string;
   readonly isErrorLine: boolean;

@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -52,24 +51,6 @@ export function looksLikeLocalFilePath(specifier: string): boolean {
   if (!isLocalPath(specifier)) return false;
   const lower = specifier.toLowerCase();
   return LOCAL_FILE_EXTS.some((ext) => lower.endsWith(ext));
-}
-
-/**
- * Returns true when specifier is a local path that points at an existing
- * single source file (ts/js/mjs/cjs/tsx/jsx). Performs a stat to distinguish
- * a file named e.g. `foo.ts` from a directory with the same name.
- *
- * Requires the path to exist on disk — only call this after confirming the
- * specifier resolves to a real filesystem entry.
- */
-export function isLocalFilePath(specifier: string): boolean {
-  if (!looksLikeLocalFilePath(specifier)) return false;
-  try {
-    return fs.statSync(specifier).isFile();
-  } catch {
-    // Path does not exist or is inaccessible; treat as non-file.
-    return false;
-  }
 }
 
 /**

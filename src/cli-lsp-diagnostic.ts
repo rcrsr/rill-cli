@@ -19,12 +19,12 @@ export interface LspDiagnostic {
   readonly suggestions?: string[] | undefined;
 }
 
-export interface LspRange {
+interface LspRange {
   readonly start: LspPosition;
   readonly end: LspPosition;
 }
 
-export interface LspPosition {
+interface LspPosition {
   readonly line: number;
   readonly character: number;
 }

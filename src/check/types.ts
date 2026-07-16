@@ -123,7 +123,7 @@ export interface FixContext {
 // ============================================================
 
 /** Rule category for grouping and organization */
-export type RuleCategory =
+type RuleCategory =
   | 'naming'
   | 'flow'
   | 'collections'

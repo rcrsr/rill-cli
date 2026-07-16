@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["tests/**/fixtures/**"],
+  "ignoreDependencies": [
+    // @rcrsr/rill and @rcrsr/rill-config are statically imported in src/, but
+    // tri-listed as peer + dev + runtime deps, which knip cannot fully trace.
+    "@rcrsr/rill",
+    "@rcrsr/rill-config",
+    // @rcrsr/rill-ext-datetime is referenced only as a string-literal package
+    // name in test files, never statically imported.
+    "@rcrsr/rill-ext-datetime",
+  ],
+}

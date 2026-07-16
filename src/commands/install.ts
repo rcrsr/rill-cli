@@ -595,7 +595,7 @@ export async function run(argv: string[]): Promise<number> {
       forMount,
       roleFlag,
       replaceFlag,
-      declaredRole,
+      asOverride,
     });
   }
 
@@ -658,9 +658,10 @@ export async function run(argv: string[]): Promise<number> {
 /**
  * Applies the post-npm-install config write in bundle mode.
  *
- * Detects the role of the installed package (extension vs harness), validates
- * flags, and writes the appropriate config record without performing any npm
- * operations (those have already completed).
+ * Detects the role of the installed package from its post-install exports
+ * (extension vs harness), validates flags, and writes the appropriate config
+ * record without performing any npm operations (those have already
+ * completed).
  *
  * All error paths return exit code 1 and write verbatim error copy to stderr.
  * No filesystem writes occur when validation fails.
@@ -675,7 +676,7 @@ async function applyBundleInstall(opts: {
   forMount: string | undefined;
   roleFlag: string | undefined;
   replaceFlag: boolean;
-  declaredRole: 'extension' | 'harness';
+  asOverride: string | undefined;
 }): Promise<number> {
   const {
     bundleRoot,
@@ -687,11 +688,12 @@ async function applyBundleInstall(opts: {
     forMount,
     roleFlag,
     replaceFlag,
+    asOverride,
   } = opts;
 
-  // Detect role from installed package exports, using the pre-install declared
-  // role as the authoritative source. Post-install detection supplements for
-  // ambiguity resolution only.
+  // Detect role from the installed package's post-install exports. The
+  // pre-install declared role only gates whether npm install runs at all
+  // (see probePackageRole above); it is not cross-checked here.
   const detectedRole = await detectPackageRole(effectivePrefix, pkgName);
 
   // Resolve the effective role, honouring --role flag for disambiguation.
@@ -799,6 +801,13 @@ async function applyBundleInstall(opts: {
   }
 
   const mountExists = hasMount(targetSnapshot, mount);
+  if (mountExists && asOverride === undefined) {
+    process.stderr.write(`✗ Mount path '${mount}' already exists\n`);
+    process.stderr.write(
+      '  Use --as <path> to override, or edit rill-config.json manually\n'
+    );
+    return 1;
+  }
   const editKind: 'add' | 'overwrite' = mountExists ? 'overwrite' : 'add';
 
   try {

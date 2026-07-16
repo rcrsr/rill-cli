@@ -94,14 +94,25 @@ function writeEsmPackageJson(dir: string): void {
 
 function makeServeContext(
   packages: readonly CompiledPackage[],
-  bundle: ResolvedRillBundleConfig = MINIMAL_BUNDLE
+  opts: {
+    bundle?: ResolvedRillBundleConfig;
+    requestedMount?: string | undefined;
+    args?: readonly string[];
+  } = {}
 ): ServeContext {
+  const {
+    bundle = MINIMAL_BUNDLE,
+    requestedMount = undefined,
+    args = [],
+  } = opts;
   return {
     bundleDir: '',
     bundle,
     config: {},
     logger: SILENT_LOGGER,
     packages,
+    requestedMount,
+    args,
     compile: () => Promise.resolve([...packages]),
     onSourceChange: () => undefined,
     onShutdown: () => undefined,
@@ -203,7 +214,6 @@ describe('builtinHarness.postBuild', () => {
 
 describe('builtinHarness.serve handler file access', () => {
   let tmpDir: string;
-  const originalArgv = process.argv;
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
@@ -211,15 +221,13 @@ describe('builtinHarness.serve handler file access', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    process.argv = originalArgv;
     vi.restoreAllMocks();
   });
 
   it('rejects with BuildError phase harness when the handler file does not exist', async () => {
     // deliberately omit alpha/handler.js
     const packages = [makeCompiledPackage('alpha', tmpDir)];
-    process.argv = [...originalArgv.slice(0, 2), 'alpha'];
-    const ctx = makeServeContext(packages);
+    const ctx = makeServeContext(packages, { requestedMount: 'alpha' });
 
     await expect(builtinHarness.serve!(ctx)).rejects.toSatisfy(
       (err: unknown) => err instanceof BuildError && err.phase === 'harness'
@@ -233,10 +241,96 @@ describe('builtinHarness.serve handler file access', () => {
     vi.mocked(fsPromises.access).mockRejectedValueOnce(eaccesError);
 
     const packages = [makeCompiledPackage('alpha', tmpDir)];
-    process.argv = [...originalArgv.slice(0, 2), 'alpha'];
-    const ctx = makeServeContext(packages);
+    const ctx = makeServeContext(packages, { requestedMount: 'alpha' });
 
     await expect(builtinHarness.serve!(ctx)).rejects.toBe(eaccesError);
+  });
+});
+
+// ============================================================
+// serve: dispatches using ctx.requestedMount/ctx.args/ctx.packages
+// (previously read global process.argv, which under CLI dispatch never
+// reflects the true user-supplied mount/args)
+// ============================================================
+
+describe('builtinHarness.serve dispatch', () => {
+  let tmpDir: string;
+  let logs: unknown[][];
+  const SPY_LOGGER: Logger = {
+    info: (...args) => {
+      logs.push(args);
+    },
+    warn: () => undefined,
+    error: () => undefined,
+  };
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    logs = [];
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('dispatches to ctx.requestedMount using ctx.packages without calling compile()', async () => {
+    writeHandlerJs(tmpDir, 'alpha');
+    writeHandlerJs(tmpDir, 'beta');
+    const packages = [
+      makeCompiledPackage('alpha', tmpDir),
+      makeCompiledPackage('beta', tmpDir),
+    ];
+    const ctx: ServeContext = {
+      ...makeServeContext(packages, { requestedMount: 'beta' }),
+      logger: SPY_LOGGER,
+      compile: () => {
+        throw new Error('compile() should not be called by serve()');
+      },
+    };
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('falls back to bundle.defaultPackage when requestedMount is undefined', async () => {
+    writeHandlerJs(tmpDir, 'alpha');
+    writeHandlerJs(tmpDir, 'beta');
+    const packages = [
+      makeCompiledPackage('alpha', tmpDir),
+      makeCompiledPackage('beta', tmpDir),
+    ];
+    const bundle: ResolvedRillBundleConfig = {
+      ...MINIMAL_BUNDLE,
+      defaultPackage: 'beta',
+    };
+    const ctx = makeServeContext(packages, {
+      bundle,
+      requestedMount: undefined,
+    });
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('forwards ctx.args to the dispatched handler', async () => {
+    const pkgDir = path.join(tmpDir, 'alpha');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkgDir, 'handler.js'),
+      `export default async function(args) { return args.length === 2 && args[0] === 'a' && args[1] === 'b' ? 0 : 1; }\n`,
+      'utf-8'
+    );
+    const packages = [makeCompiledPackage('alpha', tmpDir)];
+    const ctx = makeServeContext(packages, {
+      requestedMount: 'alpha',
+      args: ['a', 'b'],
+    });
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(0);
   });
 });
 

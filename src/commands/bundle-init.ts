@@ -5,6 +5,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { scaffoldPackageDir } from './package-init.js';
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+// Mount/directory name for the starter package scaffolded alongside the
+// bundle. A bundle without at least one package entry fails readBundleConfig
+// (packages must contain at least one entry), so init must scaffold one.
+const STARTER_PACKAGE_MOUNT = 'main';
 
 // ============================================================
 // IMPLEMENTATION
@@ -31,21 +41,6 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
-  // Write rill-bundle.json
-  const bundleConfig = {
-    name,
-    version: '0.0.0',
-    packages: [] as unknown[],
-  };
-  const bundleConfigContent = JSON.stringify(bundleConfig, null, 2) + '\n';
-  try {
-    fs.writeFileSync(bundleConfigPath, bundleConfigContent, 'utf8');
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`Cannot write rill-bundle.json: ${message}\n`);
-    return 1;
-  }
-
   // Ensure .rill/npm/ exists
   const rillNpmDir = path.join(cwd, '.rill', 'npm');
   try {
@@ -54,6 +49,17 @@ export async function run(argv: string[]): Promise<number> {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Cannot create .rill/npm/: ${message}\n`);
     return 1;
+  }
+
+  // Write .rill/npm/package.json — install/list assertBootstrapped and
+  // harness resolution both anchor createRequire on this file.
+  const rillNpmPkgJsonPath = path.join(rillNpmDir, 'package.json');
+  if (!fs.existsSync(rillNpmPkgJsonPath)) {
+    fs.writeFileSync(
+      rillNpmPkgJsonPath,
+      '{"name":"rill-extensions","private":true}\n',
+      'utf8'
+    );
   }
 
   // Write .rill/npm/.gitignore if not already present
@@ -73,6 +79,32 @@ export async function run(argv: string[]): Promise<number> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Cannot create packages/: ${message}\n`);
+    return 1;
+  }
+
+  // Scaffold a starter package so the freshly-initialized bundle satisfies
+  // readBundleConfig's requirement of at least one packages[] entry, and is
+  // immediately usable with bundle-run/build.
+  const starterPackageDir = path.join(packagesDir, STARTER_PACKAGE_MOUNT);
+  scaffoldPackageDir(starterPackageDir, STARTER_PACKAGE_MOUNT);
+
+  // Write rill-bundle.json
+  const bundleConfig = {
+    name,
+    version: '0.0.0',
+    packages: [
+      {
+        mount: STARTER_PACKAGE_MOUNT,
+        project: `./packages/${STARTER_PACKAGE_MOUNT}`,
+      },
+    ],
+  };
+  const bundleConfigContent = JSON.stringify(bundleConfig, null, 2) + '\n';
+  try {
+    fs.writeFileSync(bundleConfigPath, bundleConfigContent, 'utf8');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`Cannot write rill-bundle.json: ${message}\n`);
     return 1;
   }
 

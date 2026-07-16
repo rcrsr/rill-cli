@@ -37,8 +37,14 @@ const TSCONFIG_RILL_CONTENT =
  * Scaffold the standard single-package layout inside targetDir.
  * Mirrors the structure that `rill bootstrap` creates, with the addition
  * of a src/index.ts placeholder.
+ *
+ * Exported so `rill init bundle` can scaffold a starter package without
+ * duplicating this layout.
  */
-function scaffoldPackageDir(targetDir: string, packageName: string): void {
+export function scaffoldPackageDir(
+  targetDir: string,
+  packageName: string
+): void {
   // .rill/
   const rillDir = path.join(targetDir, '.rill');
   fs.mkdirSync(rillDir, { recursive: true });

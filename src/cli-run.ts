@@ -277,6 +277,27 @@ export async function main(argv: string[]): Promise<number> {
 
   // Bundle-mode detection: if rill-bundle.json exists at rootDir, delegate.
   if (detectBundleAtCwd(rootDir)) {
+    // Bundle mode does not (yet) support the single-package flags below;
+    // reject explicitly rather than silently ignoring them.
+    const unsupportedFlags = [
+      hasExplicitConfig ? '--config' : null,
+      argv.includes('--format') ? '--format' : null,
+      argv.includes('--verbose') ? '--verbose' : null,
+      argv.includes('--max-stack-depth') ? '--max-stack-depth' : null,
+      argv.includes('--trace') ? '--trace' : null,
+      argv.includes('--no-trace') ? '--no-trace' : null,
+      argv.includes('--show-recovered') ? '--show-recovered' : null,
+      argv.includes('--atom-only') ? '--atom-only' : null,
+      opts.createBindings !== undefined ? '--create-bindings' : null,
+    ].filter((flag): flag is string => flag !== null);
+
+    if (unsupportedFlags.length > 0) {
+      process.stderr.write(
+        `rill run: ${unsupportedFlags.join(', ')} not supported in bundle mode\n`
+      );
+      return 1;
+    }
+
     return runBundleServe(rootDir, {});
   }
 

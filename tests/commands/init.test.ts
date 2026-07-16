@@ -457,6 +457,60 @@ describe('init', () => {
       expect(fs.existsSync(path.join(tmpDir, 'packages'))).toBe(true);
     });
 
+    it('writes .rill/npm/package.json so assertBootstrapped and harness resolution succeed', async () => {
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['bundle', 'demo']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+
+      const npmPkgJsonPath = path.join(tmpDir, '.rill', 'npm', 'package.json');
+      expect(fs.existsSync(npmPkgJsonPath)).toBe(true);
+      const npmPkgJson = JSON.parse(
+        fs.readFileSync(npmPkgJsonPath, 'utf8')
+      ) as { name: string; private: boolean };
+      expect(npmPkgJson.name).toBe('rill-extensions');
+      expect(npmPkgJson.private).toBe(true);
+    });
+
+    it('scaffolds a starter package so the bundle is immediately usable', async () => {
+      const { run } = await import('../../src/commands/init.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['bundle', 'demo']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+
+      const bundleConfigPath = path.join(tmpDir, 'rill-bundle.json');
+      const bundleConfig = JSON.parse(
+        fs.readFileSync(bundleConfigPath, 'utf8')
+      ) as { packages: Array<{ mount: string; project: string }> };
+      expect(bundleConfig.packages).toHaveLength(1);
+      expect(bundleConfig.packages[0]).toEqual({
+        mount: 'main',
+        project: './packages/main',
+      });
+
+      // readBundleConfig must accept the freshly-scaffolded shape.
+      const { readBundleConfig } = await import('../../src/bundle/config.js');
+      await expect(readBundleConfig(tmpDir)).resolves.toMatchObject({
+        defaultPackage: 'main',
+      });
+
+      expect(
+        fs.existsSync(path.join(tmpDir, 'packages', 'main', 'rill-config.json'))
+      ).toBe(true);
+    });
+
     it('defaults bundle name to cwd basename when name is omitted', async () => {
       const { run } = await import('../../src/commands/init.js');
       const cap = captureOutput();

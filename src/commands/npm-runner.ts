@@ -79,7 +79,7 @@ export function npmView(spec: string, field: string): Promise<NpmViewResult> {
       shell: false,
     });
 
-    child.stdout!.on('data', (chunk: Buffer) => {
+    child.stdout?.on('data', (chunk: Buffer) => {
       chunks.push(chunk);
     });
 

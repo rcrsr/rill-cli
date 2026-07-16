@@ -60,6 +60,15 @@ export async function run(argv: string[]): Promise<number> {
     return 0;
   }
 
+  // Reject unknown subcommands rather than silently falling through to the
+  // bare single-package scaffold. An option (starting with '-') is not a
+  // subcommand and continues to the bare form below.
+  if (subcommand !== undefined && !subcommand.startsWith('-')) {
+    process.stderr.write(`rill init: unknown subcommand '${subcommand}'\n`);
+    process.stderr.write(USAGE);
+    return 1;
+  }
+
   // Bare `rill init` — single-package scaffold. Parse --force, --reset, --help flags.
   const { values } = parseArgs({
     args: argv,

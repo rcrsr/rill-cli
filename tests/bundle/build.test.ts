@@ -280,10 +280,12 @@ describe('runBundleBuild', () => {
   });
 
   // ============================================================
-  // TEST: declared harness postBuild does not write build/main.js → stderr, exit 1
+  // TEST: declared harness postBuild that does not write build/main.js still
+  // succeeds — the RillHarness contract does not oblige any specific output
+  // file; runBundleBuild applies no generic post-check on postBuild's output.
   // ============================================================
 
-  it('returns exit 1 and writes to stderr when declared harness postBuild omits build/main.js', async () => {
+  it('returns exit 0 when a custom harness postBuild completes without writing build/main.js', async () => {
     const bundleDir = await makeTmpDir();
     const harnessName = 'fake-harness-no-main';
 
@@ -305,9 +307,8 @@ describe('runBundleBuild', () => {
       out.restore();
     }
 
-    expect(exitCode).toBe(1);
-    const errCombined = out.stderr.join('');
-    expect(errCombined).toContain('build/main.js');
+    expect(exitCode).toBe(0);
+    expect(existsSync(path.join(bundleDir, 'build', 'main.js'))).toBe(false);
   });
 
   // ============================================================

@@ -112,6 +112,21 @@ function rejectNull(raw: unknown, field: string): void {
   }
 }
 
+function validateHarnessSpecifier(harness: string): void {
+  if (
+    harness.startsWith('.') ||
+    harness.startsWith('/') ||
+    harness.includes('..') ||
+    harness.includes('\\')
+  ) {
+    throw new BundleConfigError({
+      code: 'SCHEMA',
+      field: 'harness',
+      message: `Field 'harness' must be a bare npm specifier (no relative or absolute paths)`,
+    });
+  }
+}
+
 function validateName(name: string): void {
   if (name.includes('/') || name.includes('\\') || name.includes('..')) {
     throw new BundleConfigError({
@@ -255,6 +270,9 @@ export async function readBundleConfig(
     obj['harness'] !== undefined
       ? requireString(obj['harness'], 'harness')
       : undefined;
+  if (harness !== undefined) {
+    validateHarnessSpecifier(harness);
+  }
 
   // Validate config (optional but reject null)
   rejectNull(obj['config'], 'config');

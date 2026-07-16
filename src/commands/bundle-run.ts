@@ -9,7 +9,10 @@ import type { RillHarness, CompiledPackage, ServeContext } from '../harness.js';
 // ============================================================
 
 export interface BundleRunOptions {
-  readonly [key: string]: unknown;
+  /** Mount to dispatch to; undefined falls back to defaultPackage/packages[0]. */
+  readonly mount?: string | undefined;
+  /** Trailing positional/handler arguments forwarded to the harness. */
+  readonly args?: readonly string[] | undefined;
 }
 
 // ============================================================
@@ -18,7 +21,7 @@ export interface BundleRunOptions {
 
 export async function runBundleServe(
   bundleDir: string,
-  _opts: BundleRunOptions
+  opts: BundleRunOptions
 ): Promise<number> {
   // Step 1: Read bundle config
   let bundle;
@@ -70,6 +73,8 @@ export async function runBundleServe(
     bundle,
     config: bundle.config,
     logger,
+    requestedMount: opts.mount,
+    args: opts.args ?? [],
     get packages() {
       return packagesArray as readonly CompiledPackage[];
     },

@@ -550,6 +550,111 @@ describe('install (bundle-aware)', () => {
   });
 
   // ============================================================
+  // T6 / AC-E2/EC-8 (bundle-mode): mount collision at target package
+  // ============================================================
+
+  describe('extension install with --for against an already-mounted target', () => {
+    it('exits 1 with the mount-exists error and leaves the target config unchanged when --as is omitted', async () => {
+      bootstrapBundle(tmpDir, {
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      process.chdir(tmpDir);
+
+      const targetConfigPath = path.join(
+        tmpDir,
+        'packages',
+        'app',
+        'rill-config.json'
+      );
+      // Pre-populate the target package config with the mount that will collide.
+      const existingConfig = JSON.parse(
+        fs.readFileSync(targetConfigPath, 'utf8')
+      ) as { extensions: { mounts: Record<string, string> } };
+      existingConfig.extensions.mounts['bundle-test-collision-pkg-9'] =
+        'bundle-test-collision-pkg-9@^1.0.0';
+      fs.writeFileSync(
+        targetConfigPath,
+        JSON.stringify(existingConfig, null, 2) + '\n',
+        'utf8'
+      );
+      const appConfigBefore = fs.readFileSync(targetConfigPath, 'utf8');
+
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      const pkgName = 'bundle-test-collision-pkg-9';
+
+      mocks.spawn.mockImplementation(
+        makeSpawnMockWithFixture(prefix, pkgName, 'extension')
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([pkgName, '--for', 'app']); // no --as override
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        `✗ Mount path '${pkgName}' already exists`
+      );
+
+      // Target config must be byte-identical (no write occurred)
+      expect(fs.readFileSync(targetConfigPath, 'utf8')).toBe(appConfigBefore);
+    });
+
+    it('overwrites the existing mount and exits 0 when --as is provided', async () => {
+      bootstrapBundle(tmpDir, {
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      process.chdir(tmpDir);
+
+      const targetConfigPath = path.join(
+        tmpDir,
+        'packages',
+        'app',
+        'rill-config.json'
+      );
+      const existingMount = 'existing-mount';
+      const existingConfig = JSON.parse(
+        fs.readFileSync(targetConfigPath, 'utf8')
+      ) as { extensions: { mounts: Record<string, string> } };
+      existingConfig.extensions.mounts[existingMount] = 'some-old-pkg@^1.0.0';
+      fs.writeFileSync(
+        targetConfigPath,
+        JSON.stringify(existingConfig, null, 2) + '\n',
+        'utf8'
+      );
+
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      const pkgName = 'bundle-test-collision-pkg-10';
+
+      mocks.spawn.mockImplementation(
+        makeSpawnMockWithFixture(prefix, pkgName, 'extension')
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([pkgName, '--for', 'app', '--as', existingMount]);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+
+      const config = JSON.parse(fs.readFileSync(targetConfigPath, 'utf8')) as {
+        extensions: { mounts: Record<string, string> };
+      };
+      expect(config.extensions.mounts[existingMount]).toMatch(
+        new RegExp(`^${pkgName}@`)
+      );
+    });
+  });
+
+  // ============================================================
   // Error: extension install with --for against a corrupt rill-bundle.json
   // ============================================================
 

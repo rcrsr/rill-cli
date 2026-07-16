@@ -267,6 +267,57 @@ describe('readBundleConfig', () => {
   });
 
   // ============================================================
+  // readBundleConfig: harness specifier validation (path traversal guard)
+  // ============================================================
+
+  describe('harness specifier validation', () => {
+    it.each([['../../evil'], ['/etc/passwd'], ['..\\evil'], ['some\\path']])(
+      'rejects harness %j with a SCHEMA BundleConfigError on field harness',
+      async (harness) => {
+        const tmpDir = makeTmpDir();
+        try {
+          writeBundleJson(tmpDir, {
+            name: 'test',
+            version: '1.0.0',
+            harness,
+            packages: [{ mount: 'pkg', project: 'packages/pkg' }],
+          });
+
+          await expect(readBundleConfig(tmpDir)).rejects.toMatchObject({
+            code: 'SCHEMA',
+            field: 'harness',
+          });
+          await expect(readBundleConfig(tmpDir)).rejects.toBeInstanceOf(
+            BundleConfigError
+          );
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      }
+    );
+
+    it.each([['@scope/pkg'], ['my-harness']])(
+      'accepts bare npm specifier %j',
+      async (harness) => {
+        const tmpDir = makeTmpDir();
+        try {
+          writeBundleJson(tmpDir, {
+            name: 'test',
+            version: '1.0.0',
+            harness,
+            packages: [{ mount: 'pkg', project: 'packages/pkg' }],
+          });
+
+          const result = await readBundleConfig(tmpDir);
+          expect(result.harness).toBe(harness);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      }
+    );
+  });
+
+  // ============================================================
   // readBundleConfig: error cases — DUPLICATE_MOUNT
   // ============================================================
 

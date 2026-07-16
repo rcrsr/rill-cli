@@ -1,4 +1,3 @@
-import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { BuildError } from '../build/build.js';
 import { readBundleConfig, BundleConfigError } from '../bundle/config.js';
@@ -92,16 +91,12 @@ export async function runBundleBuild(
     throw err;
   }
 
-  // Step 6: Verify build/main.js exists
-  const mainJsPath = path.join(bundleDir, 'build', 'main.js');
-  try {
-    await access(mainJsPath);
-  } catch {
-    process.stderr.write('build/main.js missing after postBuild\n');
-    return 1;
-  }
-
-  // Step 7: Report success
+  // Step 6: Report success
+  //
+  // No generic output-file check runs here: the RillHarness contract (see
+  // src/harness.ts) does not oblige postBuild to emit any specific file —
+  // that convention belongs to the built-in harness alone. A harness signals
+  // failure by throwing (caught above), not by an inspectable output shape.
   process.stdout.write(`built bundle: ${path.join(bundleDir, 'build')}\n`);
   return 0;
 }

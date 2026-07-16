@@ -15,7 +15,7 @@ Command-line tools for running and validating [rill](https://rill.run) scripts.
 | `rill init` | Scaffold a new single-package project (`rill-config.json` + `.rill/npm/`) |
 | `rill init bundle [name]` | Scaffold a new multi-package bundle (`rill-bundle.json` + `packages/`) |
 | `rill init package <name>` | Add a package inside an existing bundle (or scaffold standalone) |
-| `rill bootstrap` | Initialize a new rill project (.rill/npm/, rill-config.json) — **deprecated, use `rill init`** |
+| `rill bootstrap` | **Removed** — renamed to `rill init`; prints a rename notice and exits 1 |
 | `rill install <pkg>` | Install an extension into .rill/npm/ and mount it |
 | `rill uninstall <mount>` | Remove a mounted extension |
 | `rill upgrade <mount>` | Update a mounted extension to a newer version |
@@ -80,7 +80,7 @@ rill init --help                    # list available subcommands
 
 **`rill init` (no subcommand)**
 
-Creates `rill-config.json` and `.rill/npm/` in the current directory. Equivalent to `rill bootstrap` for single-package projects.
+Creates `rill-config.json` and `.rill/npm/` in the current directory for a single-package project.
 
 **`rill init bundle [name]`**
 
@@ -102,22 +102,7 @@ Or use `rill check --types` (see below) to typecheck without managing tsconfig d
 
 ### rill bootstrap
 
-> **Deprecated.** Use `rill init` instead. `rill bootstrap` remains functional for backward compatibility.
-
-Initialize a new rill project. Creates `.rill/npm/`, `.rill/tsconfig.rill.json`, and a starter `rill-config.json` in the current directory.
-
-```bash
-rill bootstrap
-rill bootstrap --force              # rewrite rill-config.json (preserves .rill/npm/)
-rill bootstrap --reset              # wipe .rill/npm/ and rewrite all scaffolded files
-```
-
-**Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--force` | Overwrite existing `rill-config.json`. `.rill/npm/` and installed extensions are preserved. |
-| `--reset` | Wipe `.rill/npm/` and rewrite all scaffolded files. Deletes installed extensions; re-run `rill install` for each. |
+> **Removed.** `rill bootstrap` has been renamed to `rill init` and no longer scaffolds a project. Running `rill bootstrap` (with any arguments, including `--help`) prints a rename notice and exits with code 1. Use `rill init` (single package), `rill init bundle` (bundle), or `rill init package <name>` (package inside a bundle) instead.
 
 ### rill install
 
@@ -263,7 +248,7 @@ rill check --types                 # TypeScript type-check
 | `--format text\|json` | Output format (default: text) |
 | `--verbose` | Include rule category in JSON output |
 | `--min-severity error\|warning\|info` | Severity threshold for non-zero exit (default: error) |
-| `--types` | Run `tsc --noEmit` against the project's `tsconfig.json`. Locates `tsc` from `node_modules/.bin/` or `.rill/npm/node_modules/.bin/`. Requires the user's `tsconfig.json` to extend `./.rill/tsconfig.rill.json` (written by `rill bootstrap`). |
+| `--types` | Run `tsc --noEmit` against the project's `tsconfig.json`. Locates `tsc` from `node_modules/.bin/` or `.rill/npm/node_modules/.bin/`. Requires the user's `tsconfig.json` to extend `./.rill/tsconfig.rill.json` (written by `rill init`). |
 
 **Exit codes:**
 

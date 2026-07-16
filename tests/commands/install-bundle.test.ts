@@ -1,14 +1,18 @@
 /**
  * Tests for src/commands/install.ts — bundle-aware install behavior.
  *
- * These tests cover the six bundle-mode scenarios: extension install with
- * --for, harness install, and the four error paths (extension without --for,
- * harness conflict, ambiguous dual-export, and no ancestor bundle).
+ * Bundle-mode role is authoritative from the package's declared `rill.role`
+ * manifest field (`--role` overrides it). Prefix selection happens BEFORE
+ * npm install: harnesses install into <bundleRoot>/.rill/npm/, extensions
+ * install into the target package's own .rill/npm/ (resolved via
+ * `--for <mount>`). These tests cover extension install with --for, harness
+ * install, and the error paths (extension without --for, un-bootstrapped
+ * target, harness conflict, and no ancestor bundle).
  *
  * NOTE: "No fs writes" assertions for the error cases apply to CONFIG writes
  * (rill-bundle.json / rill-config.json). npm-managed files in .rill/npm/ are
- * populated by the spawn mock before role detection runs — this is correct
- * because the bundle-mode role-detection guard runs after npm install completes.
+ * populated by the spawn mock only when npm install actually runs; guards
+ * that fire before npm install spawns leave .rill/npm/ untouched.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -161,9 +165,9 @@ function writeInstalledPackageFixture(
  * declared rill role JSON on stdout so probePackageRole passes the gate check.
  * For 'npm install' calls the fixture files are written before close is emitted.
  *
- * Dual-role packages declare 'extension' as their rill.role field — the
- * 'ambiguous' outcome comes from post-install export detection, not the
- * declared role field.
+ * Dual-role packages declare 'extension' as their rill.role manifest field;
+ * the package installs per that declared role since there is no post-install
+ * export detection anymore.
  */
 function makeSpawnMockWithFixture(
   prefix: string,
@@ -216,18 +220,22 @@ describe('install (bundle-aware)', () => {
   // ============================================================
 
   describe('extension install at bundle root with --for writes mount to target package config', () => {
-    it('records mount in the target package rill-config.json and exits 0', async () => {
+    it('installs into the target package prefix (not the bundle root) and records the mount', async () => {
       bootstrapBundle(tmpDir, {
         packages: [{ mount: 'app', project: 'packages/app' }],
       });
       process.chdir(tmpDir);
 
-      const prefix = path.join(tmpDir, '.rill', 'npm');
+      // bootstrapBundle bootstraps each package sub-dir via bootstrapProject,
+      // which creates <pkgDir>/.rill/npm/package.json — required so the
+      // pre-install assertBootstrapped(targetPackageDir) gate passes.
+      const targetPrefix = path.join(tmpDir, 'packages', 'app', '.rill', 'npm');
+      const bundleRootPrefix = path.join(tmpDir, '.rill', 'npm');
       // Use a plain name (no rill-ext- prefix) so the derived mount equals pkgName.
       const pkgName = 'bundle-test-extension-pkg-1';
 
       mocks.spawn.mockImplementation(
-        makeSpawnMockWithFixture(prefix, pkgName, 'extension')
+        makeSpawnMockWithFixture(targetPrefix, pkgName, 'extension')
       );
 
       const { run } = await import('../../src/commands/install.js');
@@ -240,6 +248,15 @@ describe('install (bundle-aware)', () => {
       }
 
       expect(exitCode).toBe(0);
+
+      // T4 regression guard: the package must land in the target package's
+      // own .rill/npm/ prefix, not the bundle root's.
+      expect(
+        fs.existsSync(path.join(targetPrefix, 'node_modules', pkgName))
+      ).toBe(true);
+      expect(
+        fs.existsSync(path.join(bundleRootPrefix, 'node_modules', pkgName))
+      ).toBe(false);
 
       const targetConfigPath = path.join(
         tmpDir,
@@ -255,6 +272,56 @@ describe('install (bundle-aware)', () => {
       expect(config.extensions.mounts[pkgName]).toMatch(
         new RegExp(`^${pkgName}@`)
       );
+    });
+  });
+
+  // ============================================================
+  // Error: extension --for target package not bootstrapped
+  // ============================================================
+
+  describe('extension install with --for against an un-bootstrapped target package', () => {
+    it('exits 1 with the bootstrap-missing error before npm install ever spawns', async () => {
+      bootstrapBundle(tmpDir, {
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      process.chdir(tmpDir);
+
+      // Remove the target package's .rill/npm/ so assertBootstrapped fails.
+      const targetDir = path.join(tmpDir, 'packages', 'app');
+      fs.rmSync(path.join(targetDir, '.rill'), {
+        recursive: true,
+        force: true,
+      });
+
+      const targetPrefix = path.join(targetDir, '.rill', 'npm');
+      const pkgName = 'bundle-test-extension-not-bootstrapped-11';
+
+      mocks.spawn.mockImplementation(
+        makeSpawnMockWithFixture(targetPrefix, pkgName, 'extension')
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([pkgName, '--for', 'app']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      const stderr = cap.stderr.join('');
+      expect(stderr.split('\n')[0] + '\n').toBe('✗ .rill/npm/ not found\n');
+      expect(stderr).toContain(
+        "  Run 'rill init' first to initialize the project\n"
+      );
+
+      // The bootstrap gate fires before npm install spawns; npm view (role
+      // probe) may still spawn, but 'install' must not.
+      const installCalls = mocks.spawn.mock.calls.filter(
+        (call) => (call[1] as string[])[0] === 'install'
+      );
+      expect(installCalls).toHaveLength(0);
     });
   });
 
@@ -336,6 +403,13 @@ describe('install (bundle-aware)', () => {
         'Cannot determine target package. Use `rill install <pkg> --for <mount>` to specify which package should mount this extension.'
       );
 
+      // The target-resolution guard fires before npm install spawns; npm
+      // view (role probe) may still spawn, but 'install' must not.
+      const installCalls = mocks.spawn.mock.calls.filter(
+        (call) => (call[1] as string[])[0] === 'install'
+      );
+      expect(installCalls).toHaveLength(0);
+
       // Config files must be byte-identical (no writes occurred)
       expect(
         fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
@@ -407,57 +481,76 @@ describe('install (bundle-aware)', () => {
   });
 
   // ============================================================
-  // Error: dual-export package without --role
+  // Success: dual-export package installs per its declared manifest role
   // ============================================================
 
-  describe('dual-export package install without --role emits ambiguous-role error', () => {
-    it('writes role-required error to stderr verbatim, leaves configs unchanged, exits 1', async () => {
+  describe('dual-export package installs per its declared manifest role', () => {
+    it('installs the dual-export package as an extension (its declared rill.role) and records the mount', async () => {
       bootstrapBundle(tmpDir, {
         packages: [{ mount: 'app', project: 'packages/app' }],
       });
       process.chdir(tmpDir);
 
-      const prefix = path.join(tmpDir, '.rill', 'npm');
-      const pkgName = 'rill-dual-bundle-err-ambiguous-5';
+      const targetPrefix = path.join(tmpDir, 'packages', 'app', '.rill', 'npm');
+      const pkgName = 'rill-dual-bundle-declared-role-5';
 
       mocks.spawn.mockImplementation(
-        makeSpawnMockWithFixture(prefix, pkgName, 'dual')
-      );
-
-      // Capture config bytes before invocation
-      const bundleBefore = fs.readFileSync(
-        path.join(tmpDir, 'rill-bundle.json'),
-        'utf8'
-      );
-      const appConfigBefore = fs.readFileSync(
-        path.join(tmpDir, 'packages', 'app', 'rill-config.json'),
-        'utf8'
+        makeSpawnMockWithFixture(targetPrefix, pkgName, 'dual')
       );
 
       const { run } = await import('../../src/commands/install.js');
       const cap = captureOutput();
       let exitCode: number;
       try {
-        exitCode = await run([pkgName]); // no --role flag
+        exitCode = await run([pkgName, '--for', 'app']);
       } finally {
         cap.restore();
       }
 
-      expect(exitCode).toBe(1);
-      expect(cap.stderr.join('')).toContain(
-        'Package exports both extensionManifest and RillHarness. Use `--role extension` or `--role harness` to specify which to install.'
+      expect(exitCode).toBe(0);
+
+      const targetConfigPath = path.join(
+        tmpDir,
+        'packages',
+        'app',
+        'rill-config.json'
+      );
+      const config = JSON.parse(fs.readFileSync(targetConfigPath, 'utf8')) as {
+        extensions: { mounts: Record<string, string> };
+      };
+      expect(config.extensions.mounts[pkgName]).toMatch(
+        new RegExp(`^${pkgName}@`)
+      );
+    });
+
+    it('installs the dual-export package as a harness when --role harness overrides the declared role', async () => {
+      bootstrapBundle(tmpDir, {
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      process.chdir(tmpDir);
+
+      const bundleRootPrefix = path.join(tmpDir, '.rill', 'npm');
+      const pkgName = 'rill-dual-bundle-role-override-5b';
+
+      mocks.spawn.mockImplementation(
+        makeSpawnMockWithFixture(bundleRootPrefix, pkgName, 'dual')
       );
 
-      // Config files must be byte-identical (no writes occurred)
-      expect(
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([pkgName, '--role', 'harness']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+
+      const bundleConfig = JSON.parse(
         fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
-      ).toBe(bundleBefore);
-      expect(
-        fs.readFileSync(
-          path.join(tmpDir, 'packages', 'app', 'rill-config.json'),
-          'utf8'
-        )
-      ).toBe(appConfigBefore);
+      ) as { harness?: string };
+      expect(bundleConfig.harness).toBe(pkgName);
     });
   });
 
@@ -579,11 +672,11 @@ describe('install (bundle-aware)', () => {
       );
       const appConfigBefore = fs.readFileSync(targetConfigPath, 'utf8');
 
-      const prefix = path.join(tmpDir, '.rill', 'npm');
+      const targetPrefix = path.join(tmpDir, 'packages', 'app', '.rill', 'npm');
       const pkgName = 'bundle-test-collision-pkg-9';
 
       mocks.spawn.mockImplementation(
-        makeSpawnMockWithFixture(prefix, pkgName, 'extension')
+        makeSpawnMockWithFixture(targetPrefix, pkgName, 'extension')
       );
 
       const { run } = await import('../../src/commands/install.js');
@@ -627,11 +720,11 @@ describe('install (bundle-aware)', () => {
         'utf8'
       );
 
-      const prefix = path.join(tmpDir, '.rill', 'npm');
+      const targetPrefix = path.join(tmpDir, 'packages', 'app', '.rill', 'npm');
       const pkgName = 'bundle-test-collision-pkg-10';
 
       mocks.spawn.mockImplementation(
-        makeSpawnMockWithFixture(prefix, pkgName, 'extension')
+        makeSpawnMockWithFixture(targetPrefix, pkgName, 'extension')
       );
 
       const { run } = await import('../../src/commands/install.js');

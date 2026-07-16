@@ -4,15 +4,16 @@
  * Operates in two modes:
  * - Package mode (no ancestor rill-bundle.json): installs extensions into the
  *   current project's .rill/npm/ prefix and writes mounts to rill-config.json.
- * - Bundle mode (ancestor rill-bundle.json found): overrides the npm prefix to
- *   <bundleRoot>/.rill/npm/, inspects the installed package's exports to detect
- *   role (extension or harness), and writes the appropriate config record.
+ * - Bundle mode (ancestor rill-bundle.json found): role comes from the
+ *   package's declared `rill.role` (with `--role` as an override). Extensions
+ *   install into the target package's own .rill/npm/ prefix (resolved via
+ *   `--for <mount>`) so the package's build can resolve them; harnesses
+ *   install into <bundleRoot>/.rill/npm/ and are recorded in
+ *   rill-bundle.json.
  */
 
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
   assertBootstrapped,
@@ -53,9 +54,10 @@ Install an extension or harness package.
 In package mode (no ancestor rill-bundle.json), installs extensions into the
 current project and writes mounts to rill-config.json.
 
-In bundle mode (ancestor rill-bundle.json found), overrides the npm prefix to
-<bundleRoot>/.rill/npm/, inspects the installed package to detect its role
-(extension or harness), and writes the appropriate config record.
+In bundle mode (ancestor rill-bundle.json found), the role comes from the
+package's declared rill.role (--role overrides it). Extensions install into
+the target package's own .rill/npm/ (resolved via --for <mount>); harnesses
+install into <bundleRoot>/.rill/npm/. Writes the appropriate config record.
 
 Arguments:
   <pkg-or-path>   One of:
@@ -70,9 +72,9 @@ Options:
   --exact              Deprecated alias for --pin (will be removed in 0.20).
   --range <semver>     Record a custom semver range verbatim. Registry installs only.
   --dry-run            Print what would be done without writing config or running npm.
-  --for <mount>        Target package mount when installing an extension at bundle root.
+  --for <mount>        Target package mount to install an extension into (bundle mode).
   --role extension|harness
-                       Disambiguate packages that export both extension and harness shapes.
+                       Override the package's declared rill.role.
   --replace            Swap the declared harness in an atomic operation (bundle mode only).
   --help               Show this help message
 `;
@@ -158,52 +160,6 @@ async function installLocalFile(opts: {
 // ============================================================
 
 /**
- * Detects the install role of a package by statically importing its main
- * module from the given prefix's node_modules.
- *
- * Returns 'extension' when the package exports a named `extensionManifest`.
- * Returns 'harness' when the default export looks like a RillHarness shape
- * (has a `name` string field; optionally `postBuild` and `serve` functions).
- * Returns 'ambiguous' when both shapes are present.
- * Returns 'unknown' when neither shape is detected.
- *
- * Uses static `import()` only. Factory functions are never invoked.
- * `createRequire` resolves the package directory to its entry file before
- * importing, then a timestamp query parameter is appended to the file URL to
- * bypass the Node.js ESM module cache, preventing stale results across
- * repeated calls to the same path.
- */
-async function detectPackageRole(
-  prefix: string,
-  pkgName: string
-): Promise<'extension' | 'harness' | 'ambiguous' | 'unknown'> {
-  const pkgMainPath = path.join(prefix, 'node_modules', pkgName);
-  let mod: Record<string, unknown>;
-  try {
-    const require = createRequire(import.meta.url);
-    const resolvedPath = require.resolve(pkgMainPath);
-    const moduleUrl = pathToFileURL(resolvedPath);
-    moduleUrl.searchParams.set('t', Date.now().toString());
-    mod = (await import(moduleUrl.href)) as Record<string, unknown>;
-  } catch {
-    return 'unknown';
-  }
-
-  const hasExtensionManifest = 'extensionManifest' in mod;
-
-  const defaultExport = mod['default'];
-  const hasHarnessShape =
-    typeof defaultExport === 'object' &&
-    defaultExport !== null &&
-    typeof (defaultExport as Record<string, unknown>)['name'] === 'string';
-
-  if (hasExtensionManifest && hasHarnessShape) return 'ambiguous';
-  if (hasExtensionManifest) return 'extension';
-  if (hasHarnessShape) return 'harness';
-  return 'unknown';
-}
-
-/**
  * Probes the declared rill role from a package's manifest before installation.
  *
  * For registry specifiers, runs `npm view <spec> rill --json` to read the
@@ -266,6 +222,72 @@ function extractRillRole(
 }
 
 // ============================================================
+// BUNDLE TARGET RESOLUTION
+// ============================================================
+
+/**
+ * Writes the verbatim bootstrap-missing error copy to stderr.
+ *
+ * Shared by the package-mode and bundle-mode (harness/extension) bootstrap
+ * gates so the message stays byte-identical across all three call sites.
+ */
+function writeBootstrapMissingError(): void {
+  process.stderr.write('✗ .rill/npm/ not found\n');
+  process.stderr.write("  Run 'rill init' first to initialize the project\n");
+}
+
+/**
+ * Resolves the target package directory for an extension install in bundle
+ * mode.
+ *
+ * When installing from the bundle root, `--for <mount>` is required to
+ * disambiguate which package should mount the extension. Otherwise the
+ * current project directory is the target.
+ *
+ * Returns the resolved directory, or an error exit code after writing
+ * verbatim stderr copy explaining why resolution failed.
+ */
+async function resolveTargetPackageDir(opts: {
+  bundleRoot: string;
+  projectDir: string;
+  forMount: string | undefined;
+}): Promise<{ dir: string } | { error: number }> {
+  const { bundleRoot, projectDir, forMount } = opts;
+
+  const atBundleRoot = path.resolve(projectDir) === path.resolve(bundleRoot);
+
+  if (atBundleRoot && forMount === undefined) {
+    process.stderr.write(
+      'Cannot determine target package. Use `rill install <pkg> --for <mount>` to specify which package should mount this extension.\n'
+    );
+    return { error: 1 };
+  }
+
+  if (forMount !== undefined) {
+    let bundleConfig: Awaited<ReturnType<typeof readBundleConfig>>;
+    try {
+      bundleConfig = await readBundleConfig(bundleRoot);
+    } catch (err) {
+      if (err instanceof BundleConfigError) {
+        process.stderr.write(`✗ ${err.message}\n`);
+        return { error: 1 };
+      }
+      throw err;
+    }
+    const entry = bundleConfig.packages.find((p) => p.mount === forMount);
+    if (entry === undefined) {
+      process.stderr.write(
+        `✗ Package mount '${forMount}' not found in rill-bundle.json\n`
+      );
+      return { error: 1 };
+    }
+    return { dir: path.resolve(bundleRoot, entry.project) };
+  }
+
+  return { dir: projectDir };
+}
+
+// ============================================================
 // RUN
 // ============================================================
 
@@ -275,10 +297,12 @@ function extractRillRole(
  * In package mode (no ancestor rill-bundle.json), installs extensions and
  * writes mounts to rill-config.json — today's behavior unchanged.
  *
- * In bundle mode (ancestor rill-bundle.json found), overrides the npm prefix
- * to <bundleRoot>/.rill/npm/, detects the package role from its exports, and
- * writes either a mount to the target package's rill-config.json (extension)
- * or the harness field to rill-bundle.json (harness).
+ * In bundle mode (ancestor rill-bundle.json found), the role comes from the
+ * package's declared `rill.role` (with `--role` as an override). Extensions
+ * install into the target package's own .rill/npm/ prefix (resolved via
+ * `--for <mount>`) and write a mount to that package's rill-config.json.
+ * Harnesses install into <bundleRoot>/.rill/npm/ and are recorded in
+ * rill-bundle.json.
  */
 export async function run(argv: string[]): Promise<number> {
   // ---- Argument parsing ----
@@ -371,27 +395,28 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Bundle walk-up ----
   const bundleRoot = findBundleRoot(projectDir);
 
-  // Resolve effective npm prefix: bundle root overrides project dir.
-  const effectivePrefix =
-    bundleRoot !== null
-      ? path.join(bundleRoot, '.rill', 'npm')
-      : resolvePrefix(projectDir);
+  // Resolve effective npm prefix. In package mode this is the project prefix
+  // and is known now; in bundle mode it depends on the package's effective
+  // role (extension vs harness), which is not known until after the
+  // pre-install role probe below (Step 4b), so it is set later.
+  let effectivePrefix = bundleRoot === null ? resolvePrefix(projectDir) : '';
+  let targetPackageDir = projectDir;
 
-  // ---- Step 1: assertBootstrapped ----
+  // ---- Step 1: assertBootstrapped (package mode) ----
   // EC-7: .rill/npm/ missing -> UXT-EXT-5 verbatim
-  // In bundle mode, check the bundle prefix, not the project prefix.
-  const bootstrapDir = bundleRoot !== null ? bundleRoot : projectDir;
-  try {
-    assertBootstrapped(bootstrapDir);
-  } catch (err) {
-    if (err instanceof BootstrapMissingError) {
-      process.stderr.write('✗ .rill/npm/ not found\n');
-      process.stderr.write(
-        "  Run 'rill init' first to initialize the project\n"
-      );
-      return 1;
+  // In bundle mode, the bootstrap gate is checked per-role below (Step 4c),
+  // against the bundle root for harnesses or the target package for
+  // extensions.
+  if (bundleRoot === null) {
+    try {
+      assertBootstrapped(projectDir);
+    } catch (err) {
+      if (err instanceof BootstrapMissingError) {
+        writeBootstrapMissingError();
+        return 1;
+      }
+      throw err;
     }
-    throw err;
   }
 
   // ---- Step 2: Compute mount ----
@@ -468,6 +493,55 @@ export async function run(argv: string[]): Promise<number> {
       '  Add "rill": { "role": "extension" } or "rill": { "role": "harness" } to its package.json\n'
     );
     return 1;
+  }
+
+  // The declared role drives installation; --role is an override, permitted
+  // even when it differs from the manifest. declaredRole is a concrete
+  // extension|harness here since not-a-rill-package was already rejected.
+  const effectiveRole: 'extension' | 'harness' =
+    roleFlag === 'harness'
+      ? 'harness'
+      : roleFlag === 'extension'
+        ? 'extension'
+        : declaredRole;
+
+  // ---- Step 4c: Resolve npm prefix and bootstrap gate (bundle mode) ----
+  // Extensions must install into the target package's own .rill/npm/ prefix
+  // so that its build (src/build/build.ts) can resolve them; only harnesses
+  // install into the bundle root.
+  if (bundleRoot !== null) {
+    if (effectiveRole === 'harness') {
+      effectivePrefix = path.join(bundleRoot, '.rill', 'npm');
+      try {
+        assertBootstrapped(bundleRoot);
+      } catch (err) {
+        if (err instanceof BootstrapMissingError) {
+          writeBootstrapMissingError();
+          return 1;
+        }
+        throw err;
+      }
+    } else {
+      const resolved = await resolveTargetPackageDir({
+        bundleRoot,
+        projectDir,
+        forMount,
+      });
+      if ('error' in resolved) {
+        return resolved.error;
+      }
+      targetPackageDir = resolved.dir;
+      effectivePrefix = resolvePrefix(targetPackageDir);
+      try {
+        assertBootstrapped(targetPackageDir);
+      } catch (err) {
+        if (err instanceof BootstrapMissingError) {
+          writeBootstrapMissingError();
+          return 1;
+        }
+        throw err;
+      }
+    }
   }
 
   if (local) {
@@ -583,17 +657,18 @@ export async function run(argv: string[]): Promise<number> {
     process.stdout.write(`✓ Installed to .rill/npm/node_modules/${pkgName}\n`);
   }
 
-  // ---- Step 9: Bundle mode — role detection and config write ----
+  // ---- Step 9: Bundle mode — config write ----
+  // The role and target directory were already resolved (Step 4c), before
+  // npm install ran, so the prefix used above matches the target package.
   if (bundleRoot !== null) {
     return await applyBundleInstall({
       bundleRoot,
-      projectDir,
       effectivePrefix,
       pkgName,
       mount,
       value,
-      forMount,
-      roleFlag,
+      effectiveRole,
+      targetPackageDir,
       replaceFlag,
       asOverride,
     });
@@ -601,9 +676,9 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Step 9 (package mode): Harness guard ----
   // Harness packages cannot be installed outside a bundle. Reject based on
-  // the pre-install declared role; no post-install detection needed.
-  const noBundleIsHarness =
-    declaredRole === 'harness' || roleFlag === 'harness';
+  // effectiveRole (declared role with --role override applied); no
+  // post-install detection needed.
+  const noBundleIsHarness = effectiveRole === 'harness';
   if (noBundleIsHarness) {
     process.stderr.write(
       'Cannot install harness outside a bundle. A bundle requires rill-bundle.json at the root.\n'
@@ -658,71 +733,37 @@ export async function run(argv: string[]): Promise<number> {
 /**
  * Applies the post-npm-install config write in bundle mode.
  *
- * Detects the role of the installed package from its post-install exports
- * (extension vs harness), validates flags, and writes the appropriate config
- * record without performing any npm operations (those have already
- * completed).
+ * The role (extension vs harness) and, for extensions, the target package
+ * directory were already resolved before npm install ran (see Step 4c in
+ * `run()`), since the npm prefix used for install depends on them. This
+ * function only validates flags and writes the appropriate config record; it
+ * performs no npm operations (those have already completed).
  *
  * All error paths return exit code 1 and write verbatim error copy to stderr.
  * No filesystem writes occur when validation fails.
  */
 async function applyBundleInstall(opts: {
   bundleRoot: string;
-  projectDir: string;
   effectivePrefix: string;
   pkgName: string;
   mount: string;
   value: string;
-  forMount: string | undefined;
-  roleFlag: string | undefined;
+  effectiveRole: 'extension' | 'harness';
+  targetPackageDir: string;
   replaceFlag: boolean;
   asOverride: string | undefined;
 }): Promise<number> {
   const {
     bundleRoot,
-    projectDir,
     effectivePrefix,
     pkgName,
     mount,
     value,
-    forMount,
-    roleFlag,
+    effectiveRole,
+    targetPackageDir,
     replaceFlag,
     asOverride,
   } = opts;
-
-  // Detect role from the installed package's post-install exports. The
-  // pre-install declared role only gates whether npm install runs at all
-  // (see probePackageRole above); it is not cross-checked here.
-  const detectedRole = await detectPackageRole(effectivePrefix, pkgName);
-
-  // Resolve the effective role, honouring --role flag for disambiguation.
-  let effectiveRole: 'extension' | 'harness';
-  if (detectedRole === 'ambiguous') {
-    if (roleFlag === 'extension') {
-      effectiveRole = 'extension';
-    } else if (roleFlag === 'harness') {
-      effectiveRole = 'harness';
-    } else {
-      process.stderr.write(
-        'Package exports both extensionManifest and RillHarness. Use `--role extension` or `--role harness` to specify which to install.\n'
-      );
-      return 1;
-    }
-  } else if (detectedRole === 'extension') {
-    effectiveRole = 'extension';
-  } else if (detectedRole === 'harness') {
-    effectiveRole = 'harness';
-  } else {
-    process.stderr.write(
-      `✗ Installed package does not export a recognisable rill shape\n`
-    );
-    return 1;
-  }
-
-  // Override with explicit --role when detection gave a definitive answer.
-  if (roleFlag === 'extension') effectiveRole = 'extension';
-  if (roleFlag === 'harness') effectiveRole = 'harness';
 
   if (effectiveRole === 'harness') {
     // Read the bundle config to check for an existing harness declaration.
@@ -751,41 +792,8 @@ async function applyBundleInstall(opts: {
     return 0;
   }
 
-  // Extension role: resolve target package directory.
-  const atBundleRoot = path.resolve(projectDir) === path.resolve(bundleRoot);
-
-  if (atBundleRoot && forMount === undefined) {
-    process.stderr.write(
-      'Cannot determine target package. Use `rill install <pkg> --for <mount>` to specify which package should mount this extension.\n'
-    );
-    return 1;
-  }
-
-  let targetPackageDir: string;
-  if (forMount !== undefined) {
-    // Resolve the target package dir from the bundle config.
-    let bundleConfig: Awaited<ReturnType<typeof readBundleConfig>>;
-    try {
-      bundleConfig = await readBundleConfig(bundleRoot);
-    } catch (err) {
-      if (err instanceof BundleConfigError) {
-        process.stderr.write(`✗ ${err.message}\n`);
-        return 1;
-      }
-      throw err;
-    }
-    const entry = bundleConfig.packages.find((p) => p.mount === forMount);
-    if (entry === undefined) {
-      process.stderr.write(
-        `✗ Package mount '${forMount}' not found in rill-bundle.json\n`
-      );
-      return 1;
-    }
-    targetPackageDir = path.resolve(bundleRoot, entry.project);
-  } else {
-    targetPackageDir = projectDir;
-  }
-
+  // Extension role: targetPackageDir was already resolved before npm install
+  // (see resolveTargetPackageDir, called from Step 4c in run()).
   // Read the target package's rill-config.json and write the mount.
   let targetSnapshot: Awaited<ReturnType<typeof readConfigSnapshot>>;
   try {

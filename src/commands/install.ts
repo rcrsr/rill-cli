@@ -34,6 +34,7 @@ import {
   ConfigWriteError,
 } from './config-edit.js';
 import { npmInstall, npmView, NpmNotFoundError } from './npm-runner.js';
+import { resolveTargetPackageDir } from './bundle-resolve.js';
 import {
   findBundleRoot,
   readBundleConfig,
@@ -234,57 +235,6 @@ function extractRillRole(
 function writeBootstrapMissingError(): void {
   process.stderr.write('✗ .rill/npm/ not found\n');
   process.stderr.write("  Run 'rill init' first to initialize the project\n");
-}
-
-/**
- * Resolves the target package directory for an extension install in bundle
- * mode.
- *
- * When installing from the bundle root, `--for <mount>` is required to
- * disambiguate which package should mount the extension. Otherwise the
- * current project directory is the target.
- *
- * Returns the resolved directory, or an error exit code after writing
- * verbatim stderr copy explaining why resolution failed.
- */
-async function resolveTargetPackageDir(opts: {
-  bundleRoot: string;
-  projectDir: string;
-  forMount: string | undefined;
-}): Promise<{ dir: string } | { error: number }> {
-  const { bundleRoot, projectDir, forMount } = opts;
-
-  const atBundleRoot = path.resolve(projectDir) === path.resolve(bundleRoot);
-
-  if (atBundleRoot && forMount === undefined) {
-    process.stderr.write(
-      'Cannot determine target package. Use `rill install <pkg> --for <mount>` to specify which package should mount this extension.\n'
-    );
-    return { error: 1 };
-  }
-
-  if (forMount !== undefined) {
-    let bundleConfig: Awaited<ReturnType<typeof readBundleConfig>>;
-    try {
-      bundleConfig = await readBundleConfig(bundleRoot);
-    } catch (err) {
-      if (err instanceof BundleConfigError) {
-        process.stderr.write(`✗ ${err.message}\n`);
-        return { error: 1 };
-      }
-      throw err;
-    }
-    const entry = bundleConfig.packages.find((p) => p.mount === forMount);
-    if (entry === undefined) {
-      process.stderr.write(
-        `✗ Package mount '${forMount}' not found in rill-bundle.json\n`
-      );
-      return { error: 1 };
-    }
-    return { dir: path.resolve(bundleRoot, entry.project) };
-  }
-
-  return { dir: projectDir };
 }
 
 // ============================================================

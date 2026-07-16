@@ -18,6 +18,12 @@ import {
   isLocalPath,
   looksLikeLocalFilePath,
 } from './mount-derive.js';
+import {
+  findBundleRoot,
+  readBundleConfig,
+  BundleConfigError,
+  type ResolvedRillBundleConfig,
+} from '../bundle/config.js';
 
 // ============================================================
 // HELP TEXT
@@ -88,6 +94,174 @@ function padCol(value: string, minWidth: number): string {
     : value + ' '.repeat(minWidth - value.length);
 }
 
+/**
+ * Build MountRow entries from a mounts record, preserving insertion order.
+ * Reads installed versions from `prefix` for registry specifiers.
+ */
+function buildRows(prefix: string, mounts: Record<string, string>): MountRow[] {
+  return Object.entries(mounts).map(([mount, specifier]) => {
+    const local = isLocalPath(specifier);
+    const localFile = looksLikeLocalFilePath(specifier);
+    const source: MountRow['source'] = localFile
+      ? 'local-file'
+      : local
+        ? 'local'
+        : 'registry';
+
+    let version: string | null;
+    if (local) {
+      // Local-path (file or dir): no installed version to read (EC-25 / UXC-EXT-2)
+      version = null;
+    } else {
+      const pkgName = extractPackageName(specifier);
+      const installed = readInstalledVersion(prefix, pkgName);
+      version = installed; // 'unknown' on read failure (EC-25)
+    }
+
+    return { mount, specifier, version, source };
+  });
+}
+
+/**
+ * Render the verbatim 4-column human-mode table (UXT-EXT-12) for a set of
+ * rows: column-width computation, header, data rows, and the
+ * "N extensions installed." / "0 extensions installed." footer.
+ */
+function renderTable(rows: MountRow[]): string {
+  // Compute column widths: at least the verbatim header widths, expand if data is wider.
+  // [ASSUMPTION] Column widths: use verbatim header widths as defaults; expand when
+  //   any data row entry (plus 2-space separator) would exceed the header width.
+  //   This satisfies UXT-EXT-12 verbatim and UXC-EXT-2 auto-expand requirement.
+  let mountWidth = COL_MOUNT_MIN;
+  let packageWidth = COL_PACKAGE_MIN;
+  let versionWidth = COL_VERSION_MIN;
+
+  for (const row of rows) {
+    const pkg =
+      row.source === 'registry'
+        ? extractPackageName(row.specifier)
+        : row.specifier;
+    const ver = row.version === null ? 'n/a' : row.version;
+    if (row.mount.length + 2 > mountWidth) mountWidth = row.mount.length + 2;
+    if (pkg.length + 2 > packageWidth) packageWidth = pkg.length + 2;
+    if (ver.length + 2 > versionWidth) versionWidth = ver.length + 2;
+  }
+
+  const header = `${padCol('MOUNT', mountWidth)}${padCol('PACKAGE', packageWidth)}${padCol('VERSION', versionWidth)}SOURCE`;
+  let out = header + '\n';
+
+  if (rows.length === 0) {
+    // EC-24: empty mounts — header + footer only
+    out += '0 extensions installed.\n';
+    return out;
+  }
+
+  for (const row of rows) {
+    const pkg =
+      row.source === 'registry'
+        ? extractPackageName(row.specifier)
+        : row.specifier;
+    const ver = row.version === null ? 'n/a' : row.version;
+    const line = `${padCol(row.mount, mountWidth)}${padCol(pkg, packageWidth)}${padCol(ver, versionWidth)}${row.source}`;
+    out += line + '\n';
+  }
+
+  out += `${rows.length} extensions installed.\n`;
+  return out;
+}
+
+// ============================================================
+// BUNDLE MODE
+// ============================================================
+
+async function runBundleMode(
+  bundleRoot: string,
+  jsonMode: boolean
+): Promise<number> {
+  let bundle: ResolvedRillBundleConfig;
+  try {
+    bundle = await readBundleConfig(bundleRoot);
+  } catch (err) {
+    if (err instanceof BundleConfigError) {
+      process.stderr.write(`✗ ${err.message}\n`);
+      return 1;
+    }
+    throw err;
+  }
+
+  const bundlePrefix = path.join(bundleRoot, '.rill', 'npm');
+  const harnessVersion =
+    bundle.harness !== undefined
+      ? readInstalledVersion(bundlePrefix, bundle.harness)
+      : undefined;
+
+  const packageRows: Array<{
+    mount: string;
+    project: string;
+    rows: MountRow[];
+  }> = [];
+
+  for (const pkg of bundle.packages) {
+    const pkgDir = path.resolve(bundleRoot, pkg.project);
+    const pkgPrefix = resolvePrefix(pkgDir);
+
+    let mounts: Record<string, string>;
+    try {
+      const pkgSnapshot = await readConfigSnapshot(pkgDir);
+      mounts = pkgSnapshot.parsed.extensions?.mounts ?? {};
+    } catch (err) {
+      if (err instanceof ConfigNotFoundError) {
+        mounts = {};
+      } else {
+        throw err;
+      }
+    }
+
+    packageRows.push({
+      mount: pkg.mount,
+      project: pkg.project,
+      rows: buildRows(pkgPrefix, mounts),
+    });
+  }
+
+  if (jsonMode) {
+    const jsonPayload = {
+      harness:
+        bundle.harness !== undefined
+          ? { name: bundle.harness, version: harnessVersion ?? 'unknown' }
+          : null,
+      packages: packageRows.map(({ mount, project, rows }) => ({
+        mount,
+        project,
+        extensions: rows.map(({ mount: m, specifier, version, source }) => ({
+          mount: m,
+          specifier,
+          version:
+            source === 'local' || source === 'local-file' ? null : version,
+          source,
+        })),
+      })),
+    };
+    process.stdout.write(JSON.stringify(jsonPayload, null, 2) + '\n');
+    return 0;
+  }
+
+  let out =
+    bundle.harness !== undefined
+      ? `Harness: ${bundle.harness} (${harnessVersion ?? 'unknown'})\n`
+      : 'Harness: (none)\n';
+  out += '\n';
+
+  for (const { mount, project, rows } of packageRows) {
+    out += `[${mount}] ${project}\n`;
+    out += renderTable(rows);
+    out += '\n';
+  }
+
+  process.stdout.write(out);
+  return 0;
+}
+
 // ============================================================
 // IMPLEMENTATION
 // ============================================================
@@ -115,6 +289,14 @@ export async function run(argv: string[]): Promise<number> {
 
   const jsonMode = values['json'] === true;
   const projectDir = process.cwd();
+
+  // ---- Bundle mode ----
+  const bundleRoot = findBundleRoot(projectDir);
+  if (bundleRoot !== null) {
+    return runBundleMode(bundleRoot, jsonMode);
+  }
+
+  // ---- Package mode ----
   const prefix = resolvePrefix(projectDir);
 
   // ---- Step 1: Read config snapshot (EC-22) ----
@@ -140,29 +322,7 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Step 3: Build mount entries preserving insertion order ----
   const mounts = snapshot.parsed.extensions?.mounts ?? {};
-  const mountEntries = Object.entries(mounts);
-
-  const rows: MountRow[] = mountEntries.map(([mount, specifier]) => {
-    const local = isLocalPath(specifier);
-    const localFile = looksLikeLocalFilePath(specifier);
-    const source: MountRow['source'] = localFile
-      ? 'local-file'
-      : local
-        ? 'local'
-        : 'registry';
-
-    let version: string | null;
-    if (local) {
-      // Local-path (file or dir): no installed version to read (EC-25 / UXC-EXT-2)
-      version = null;
-    } else {
-      const pkgName = extractPackageName(specifier);
-      const installed = readInstalledVersion(prefix, pkgName);
-      version = installed; // 'unknown' on read failure (EC-25)
-    }
-
-    return { mount, specifier, version, source };
-  });
+  const rows: MountRow[] = buildRows(prefix, mounts);
 
   // ---- Step 4/5: Empty mounts handling (EC-24) ----
   if (jsonMode) {
@@ -186,47 +346,6 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // ---- Human mode ----
-  // Compute column widths: at least the verbatim header widths, expand if data is wider.
-  // [ASSUMPTION] Column widths: use verbatim header widths as defaults; expand when
-  //   any data row entry (plus 2-space separator) would exceed the header width.
-  //   This satisfies UXT-EXT-12 verbatim and UXC-EXT-2 auto-expand requirement.
-  let mountWidth = COL_MOUNT_MIN;
-  let packageWidth = COL_PACKAGE_MIN;
-  let versionWidth = COL_VERSION_MIN;
-
-  for (const row of rows) {
-    const pkg =
-      row.source === 'registry'
-        ? extractPackageName(row.specifier)
-        : row.specifier;
-    const ver = row.version === null ? 'n/a' : row.version;
-    if (row.mount.length + 2 > mountWidth) mountWidth = row.mount.length + 2;
-    if (pkg.length + 2 > packageWidth) packageWidth = pkg.length + 2;
-    if (ver.length + 2 > versionWidth) versionWidth = ver.length + 2;
-    if (row.source.length + 2 > 12) {
-      // SOURCE column is the last; no fixed width but ensure source label fits
-    }
-  }
-
-  const header = `${padCol('MOUNT', mountWidth)}${padCol('PACKAGE', packageWidth)}${padCol('VERSION', versionWidth)}SOURCE`;
-  process.stdout.write(header + '\n');
-
-  if (rows.length === 0) {
-    // EC-24: empty mounts — header + footer only
-    process.stdout.write('0 extensions installed.\n');
-    return 0;
-  }
-
-  for (const row of rows) {
-    const pkg =
-      row.source === 'registry'
-        ? extractPackageName(row.specifier)
-        : row.specifier;
-    const ver = row.version === null ? 'n/a' : row.version;
-    const line = `${padCol(row.mount, mountWidth)}${padCol(pkg, packageWidth)}${padCol(ver, versionWidth)}${row.source}`;
-    process.stdout.write(line + '\n');
-  }
-
-  process.stdout.write(`${rows.length} extensions installed.\n`);
+  process.stdout.write(renderTable(rows));
   return 0;
 }

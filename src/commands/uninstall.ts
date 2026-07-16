@@ -12,14 +12,15 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadProject } from '@rcrsr/rill-config';
-import {
-  assertBootstrapped,
-  BootstrapMissingError,
-  resolvePrefix,
-} from './prefix.js';
+import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
 import { readConfigSnapshot, hasMount, applyMountEdit } from './config-edit.js';
 import { npmUninstall, NpmNotFoundError } from './npm-runner.js';
 import { isLocalPath, looksLikeLocalFilePath } from './mount-derive.js';
+import {
+  resolveExtensionTarget,
+  resolveHarnessTarget,
+} from './bundle-resolve.js';
+import { writeBundleHarness } from '../bundle/config.js';
 import { CLI_VERSION } from '../cli-shared.js';
 
 // ---------------------------------------------------------------------------
@@ -43,15 +44,18 @@ const loadProjectWithPrefix = loadProject as unknown as LoadProjectWithPrefix;
 // ============================================================
 
 const USAGE = `\
-Usage: rill uninstall <mount>
+Usage: rill uninstall <mount> [--for <mount>]
+       rill uninstall --harness
 
 Remove an extension mount from rill-config.json and uninstall from .rill/npm/.
 
 Arguments:
-  <mount>   Mount name as it appears in rill-config.json (e.g. datetime)
+  <mount>          Mount name as it appears in rill-config.json (e.g. datetime)
 
 Options:
-  --help    Show this help message
+  --for <mount>    Target a specific package's mount within a bundle
+  --harness        Remove the bundle's declared harness instead of an extension mount
+  --help           Show this help message
 `;
 
 // ============================================================
@@ -98,6 +102,8 @@ export async function run(argv: string[]): Promise<number> {
     args: argv,
     options: {
       help: { type: 'boolean', default: false },
+      for: { type: 'string' },
+      harness: { type: 'boolean', default: false },
     },
     allowPositionals: true,
     strict: false,
@@ -108,6 +114,63 @@ export async function run(argv: string[]): Promise<number> {
     return 0;
   }
 
+  const forMount =
+    typeof values['for'] === 'string' ? values['for'] : undefined;
+  const harnessMode = values['harness'] === true;
+
+  const projectDir = process.cwd();
+
+  // ---- Harness mode: remove the bundle's declared harness ----
+  if (harnessMode) {
+    const resolvedHarness = await resolveHarnessTarget(projectDir);
+    if ('error' in resolvedHarness) {
+      return resolvedHarness.error;
+    }
+    const { target } = resolvedHarness;
+
+    try {
+      assertBootstrapped(target.bundleRoot);
+    } catch (err) {
+      if (err instanceof BootstrapMissingError) {
+        process.stderr.write('✗ .rill/npm/ not found\n');
+        process.stderr.write(
+          "  Run 'rill init' first to initialize the project\n"
+        );
+        return 1;
+      }
+      throw err;
+    }
+
+    process.stdout.write(`ℹ Removing harness '${target.harnessName}'...\n`);
+
+    await writeBundleHarness(target.bundleRoot, null);
+    process.stdout.write('✓ Removed harness from rill-bundle.json\n');
+
+    try {
+      const npmResult = await npmUninstall({
+        spec: target.harnessName,
+        prefix: target.prefix,
+      });
+      if (npmResult.exitCode !== 0) {
+        return npmResult.exitCode;
+      }
+    } catch (err) {
+      if (err instanceof NpmNotFoundError) {
+        process.stderr.write(
+          'npm not found on PATH; install Node.js with npm\n'
+        );
+        return 1;
+      }
+      throw err;
+    }
+
+    process.stdout.write(
+      `✓ Uninstalled from .rill/npm/node_modules/${target.harnessName}\n`
+    );
+
+    return 0;
+  }
+
   const mount = positionals[0];
   if (mount === undefined || mount === '') {
     process.stderr.write('Usage: rill uninstall <mount>\n');
@@ -115,13 +178,16 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const projectDir = process.cwd();
-  const prefix = resolvePrefix(projectDir);
+  const resolved = await resolveExtensionTarget({ projectDir, forMount });
+  if ('error' in resolved) {
+    return resolved.error;
+  }
+  const { targetDir, prefix } = resolved.target;
 
   // ---- Step 1: assertBootstrapped ----
   // EC-13: .rill/npm/ missing -> UXT-EXT-5 verbatim, exit 1
   try {
-    assertBootstrapped(projectDir);
+    assertBootstrapped(targetDir);
   } catch (err) {
     if (err instanceof BootstrapMissingError) {
       process.stderr.write('✗ .rill/npm/ not found\n');
@@ -134,7 +200,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // ---- Step 2: Read config snapshot + mount existence check ----
-  const snapshot = await readConfigSnapshot(projectDir);
+  const snapshot = await readConfigSnapshot(targetDir);
 
   // EC-14: Mount not in config -> UXT-EXT-8 verbatim, exit 1; NO edit, NO npm
   if (!hasMount(snapshot, mount)) {
@@ -196,7 +262,7 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Step 8: Post-uninstall loadProject validation ----
   // EC-16: on failure do NOT roll back config; emit error and return 1.
-  const configPath = path.resolve(projectDir, 'rill-config.json');
+  const configPath = path.resolve(targetDir, 'rill-config.json');
   try {
     await loadProjectWithPrefix({
       configPath,

@@ -65,6 +65,59 @@ function writeInstalledPkg(
   );
 }
 
+/** Write a minimal rill-bundle.json at the given directory. */
+function writeBundleJson(
+  dir: string,
+  opts: {
+    harness?: string;
+    packages?: Array<{ mount: string; project: string }>;
+  } = {}
+): void {
+  const packages = opts.packages ?? [{ mount: 'app', project: 'packages/app' }];
+  const content: Record<string, unknown> = {
+    name: 'test-bundle',
+    version: '1.0.0',
+    packages,
+  };
+  if (opts.harness !== undefined) {
+    content['harness'] = opts.harness;
+  }
+  fs.writeFileSync(
+    path.join(dir, 'rill-bundle.json'),
+    JSON.stringify(content, null, 2) + '\n',
+    'utf8'
+  );
+}
+
+/**
+ * Bootstrap a bundle: write rill-bundle.json, create .rill/npm/ at the bundle
+ * root, and write rill-config.json in each package sub-directory.
+ */
+function bootstrapBundle(
+  bundleRoot: string,
+  opts: {
+    harness?: string;
+    packages?: Array<{ mount: string; project: string }>;
+  } = {}
+): void {
+  const packages = opts.packages ?? [{ mount: 'app', project: 'packages/app' }];
+  writeBundleJson(bundleRoot, { harness: opts.harness, packages });
+
+  const rillNpm = path.join(bundleRoot, '.rill', 'npm');
+  fs.mkdirSync(rillNpm, { recursive: true });
+  fs.writeFileSync(
+    path.join(rillNpm, 'package.json'),
+    '{"name":"rill-extensions","private":true}\n',
+    'utf8'
+  );
+
+  for (const pkg of packages) {
+    const pkgDir = path.join(bundleRoot, pkg.project);
+    fs.mkdirSync(pkgDir, { recursive: true });
+    bootstrapProject(pkgDir);
+  }
+}
+
 // ============================================================
 // TESTS
 // ============================================================
@@ -371,6 +424,168 @@ describe('uninstall', () => {
       expect(config.extensions.mounts).not.toHaveProperty('datetime');
       // Other mount must still be present
       expect(config.extensions.mounts).toHaveProperty('other');
+    });
+  });
+
+  // ============================================================
+  // Bundle-aware behavior: --harness and --for
+  // ============================================================
+
+  describe('bundle mode', () => {
+    describe('--harness removes the declared harness', () => {
+      it('removes the harness field from rill-bundle.json, uninstalls from the bundle prefix, and exits 0', async () => {
+        const harnessName = 'my-bundle-harness-pkg-u1';
+        bootstrapBundle(tmpDir, {
+          harness: harnessName,
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+        const bundlePrefix = path.join(tmpDir, '.rill', 'npm');
+        writeInstalledPkg(bundlePrefix, harnessName, '1.0.0');
+
+        mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+        const { run } = await import('../../src/commands/uninstall.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(0);
+
+        const bundleConfig = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
+        ) as { harness?: string };
+        expect(bundleConfig).not.toHaveProperty('harness');
+
+        // npm uninstall must target the bundle-root prefix, not a package prefix.
+        const uninstallCall = mocks.spawn.mock.calls.find(
+          (call) => (call[1] as string[])[0] === 'uninstall'
+        );
+        expect(uninstallCall).toBeDefined();
+        expect(uninstallCall?.[1]).toEqual([
+          'uninstall',
+          harnessName,
+          '--prefix',
+          bundlePrefix,
+        ]);
+
+        const out = cap.stdout.join('');
+        expect(out).toContain(`ℹ Removing harness '${harnessName}'...`);
+        expect(out).toContain('✓ Removed harness from rill-bundle.json');
+        expect(out).toContain(
+          `✓ Uninstalled from .rill/npm/node_modules/${harnessName}`
+        );
+      });
+    });
+
+    describe('--harness with no harness declared', () => {
+      it('exits 1 with the no-harness-declared error and leaves rill-bundle.json unchanged', async () => {
+        bootstrapBundle(tmpDir, {
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+        const before = fs.readFileSync(
+          path.join(tmpDir, 'rill-bundle.json'),
+          'utf8'
+        );
+
+        const { run } = await import('../../src/commands/uninstall.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(1);
+        expect(cap.stderr.join('')).toContain(
+          '✗ No harness declared in rill-bundle.json.'
+        );
+        expect(
+          fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
+        ).toBe(before);
+        expect(mocks.spawn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('--harness outside a bundle', () => {
+      it('exits 1 with the no-bundle error', async () => {
+        // tmpDir has no rill-bundle.json ancestor.
+        const { run } = await import('../../src/commands/uninstall.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['--harness']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(1);
+        expect(cap.stderr.join('')).toContain('--harness requires a bundle');
+        expect(mocks.spawn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('extension --for <mount> from the bundle root', () => {
+      it('removes the mount from the target package config (not cwd) and uninstalls from that package prefix', async () => {
+        bootstrapBundle(tmpDir, {
+          packages: [{ mount: 'app', project: 'packages/app' }],
+        });
+
+        const pkgDir = path.join(tmpDir, 'packages', 'app');
+        const pkgConfigPath = path.join(pkgDir, 'rill-config.json');
+        const pkgConfig = JSON.parse(
+          fs.readFileSync(pkgConfigPath, 'utf8')
+        ) as { extensions: { mounts: Record<string, string> } };
+        pkgConfig.extensions.mounts['datetime'] =
+          '@rcrsr/rill-ext-datetime@^0.19.0';
+        fs.writeFileSync(
+          pkgConfigPath,
+          JSON.stringify(pkgConfig, null, 2) + '\n',
+          'utf8'
+        );
+
+        const pkgPrefix = path.join(pkgDir, '.rill', 'npm');
+        writeInstalledPkg(pkgPrefix, '@rcrsr/rill-ext-datetime', '0.19.0');
+
+        // cwd is the bundle root, not the package dir.
+        mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+        const { run } = await import('../../src/commands/uninstall.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['datetime', '--for', 'app']);
+        } finally {
+          cap.restore();
+        }
+
+        expect(exitCode).toBe(0);
+
+        const updatedConfig = JSON.parse(
+          fs.readFileSync(pkgConfigPath, 'utf8')
+        ) as { extensions: { mounts: Record<string, string> } };
+        expect(updatedConfig.extensions.mounts).not.toHaveProperty('datetime');
+
+        const uninstallCall = mocks.spawn.mock.calls.find(
+          (call) => (call[1] as string[])[0] === 'uninstall'
+        );
+        expect(uninstallCall).toBeDefined();
+        expect(uninstallCall?.[1]).toEqual([
+          'uninstall',
+          '@rcrsr/rill-ext-datetime',
+          '--prefix',
+          pkgPrefix,
+        ]);
+
+        // The bundle-root rill-config.json (if any) must not be involved.
+        expect(fs.existsSync(path.join(tmpDir, 'rill-config.json'))).toBe(
+          false
+        );
+      });
     });
   });
 });

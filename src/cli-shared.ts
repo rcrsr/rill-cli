@@ -103,9 +103,7 @@ export function formatError(
 /**
  * Build a FormatOptions object from a partial override, applying defaults.
  */
-export function buildFormatOptions(
-  options?: Partial<FormatOptions>
-): FormatOptions {
+function buildFormatOptions(options?: Partial<FormatOptions>): FormatOptions {
   const result: FormatOptions = {
     format: options?.format ?? 'human',
     verbose: options?.verbose ?? false,

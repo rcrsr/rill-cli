@@ -61,7 +61,7 @@ export interface RunResult {
  * enriched formatError path (snippet + trace block). Other RillError
  * subclasses fall back to formatRillError / formatRillErrorJson.
  */
-export function formatRillErrorOutput(
+function formatRillErrorOutput(
   err: RillError,
   source: string,
   scriptPath: string,

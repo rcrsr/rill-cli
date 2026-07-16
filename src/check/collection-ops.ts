@@ -26,7 +26,7 @@ import type {
   BlockNode,
 } from '@rcrsr/rill';
 
-export const COLLECTION_OP_NAMES = new Set([
+const COLLECTION_OP_NAMES = new Set([
   'seq',
   'fan',
   'fold',
@@ -37,7 +37,6 @@ export const COLLECTION_OP_NAMES = new Set([
 export type CollectionOpName = 'seq' | 'fan' | 'fold' | 'filter' | 'acc';
 
 const PARALLEL_OPS = new Set<CollectionOpName>(['fan', 'filter']);
-const ACCUMULATOR_OPS = new Set<CollectionOpName>(['fold', 'acc']);
 
 /** True when the node is a HostCall to one of the five collection callables. */
 export function isCollectionOpCall(
@@ -52,11 +51,6 @@ export function isCollectionOpCall(
 /** True for callables that execute the closure in parallel (`fan`, `filter`). */
 export function isParallelOp(name: CollectionOpName): boolean {
   return PARALLEL_OPS.has(name);
-}
-
-/** True for callables that thread an accumulator (`fold`, `acc`). */
-export function isAccumulatorOp(name: CollectionOpName): boolean {
-  return ACCUMULATOR_OPS.has(name);
 }
 
 /**

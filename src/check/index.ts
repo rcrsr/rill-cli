@@ -6,17 +6,7 @@
 // ============================================================
 // PUBLIC TYPES
 // ============================================================
-export type {
-  ValidationRule,
-  RuleCategory,
-  Severity,
-  RuleState,
-  Diagnostic,
-  Fix,
-  CheckConfig,
-  ValidationContext,
-  FixContext,
-} from './types.js';
+export type { Severity, Diagnostic } from './types.js';
 
 // ============================================================
 // RULE REGISTRY
@@ -36,4 +26,4 @@ export { validateScript } from './validator.js';
 // ============================================================
 // FIX APPLICATION
 // ============================================================
-export { applyFixes, type ApplyResult } from './fixer.js';
+export { applyFixes } from './fixer.js';

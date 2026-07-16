@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { mkdir, rm, writeFile, copyFile, readdir } from 'node:fs/promises';
+import { mkdir, rm, writeFile, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -1129,25 +1129,4 @@ export async function dispose() {
   }
 }
 `;
-}
-
-// ============================================================
-// DIRECTORY WALKER (used by tests)
-// ============================================================
-
-/**
- * Recursively collect all file paths under a directory.
- */
-export async function walkDir(dir: string): Promise<string[]> {
-  const items = await readdir(dir, { withFileTypes: true });
-  const results: string[] = [];
-  for (const item of items) {
-    const full = path.join(dir, item.name);
-    if (item.isDirectory()) {
-      results.push(...(await walkDir(full)));
-    } else {
-      results.push(full);
-    }
-  }
-  return results;
 }

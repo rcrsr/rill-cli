@@ -6,7 +6,7 @@ import path from 'node:path';
 // BUNDLE PACKAGE ENTRY
 // ============================================================
 
-export interface BundlePackageEntry {
+interface BundlePackageEntry {
   readonly mount: string;
   readonly project: string;
 }

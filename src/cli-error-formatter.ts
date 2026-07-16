@@ -12,7 +12,7 @@ import type { EnrichedError, HaltView } from './cli-error-enrichment.js';
 
 export type { CallFrame, EnrichedError };
 
-export type TraceMode = 'auto' | 'always' | 'never';
+type TraceMode = 'auto' | 'always' | 'never';
 
 /**
  * Format options for error output.

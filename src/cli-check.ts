@@ -20,7 +20,7 @@ import { parseWithRecovery } from '@rcrsr/rill';
 import { detectHelpVersionFlag } from './cli-shared.js';
 
 /** Severity threshold for failing exit code. */
-export type MinSeverity = Severity;
+type MinSeverity = Severity;
 
 /** Numeric ranking used to compare diagnostic severity to a threshold. */
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -177,7 +177,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
  * Returns true when the diagnostic's severity meets or exceeds the threshold.
  * Severity ranks: info < warning < error.
  */
-export function meetsSeverityThreshold(
+function meetsSeverityThreshold(
   diagnostic: Diagnostic,
   min: MinSeverity
 ): boolean {

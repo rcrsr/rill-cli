@@ -1613,15 +1613,15 @@ $raw -> log
   // captured from an execution snapshot; this file does not perform a
   // recorded-output diff.
   //
-  // Coverage note: this suite samples one fixture per rule category, not
-  // one per rule code. 14 of the 37 active codes have no fixture here:
-  // FILTER_NEGATION, METHOD_SHORTHAND, PREFER_DO_WHILE,
-  // USE_DEFAULT_OPERATOR, CLOSURE_BRACES, CLOSURE_LATE_BINDING,
-  // VALIDATE_EXTERNAL, COMPLEX_CONDITION, LOOP_OUTER_CAPTURE,
-  // STREAM_PRE_ITERATION, SPACING_CLOSURE, INDENT_CONTINUATION,
-  // USE_UNTYPED_HOST_REF, GUARD_OVER_TRY_CATCH. Rule-level detection for
-  // those codes is exercised by the service's external golden corpus,
-  // not by this file.
+  // Coverage: every code in the service RULES registry is named by a row
+  // below, enforced by the 'every registered rule code appears in the
+  // inventory' guard test. Each active rule has a fixture whose source
+  // triggers it; registered-but-inert codes (declared stubs, and the
+  // structurally-unreachable SPACING_CLOSURE) carry a forbidCodes row that
+  // asserts they never fire. SPACING_CLOSURE is inert because a Closure
+  // node's span always begins at the first `|`, so the rule's
+  // whitespace-before-pipe check can never match parsed source, and its
+  // second branch has an empty body.
   // ============================================================
 
   describe('legacy-parity', () => {
@@ -1752,6 +1752,77 @@ $raw -> log
         source: '($x == nil) ? 0 ! $x',
         expectCodes: ['PRESENCE_OVER_NULL_GUARD'],
       },
+      {
+        description: 'collections: filter body is a .empty method shorthand',
+        source: 'list[[]] -> filter({ .empty() })\n',
+        expectCodes: ['FILTER_NEGATION'],
+      },
+      {
+        description:
+          'collections: collection-op body wraps a method in a block',
+        source: 'list["a"] -> seq({ $.upper() })\n',
+        expectCodes: ['METHOD_SHORTHAND'],
+      },
+      {
+        description:
+          'collections: seq body defers a closure without explicit capture',
+        source: 'list[1, 2, 3] -> seq({ ||{ $ } })\n',
+        expectCodes: ['CLOSURE_LATE_BINDING'],
+      },
+      {
+        description: 'loops: while loop body calls a function (retry pattern)',
+        source: 'while ($x) do { poll() }\n',
+        expectCodes: ['PREFER_DO_WHILE'],
+      },
+      {
+        description: 'loops: seq body captures an outer-scope variable',
+        source: '0 => $x\nlist[1, 2, 3] -> seq({ $ => $x })\n',
+        expectCodes: ['LOOP_OUTER_CAPTURE'],
+      },
+      {
+        description:
+          'conditionals: existence-check conditional over ?? default',
+        source: '$data.?field ? $data.field ! "default"\n',
+        expectCodes: ['USE_DEFAULT_OPERATOR'],
+      },
+      {
+        description:
+          'conditionals: condition with three-plus boolean operators',
+        source: '($a && $b && $c && $d) ? 1 ! 2\n',
+        expectCodes: ['COMPLEX_CONDITION'],
+      },
+      {
+        description: 'closures: grouped-paren body wrapping a loop',
+        source: '|x|(while ($x) do { 1 })\n',
+        expectCodes: ['CLOSURE_BRACES'],
+      },
+      {
+        description: 'types: external-IO call with no type assertion',
+        source: 'read("file.txt")\n',
+        expectCodes: ['VALIDATE_EXTERNAL'],
+      },
+      {
+        description:
+          'formatting: continuation -> line indented under two spaces',
+        source: '$x\n-> log\n',
+        expectCodes: ['INDENT_CONTINUATION'],
+      },
+      {
+        description: 'streams: stream var invoked before iteration',
+        source: '1 => $s:stream\n$s()\n$s -> seq({ $ })\n',
+        expectCodes: ['STREAM_PRE_ITERATION'],
+      },
+      {
+        description:
+          'use-expressions: static host ref with no :type annotation',
+        source: 'use<host:foo.bar>\n',
+        expectCodes: ['USE_UNTYPED_HOST_REF'],
+      },
+      {
+        description: 'errors: branch on .! status probe over guard block',
+        source: '$result.! ? 1 ! 2\n',
+        expectCodes: ['GUARD_OVER_TRY_CATCH'],
+      },
     ];
 
     // Stubbed rules (COVERED as inert): the service registers these codes
@@ -1774,6 +1845,17 @@ $raw -> log
         source: '"hello" => $x\n$x -> .upper => $y\n$y -> .len\n',
         expectCodes: [],
         forbidCodes: ['THROWAWAY_CAPTURE'],
+      },
+      {
+        // SPACING_CLOSURE is registered but structurally unreachable: a
+        // Closure node's span starts at its first `|`, so the rule's
+        // whitespace-before-pipe check never matches, and its second branch
+        // has an empty body. This spaced closure would be its trigger if the
+        // rule could fire; it asserts the code stays inert.
+        description: 'SPACING_CLOSURE is inert on a spaced closure',
+        source: 'list[1] -> seq( |x| { $x })\n',
+        expectCodes: [],
+        forbidCodes: ['SPACING_CLOSURE'],
       },
     ];
 
@@ -1851,5 +1933,22 @@ $raw -> log
       const parityPercent = (matched / total) * 100;
       expect(parityPercent).toBeGreaterThanOrEqual(99.5);
     }, 30000);
+
+    // Guards the parity claim's scope: parityPercent is computed over the
+    // inventory sample, so a rule absent from every row contributes no
+    // evidence and could regress silently. This fails when a registered rule
+    // code is named by no row, forcing a new fixture whenever a rule is added.
+    it('every registered rule code appears in the inventory', () => {
+      const named = new Set(
+        allRows.flatMap((row) => [
+          ...row.expectCodes,
+          ...(row.forbidCodes ?? []),
+        ])
+      );
+      const uncovered = RULES.map((r) => r.code)
+        .filter((code) => !named.has(code))
+        .sort();
+      expect(uncovered).toEqual([]);
+    });
   });
 });

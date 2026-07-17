@@ -55,36 +55,87 @@ function createDiagnostic(
 // ============================================================
 
 describe('applySeverityOverlay severity table', () => {
-  // The "on" and "warn" rows exercise the overlay directly: a diagnostic for
-  // a rule in that state, with a severityMap entry set to each of the three
-  // severities. Per the precedence contract (a severityMap entry always
-  // overrides the emitted severity, and that override wins over any
-  // warn-state remap), all six cells resolve to the map's severity.
-  //
-  // These six cells are derived from the documented precedence contract, not
-  // captured by executing the pre-rework engine (that engine could not be
-  // imported for this task; see Implementation Notes).
-  describe.each(['on', 'warn'] as const)(
-    'rule state: %s',
-    (state: RuleState) => {
-      it.each(SEVERITIES)(
-        'severityMap entry of %s overrides the emitted severity',
-        (mapSeverity) => {
-          const diagnostics = [createDiagnostic('SOME_RULE', 'error')];
-          const severityMap = { SOME_RULE: mapSeverity };
-          const ruleStates = { SOME_RULE: state };
-
-          const result = applySeverityOverlay(
-            diagnostics,
-            severityMap,
-            ruleStates
-          );
-
-          expect(result[0]?.severity).toBe(mapSeverity);
-        }
-      );
-    }
+  const TABLE_DIR = join(
+    process.cwd(),
+    'tests',
+    'fixtures',
+    'severity-overlay-table'
   );
+
+  /** Triggers exactly one NAMING_SNAKE_CASE diagnostic. */
+  const TABLE_SOURCE = '42 => $myCamelCase\n';
+  const TABLE_CODE = 'NAMING_SNAKE_CASE';
+
+  /**
+   * Severity the engine emits for TABLE_CODE in each state, captured from
+   * @rcrsr/rill-language-service@0.19.6 rather than assumed: the rule's
+   * defaultSeverity is `error`, and runRules resolves a warn-state rule to
+   * `warning` itself before the overlay runs.
+   */
+  const EMITTED_BY_STATE: Record<'on' | 'warn', DiagnosticSeverity> = {
+    on: 'error',
+    warn: 'warning',
+  };
+
+  beforeEach(() => {
+    if (existsSync(TABLE_DIR)) {
+      rmSync(TABLE_DIR, { recursive: true, force: true });
+    }
+    mkdirSync(TABLE_DIR, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(TABLE_DIR, { recursive: true, force: true });
+  });
+
+  // The "on" and "warn" rows drive the real production path from a real
+  // `.rill-check.json`: loadConfig -> runRules -> applySeverityOverlay, on a
+  // real rule code. Each cell pins the engine's emitted severity *before* the
+  // overlay as well as the resolved severity after, so a change in engine
+  // behavior fails here instead of being silently absorbed by the overlay.
+  // Per the precedence contract an explicit severity entry wins over both the
+  // rule's default severity and the warn-state remap, so all six cells
+  // resolve to the configured severity.
+  describe.each(['on', 'warn'] as const)('rule state: %s', (state) => {
+    it.each(SEVERITIES)(
+      'severity entry of %s overrides the severity the engine emitted',
+      (mapSeverity) => {
+        writeFileSync(
+          join(TABLE_DIR, '.rill-check.json'),
+          JSON.stringify({
+            rules: { [TABLE_CODE]: state },
+            severity: { [TABLE_CODE]: mapSeverity },
+          }),
+          'utf-8'
+        );
+
+        const resolved = loadConfig(TABLE_DIR);
+        expect(resolved?.severityMap).toEqual({ [TABLE_CODE]: mapSeverity });
+
+        const parsed: ParseResult = parseWithRecovery(TABLE_SOURCE);
+        expect(parsed.errors).toHaveLength(0);
+
+        const emitted = runRules(
+          parsed,
+          TABLE_SOURCE,
+          resolved?.config ?? createDefaultConfig()
+        );
+        expect(emitted.find((d) => d.code === TABLE_CODE)?.severity).toBe(
+          EMITTED_BY_STATE[state]
+        );
+
+        const overlaid = applySeverityOverlay(
+          emitted,
+          resolved?.severityMap ?? {},
+          resolved?.config.rules ?? {}
+        );
+
+        expect(overlaid.find((d) => d.code === TABLE_CODE)?.severity).toBe(
+          mapSeverity
+        );
+      }
+    );
+  });
 
   // The "off" row is not exercisable at the overlay: production never calls
   // applySeverityOverlay with diagnostics from an off-state rule, because

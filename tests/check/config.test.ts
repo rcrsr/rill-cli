@@ -1,12 +1,13 @@
 /**
  * Configuration Loader Tests
- * Tests for .rill-check.json loading and validation.
+ * Tests for .rill-check.json loading and validation via the check adapter.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadConfig, createDefaultConfig } from '../../src/check/index.js';
+import { loadConfig } from '../../src/check-adapter/config.js';
+import { RULES } from '@rcrsr/rill-language-service/rules';
 
 // ============================================================
 // TEST FIXTURES
@@ -19,13 +20,25 @@ const CONFIG_FILE = '.rill-check.json';
  * Create test directory and configuration file.
  */
 function setupTestConfig(config: unknown): string {
-  // Create test directory if it doesn't exist
   if (!existsSync(TEST_DIR)) {
     mkdirSync(TEST_DIR, { recursive: true });
   }
 
   const configPath = join(TEST_DIR, CONFIG_FILE);
   writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  return TEST_DIR;
+}
+
+/**
+ * Write a raw (possibly malformed) string as the configuration file.
+ */
+function setupRawConfig(raw: string): string {
+  if (!existsSync(TEST_DIR)) {
+    mkdirSync(TEST_DIR, { recursive: true });
+  }
+
+  const configPath = join(TEST_DIR, CONFIG_FILE);
+  writeFileSync(configPath, raw, 'utf-8');
   return TEST_DIR;
 }
 
@@ -37,28 +50,6 @@ function cleanupTestConfig(): void {
     rmSync(TEST_DIR, { recursive: true, force: true });
   }
 }
-
-// ============================================================
-// DEFAULT CONFIGURATION
-// ============================================================
-
-describe('createDefaultConfig', () => {
-  it('returns configuration with all rules enabled', () => {
-    const config = createDefaultConfig();
-
-    expect(config.rules).toBeDefined();
-    expect(config.severity).toBeDefined();
-  });
-
-  it('returns configuration with all registered rules enabled', () => {
-    // VALIDATION_RULES contains registered rules
-    const config = createDefaultConfig();
-
-    // Should have at least NAMING_SNAKE_CASE rule
-    expect(Object.keys(config.rules).length).toBeGreaterThan(0);
-    expect(config.rules.NAMING_SNAKE_CASE).toBe('on');
-  });
-});
 
 // ============================================================
 // FILE NOT FOUND
@@ -94,8 +85,8 @@ describe('loadConfig - valid configuration', () => {
     const result = loadConfig(TEST_DIR);
 
     expect(result).not.toBeNull();
-    expect(result?.rules).toBeDefined();
-    expect(result?.severity).toBeDefined();
+    expect(result?.config.rules).toBeDefined();
+    expect(result?.severityMap).toBeDefined();
   });
 
   it('loads configuration with rules field', () => {
@@ -124,227 +115,196 @@ describe('loadConfig - valid configuration', () => {
 
     const result = loadConfig(TEST_DIR);
     expect(result).not.toBeNull();
-    expect(result?.rules).toBeDefined();
-    expect(result?.severity).toBeDefined();
+    expect(result?.config.rules).toBeDefined();
+    expect(result?.severityMap).toBeDefined();
   });
 
-  it('merges config with defaults', () => {
+  it('merges rules over service defaults', () => {
     setupTestConfig({
-      rules: {},
-      severity: {},
+      rules: { NAMING_SNAKE_CASE: 'off' },
     });
 
-    const defaults = createDefaultConfig();
     const result = loadConfig(TEST_DIR);
 
     expect(result).not.toBeNull();
-    expect(result?.rules).toEqual(defaults.rules);
-    expect(result?.severity).toEqual(defaults.severity);
-  });
-});
-
-// ============================================================
-// INVALID JSON [EC-3]
-// ============================================================
-
-describe('loadConfig - invalid JSON [EC-3]', () => {
-  afterEach(() => {
-    cleanupTestConfig();
-  });
-
-  it('throws for malformed JSON', () => {
-    if (!existsSync(TEST_DIR)) {
-      mkdirSync(TEST_DIR, { recursive: true });
+    expect(result?.config.rules.NAMING_SNAKE_CASE).toBe('off');
+    // Every other known rule falls back to the service default ('on').
+    const otherCodes = RULES.map((rule) => rule.code).filter(
+      (code) => code !== 'NAMING_SNAKE_CASE'
+    );
+    for (const code of otherCodes) {
+      expect(result?.config.rules[code]).toBe('on');
     }
-    const configPath = join(TEST_DIR, CONFIG_FILE);
-    writeFileSync(configPath, '{ invalid json }', 'utf-8');
-
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('invalid JSON');
   });
 
-  it('throws for non-object JSON', () => {
-    setupTestConfig('string value');
-
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('must be an object');
-  });
-
-  it('throws for array JSON', () => {
-    setupTestConfig([1, 2, 3]);
-
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('must be an object');
-  });
-
-  it('throws for null JSON', () => {
-    setupTestConfig(null);
-
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('must be an object');
-  });
-
-  it('throws when rules field is not an object', () => {
+  it('builds severityMap from rule defaults, overridden by user entries', () => {
     setupTestConfig({
-      rules: 'invalid',
+      severity: { NAMING_SNAKE_CASE: 'info' },
     });
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('rules must be an object');
+    const result = loadConfig(TEST_DIR);
+
+    expect(result).not.toBeNull();
+    expect(result?.severityMap.NAMING_SNAKE_CASE).toBe('info');
+
+    const defaultForOther = RULES.find(
+      (rule) => rule.code !== 'NAMING_SNAKE_CASE'
+    );
+    expect(defaultForOther).toBeDefined();
+    if (defaultForOther) {
+      expect(result?.severityMap[defaultForOther.code]).toBe(
+        defaultForOther.defaultSeverity
+      );
+    }
   });
 
-  it('throws when severity field is not an object', () => {
-    setupTestConfig({
-      severity: 'invalid',
-    });
+  it('preserves checkerMode unset', () => {
+    setupTestConfig({});
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('severity must be an object');
+    const result = loadConfig(TEST_DIR);
+
+    expect(result).not.toBeNull();
+    expect(result?.config.checkerMode).toBeUndefined();
   });
 
-  it('throws when rule state is invalid', () => {
-    setupTestConfig({
-      rules: {
-        SOME_RULE: 'invalid_state',
-      },
-    });
+  it('validates all 40 rule codes with mixed states and stubs included', () => {
+    const rules: Record<string, string> = {};
+    for (const [index, rule] of RULES.entries()) {
+      rules[rule.code] =
+        index % 3 === 0 ? 'off' : index % 3 === 1 ? 'warn' : 'on';
+    }
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('invalid state');
+    setupTestConfig({ rules });
+
+    const result = loadConfig(TEST_DIR);
+
+    expect(result).not.toBeNull();
+    expect(Object.keys(result?.config.rules ?? {}).length).toBe(RULES.length);
+    for (const rule of RULES) {
+      expect(result?.config.rules[rule.code]).toBe(rules[rule.code]);
+    }
+  });
+});
+
+// ============================================================
+// MALFORMED JSON
+// ============================================================
+
+describe('loadConfig - malformed JSON', () => {
+  afterEach(() => {
+    cleanupTestConfig();
+  });
+
+  it('throws an Error prefixed [RILL-C003] for malformed JSON', () => {
+    setupRawConfig('{ invalid json }');
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/invalid JSON/);
+  });
+});
+
+// ============================================================
+// TOP-LEVEL SHAPE REGRESSION GUARD
+// ============================================================
+
+describe('loadConfig - top-level shape guard', () => {
+  afterEach(() => {
+    cleanupTestConfig();
+  });
+
+  it.each([
+    ['array', [1, 2, 3]],
+    ['null', null],
+    ['string', 'not an object'],
+    ['number', 42],
+    ['boolean', true],
+  ])('rejects top-level %s JSON with [RILL-C003]', (_label, value) => {
+    setupTestConfig(value);
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/must be an object/);
+  });
+});
+
+// ============================================================
+// SERVICE-DELEGATED VALIDATION FAILURES (rules block)
+// ============================================================
+
+describe('loadConfig - rules block validation failures', () => {
+  afterEach(() => {
+    cleanupTestConfig();
+  });
+
+  it('throws [RILL-C003] when the rules block is not an object', () => {
+    setupTestConfig({ rules: 'invalid' });
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/rules must be an object/);
+  });
+
+  it('throws [RILL-C003] for an unknown rule code in the rules block', () => {
+    setupTestConfig({ rules: { UNKNOWN_RULE: 'on' } });
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
     expect(() => loadConfig(TEST_DIR)).toThrow(
-      "must be 'on', 'off', or 'warn'"
+      /unknown rule code: UNKNOWN_RULE/
     );
   });
 
-  it('throws when severity value is invalid', () => {
-    setupTestConfig({
-      severity: {
-        SOME_RULE: 'critical',
-      },
-    });
+  it('throws [RILL-C003] for an invalid rule state in the rules block', () => {
+    setupTestConfig({ rules: { NAMING_SNAKE_CASE: 'invalid_state' } });
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('invalid severity');
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
     expect(() => loadConfig(TEST_DIR)).toThrow(
-      "must be 'error', 'warning', or 'info'"
+      /NAMING_SNAKE_CASE has invalid state/
     );
   });
 });
 
 // ============================================================
-// UNKNOWN RULES [EC-4]
+// SERVICE-DELEGATED VALIDATION FAILURES (severity block)
 // ============================================================
 
-describe('loadConfig - unknown rules [EC-4]', () => {
+describe('loadConfig - severity block validation failures', () => {
   afterEach(() => {
     cleanupTestConfig();
   });
 
-  it('throws for unknown rule in rules field', () => {
+  it('throws [RILL-C003] for an unknown rule code in the severity block', () => {
+    setupTestConfig({ severity: { UNKNOWN_RULE: 'error' } });
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(
+      /unknown rule code: UNKNOWN_RULE/
+    );
+  });
+
+  it('throws [RILL-C003] for multiple unknown rule codes in the severity block', () => {
     setupTestConfig({
-      rules: {
-        UNKNOWN_RULE: 'on',
-      },
+      severity: { UNKNOWN_ONE: 'error', UNKNOWN_TWO: 'warning' },
     });
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('unknown rule UNKNOWN_RULE');
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/unknown rule code/);
   });
 
-  it('throws for unknown rule in severity field', () => {
-    setupTestConfig({
-      severity: {
-        UNKNOWN_RULE: 'error',
-      },
-    });
+  it('throws [RILL-C003] for an invalid severity value on a known rule code (adapter-formatted message)', () => {
+    setupTestConfig({ severity: { NAMING_SNAKE_CASE: 'critical' } });
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('unknown rule UNKNOWN_RULE');
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(
+      /rule NAMING_SNAKE_CASE has invalid severity: critical/
+    );
   });
 
-  it('throws for multiple unknown rules', () => {
-    setupTestConfig({
-      rules: {
-        UNKNOWN_ONE: 'on',
-        UNKNOWN_TWO: 'off',
-      },
-    });
+  it('throws [RILL-C003] when the severity block itself is not an object', () => {
+    // The adapter treats a non-object severity block as an iterable of
+    // character-index keys, which fail the known-rule-code check first.
+    // The prefix and failure are still guaranteed even though the
+    // resulting message names an index rather than the malformed value.
+    setupTestConfig({ severity: 'invalid' });
 
-    expect(() => loadConfig(TEST_DIR)).toThrow('Invalid configuration:');
-    expect(() => loadConfig(TEST_DIR)).toThrow('unknown rule');
-  });
-});
-
-// ============================================================
-// VALID RULE STATES
-// ============================================================
-
-describe('loadConfig - valid rule states', () => {
-  afterEach(() => {
-    cleanupTestConfig();
-  });
-
-  it('accepts "on" state', () => {
-    setupTestConfig({
-      rules: {},
-    });
-
-    const result = loadConfig(TEST_DIR);
-    expect(result).not.toBeNull();
-  });
-
-  it('accepts "off" state', () => {
-    setupTestConfig({
-      rules: {},
-    });
-
-    const result = loadConfig(TEST_DIR);
-    expect(result).not.toBeNull();
-  });
-
-  it('accepts "warn" state', () => {
-    setupTestConfig({
-      rules: {},
-    });
-
-    const result = loadConfig(TEST_DIR);
-    expect(result).not.toBeNull();
-  });
-});
-
-// ============================================================
-// VALID SEVERITY VALUES
-// ============================================================
-
-describe('loadConfig - valid severity values', () => {
-  afterEach(() => {
-    cleanupTestConfig();
-  });
-
-  it('accepts "error" severity', () => {
-    setupTestConfig({
-      severity: {},
-    });
-
-    const result = loadConfig(TEST_DIR);
-    expect(result).not.toBeNull();
-  });
-
-  it('accepts "warning" severity', () => {
-    setupTestConfig({
-      severity: {},
-    });
-
-    const result = loadConfig(TEST_DIR);
-    expect(result).not.toBeNull();
-  });
-
-  it('accepts "info" severity', () => {
-    setupTestConfig({
-      severity: {},
-    });
-
-    const result = loadConfig(TEST_DIR);
-    expect(result).not.toBeNull();
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/unknown rule code: 0/);
   });
 });

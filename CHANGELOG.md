@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Dev tooling:** Updated to TypeScript 7, oxlint, oxfmt, lefthook, and knip; no runtime changes. ([#36](https://github.com/rcrsr/rill-cli/pull/36))
+- **Check engine:** `rill check` now delegates linting to `@rcrsr/rill-language-service@0.19.5`'s rule engine instead of the in-repo checker. The engine exposes 40 rules across the same 11 categories; 37 rules are active and 3 are reserved for upcoming checks with no diagnostics yet. `.rill-check.json`'s `rules` map (`on`/`off`/`warn`) still works: the CLI passes it straight to the engine, which filters `off` rules and remaps `warn` rules to `warning` internally. The separate `severity` map (an arbitrary severity per rule code) has no per-rule equivalent in the engine. So the CLI reads it and reapplies it to diagnostics by code after the engine returns. ([rcrsr/rill#109](https://github.com/rcrsr/rill/pull/109), [rcrsr/rill#110](https://github.com/rcrsr/rill/pull/110))
 
 ## [0.19.6] - 2026-05-12
 

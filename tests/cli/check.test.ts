@@ -21,20 +21,22 @@
 
 import { describe, expect, it, beforeAll, afterAll, afterEach } from 'vitest';
 import { parseCheckArgs, formatDiagnostics } from '../../src/cli-check.js';
-import { ParseError } from '@rcrsr/rill';
+import { ParseError, parse, parseWithRecovery } from '@rcrsr/rill';
 import {
   type Diagnostic,
-  validateScript,
-  loadConfig,
+  RULES,
   createDefaultConfig,
-  applyFixes,
-} from '../../src/check/index.js';
-import { parse } from '@rcrsr/rill';
+  runRules,
+} from '@rcrsr/rill-language-service/rules';
+import { loadConfig } from '../../src/check-adapter/config.js';
+import { applyFixes } from '../../src/check-adapter/fixer.js';
+import { applySeverityOverlay } from '../../src/check-adapter/severity-overlay.js';
 import * as fs from 'fs/promises';
 import * as fssync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawn } from 'child_process';
+import { fileURLToPath } from 'node:url';
 
 describe('rill-check CLI', () => {
   let tempDir: string;
@@ -72,9 +74,15 @@ describe('rill-check CLI', () => {
    */
   function validateFile(filePath: string): Diagnostic[] {
     const source = fssync.readFileSync(filePath, 'utf-8');
-    const ast = parse(source);
-    const config = loadConfig(path.dirname(filePath)) ?? createDefaultConfig();
-    return validateScript(ast, source, config);
+    const parseResult = parseWithRecovery(source);
+    const resolved = loadConfig(path.dirname(filePath));
+    const config = resolved?.config ?? createDefaultConfig();
+    const severityMap = resolved?.severityMap ?? {};
+    return applySeverityOverlay(
+      runRules(parseResult, source, config),
+      severityMap,
+      config.rules
+    );
   }
 
   /**
@@ -83,21 +91,13 @@ describe('rill-check CLI', () => {
    */
   function applyFixesToFile(filePath: string): number {
     const source = fssync.readFileSync(filePath, 'utf-8');
-    const ast = parse(source);
-    const config = loadConfig(path.dirname(filePath)) ?? createDefaultConfig();
-    const diagnostics = validateScript(ast, source, config);
+    const diagnostics = validateFile(filePath);
 
     if (diagnostics.length === 0) {
       return 0;
     }
 
-    const result = applyFixes(source, diagnostics, {
-      source,
-      ast,
-      config,
-      diagnostics: [],
-      variables: new Map(),
-    });
+    const result = applyFixes(source, diagnostics);
 
     if (result.applied > 0) {
       fssync.writeFileSync(filePath, result.modified, 'utf-8');
@@ -412,9 +412,9 @@ describe('rill-check CLI', () => {
       await writeFile('.rill-check.json', JSON.stringify({ rules: {} }));
       const script = await writeFile('config-test.rill', '"hello"');
 
-      const config = loadConfig(tempDir);
-      expect(config).toBeDefined();
-      expect(config?.rules).toBeDefined();
+      const resolved = loadConfig(tempDir);
+      expect(resolved).toBeDefined();
+      expect(resolved?.config.rules).toBeDefined();
 
       const diagnostics = validateFile(script);
       expect(diagnostics).toEqual([]);
@@ -482,7 +482,7 @@ describe('rill-check CLI', () => {
       const output = formatDiagnostics('test.rill', diagnostics, 'json', true);
       const parsed = JSON.parse(output);
 
-      // Verbose mode adds category field (when rule exists in VALIDATION_RULES)
+      // Verbose mode adds category field (when the rule code is registered)
       expect(parsed.errors[0]).toHaveProperty('severity');
       expect(parsed.errors[0]).toHaveProperty('code');
       expect(parsed.errors[0]).toHaveProperty('message');
@@ -577,15 +577,10 @@ $itemList -> .len
     });
 
     it('all rules enabled by default [AC-B6]', async () => {
-      // Import config and rules modules to verify defaults
-      const { createDefaultConfig } = await import('../../src/check/config.js');
-      const { VALIDATION_RULES } =
-        await import('../../src/check/rules/index.js');
-
       const config = createDefaultConfig();
 
-      // Verify all rules in VALIDATION_RULES are enabled by default
-      const totalRules = VALIDATION_RULES.length;
+      // Verify every rule registered with the service is enabled by default.
+      const totalRules = RULES.length;
       const enabledCount = Object.values(config.rules).filter(
         (state) => state === 'on'
       ).length;
@@ -821,10 +816,10 @@ dict[itemList: list[1, 2, 3]] => $data2
       it('throws error for invalid rule state', async () => {
         await writeFile(
           '.rill-check.json',
-          JSON.stringify({ rules: { SOME_RULE: 'invalid_state' } })
+          JSON.stringify({ rules: { NAMING_SNAKE_CASE: 'invalid_state' } })
         );
 
-        expect(() => loadConfig(tempDir)).toThrow(/Invalid configuration/i);
+        expect(() => loadConfig(tempDir)).toThrow(/invalid state/i);
       });
     });
 
@@ -835,7 +830,9 @@ dict[itemList: list[1, 2, 3]] => $data2
           JSON.stringify({ rules: { UNKNOWN_RULE: 'on' } })
         );
 
-        expect(() => loadConfig(tempDir)).toThrow(/unknown rule UNKNOWN_RULE/i);
+        expect(() => loadConfig(tempDir)).toThrow(
+          /unknown rule code: UNKNOWN_RULE/i
+        );
       });
 
       it('throws error for unknown rule in severity field', async () => {
@@ -844,7 +841,9 @@ dict[itemList: list[1, 2, 3]] => $data2
           JSON.stringify({ severity: { UNKNOWN_RULE: 'error' } })
         );
 
-        expect(() => loadConfig(tempDir)).toThrow(/unknown rule UNKNOWN_RULE/i);
+        expect(() => loadConfig(tempDir)).toThrow(
+          /unknown rule code: UNKNOWN_RULE/i
+        );
       });
     });
 
@@ -923,8 +922,8 @@ dict[itemList: list[1, 2, 3]] => $data2
 
   describe('--min-severity flag', () => {
     // Source samples chosen to deterministically trigger exactly one
-    // diagnostic at each severity tier in the bundled VALIDATION_RULES
-    // set. Each rule code is asserted explicitly, so a future rule
+    // diagnostic at each severity tier in the registered rule set.
+    // Each rule code is asserted explicitly, so a future rule
     // change will fail the suite loudly rather than silently accept
     // some other diagnostic at the same severity.
     const INFO_SOURCE = '5+3\n'; // SPACING_OPERATOR (info)
@@ -1102,6 +1101,709 @@ dict[itemList: list[1, 2, 3]] => $data2
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('--min-severity requires argument');
       });
+    });
+  });
+
+  // ============================================================
+  // TEXT OUTPUT LITERAL FORMAT
+  // ============================================================
+
+  describe('text output literal format', () => {
+    it('renders exactly file:line:col: severity: message (code), single space after each colon, no trailing punctuation', async () => {
+      const script = await writeFile(
+        'literal-format.rill',
+        '42 => $myCamelCase\n'
+      );
+      const result = await execCheck([script]);
+      const line = result.stdout.trim().split('\n')[0] ?? '';
+
+      expect(line).toMatch(/^.+:\d+:\d+: error: .+ \(NAMING_SNAKE_CASE\)$/);
+      // Exactly one space after each of the three colons that separate
+      // file:line:col from severity and severity from message. The
+      // greedy `.+` above would tolerate a stray double space right
+      // after "error:" or right before "(CODE)", so pin that directly:
+      // no two consecutive spaces anywhere on the line.
+      expect(line).not.toMatch(/ {2}/);
+      const afterFile = line.slice(line.indexOf(':') + 1);
+      expect(afterFile.startsWith(' ')).toBe(false);
+      expect(line).not.toMatch(/[.,;]$/);
+      expect(line.endsWith(')')).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // JSON AGGREGATE FIELDS
+  // ============================================================
+
+  describe('JSON output aggregate fields', () => {
+    it('per-file JSON carries errors[] with location/severity/code/message/context and fix when present', async () => {
+      const script = await writeFile(
+        'json-fields.rill',
+        '42 => $myCamelCase\n'
+      );
+      const result = await execCheck(['--format', 'json', script]);
+      const parsed = JSON.parse(result.stdout);
+
+      expect(parsed.file).toBe(script);
+      expect(parsed.errors).toHaveLength(1);
+      const error = parsed.errors[0];
+      expect(error).toMatchObject({
+        code: 'NAMING_SNAKE_CASE',
+        severity: 'error',
+      });
+      expect(error.location).toEqual({
+        line: expect.any(Number),
+        column: expect.any(Number),
+        offset: expect.any(Number),
+      });
+      expect(typeof error.message).toBe('string');
+      expect(typeof error.context).toBe('string');
+      // NAMING_SNAKE_CASE always emits a fix payload.
+      expect(error.fix).toMatchObject({
+        applicable: true,
+        replacement: expect.any(String),
+      });
+      expect(parsed.summary).toEqual({
+        total: 1,
+        errors: 1,
+        warnings: 0,
+        info: 0,
+      });
+    });
+
+    it('scan-mode JSON emits a files[] envelope with an aggregate summary', async () => {
+      // Genuine directory scan (no file positional -> mode: 'scan'), run
+      // in an isolated directory so it doesn't pick up sibling fixtures
+      // from other tests sharing tempDir.
+      const scanDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'rill-check-scan-agg-')
+      );
+      try {
+        await fs.writeFile(
+          path.join(scanDir, 'json-scan.rill'),
+          '42 => $myCamelCase\n',
+          'utf-8'
+        );
+        const result = await new Promise<{
+          exitCode: number;
+          stdout: string;
+          stderr: string;
+        }>((resolve) => {
+          const cliPath = path.join(process.cwd(), 'dist', 'cli.js');
+          const env = { ...process.env };
+          delete env['VITEST'];
+          delete env['VITEST_WORKER_ID'];
+          delete env['NODE_ENV'];
+          const proc = spawn('node', [cliPath, 'check', '--format', 'json'], {
+            cwd: scanDir,
+            env,
+          });
+          let stdout = '';
+          let stderr = '';
+          proc.stdout.on('data', (d) => {
+            stdout += d.toString();
+          });
+          proc.stderr.on('data', (d) => {
+            stderr += d.toString();
+          });
+          proc.on('close', (code) => {
+            resolve({ exitCode: code ?? 0, stdout, stderr });
+          });
+        });
+        expect(result.exitCode).toBe(1);
+        const parsed = JSON.parse(result.stdout) as {
+          files: { file: string; errors: unknown[] }[];
+          summary: {
+            files: number;
+            errors: number;
+            warnings: number;
+            info: number;
+          };
+        };
+        // Deviation from the API contract's claimed five-field aggregate
+        // (totalFiles/totalErrors/totalWarnings/totalInfos/maxSeverity):
+        // the shipped scan envelope aggregates under files/errors/warnings/info
+        // and never emits maxSeverity. Behavior preservation governs here, so
+        // this test binds to what the CLI actually emits.
+        expect(parsed).toHaveProperty('files');
+        expect(parsed).toHaveProperty('summary');
+        expect(Object.keys(parsed.summary).sort()).toEqual([
+          'errors',
+          'files',
+          'info',
+          'warnings',
+        ]);
+        expect(parsed.files).toHaveLength(1);
+        expect(parsed.files[0]?.file).toBe('json-scan.rill');
+        expect(parsed.summary.files).toBe(1);
+        expect(parsed.summary.errors).toBe(1);
+      } finally {
+        await fs.rm(scanDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ============================================================
+  // DIAGNOSTIC SORT ORDER
+  // ============================================================
+
+  describe('diagnostic sort order', () => {
+    it('orders diagnostics line-then-column across multiple violations', async () => {
+      const content = `
+"userName" => $userName
+"itemList" => $itemList
+$userName -> .len
+$itemList -> .len
+`;
+      const script = await writeFile('sort-order.rill', content);
+      const result = await execCheck(['--format', 'json', script]);
+      const parsed = JSON.parse(result.stdout) as {
+        errors: { location: { line: number; column: number } }[];
+      };
+
+      expect(parsed.errors.length).toBeGreaterThan(1);
+      for (let i = 1; i < parsed.errors.length; i++) {
+        const prev = parsed.errors[i - 1]!.location;
+        const curr = parsed.errors[i]!.location;
+        const inOrder =
+          curr.line > prev.line ||
+          (curr.line === prev.line && curr.column >= prev.column);
+        expect(inOrder).toBe(true);
+      }
+    });
+  });
+
+  // ============================================================
+  // STUBBED RULE INERTNESS
+  //
+  // The service reserves three rule codes for future static-analysis work.
+  // Their `validate` functions unconditionally return an empty array, so
+  // enabling them (the default state) must never produce a diagnostic.
+  // ============================================================
+
+  describe('stubbed rule inertness', () => {
+    const STUB_CODES = [
+      'CONDITION_TYPE',
+      'FOLD_INTERMEDIATES',
+      'THROWAWAY_CAPTURE',
+    ];
+
+    it('registers exactly the three stubbed rule codes as stub in the service registry', () => {
+      const stubRules = RULES.filter((r) => r.stub === true);
+      expect(stubRules.map((r) => r.code).sort()).toEqual(
+        [...STUB_CODES].sort()
+      );
+    });
+
+    it('emits zero diagnostics for each stub code when the default config leaves it enabled', () => {
+      const config = createDefaultConfig();
+      for (const code of STUB_CODES) {
+        expect(config.rules[code]).toBe('on');
+      }
+
+      // Source chosen to plausibly trigger the pattern each stub code is
+      // reserved for (fold accumulation, a conditional's branch type, and a
+      // capture used exactly once), so a stub becoming live would show up here.
+      const source = `
+list[1, 2, 3] -> fold(0, { $@ + $ })
+$x > 0 ? "positive" ! "negative"
+"hello" => $x
+$x -> .upper => $y
+$y -> .len
+`;
+      const parseResult = parseWithRecovery(source);
+      const diagnostics = runRules(parseResult, source, config);
+      const codes = diagnostics.map((d) => d.code);
+
+      for (const code of STUB_CODES) {
+        expect(codes).not.toContain(code);
+      }
+    });
+  });
+
+  // ============================================================
+  // VERBOSE CATEGORY RESOLUTION
+  //
+  // --verbose must resolve a category for every emitted diagnostic code by
+  // reading the service's own rule registry, not a CLI-local lookup table.
+  // ============================================================
+
+  describe('verbose category resolution', () => {
+    it('resolves a category from service RULES for every diagnostic the CLI emits with --verbose', async () => {
+      const categoryByCode = new Map(RULES.map((r) => [r.code, r.category]));
+      const content = `
+42 => $myCamelCase
+5+3
+"ext:foo" => $name
+use<$name>
+$str == ""
+`;
+      const script = await writeFile('verbose-category.rill', content);
+      const result = await execCheck(['--format', 'json', '--verbose', script]);
+      const parsed = JSON.parse(result.stdout) as {
+        errors: { code: string; category?: string }[];
+      };
+
+      expect(parsed.errors.length).toBeGreaterThan(0);
+      for (const error of parsed.errors) {
+        expect(error.category).toBeDefined();
+        expect(error.category).toBe(categoryByCode.get(error.code));
+      }
+    });
+  });
+
+  // ============================================================
+  // DIAGNOSTIC PROVENANCE
+  //
+  // Confirms the CLI's live code path never references the legacy in-repo
+  // engine, and that the diagnostics reaching output are genuinely produced
+  // by the service's `runRules` call rather than a re-homed local dispatch
+  // loop wearing the same rule codes.
+  // ============================================================
+
+  describe('diagnostic provenance', () => {
+    it('finds no reference to the legacy engine from the live CLI code path', () => {
+      // The legacy engine directory no longer exists on disk. Walking both
+      // src/ and tests/ keeps this assertion meaningful for any future
+      // reintroduction of a local rule-evaluation engine under a new name.
+      const srcDir = path.join(process.cwd(), 'src');
+      const testsDir = path.join(process.cwd(), 'tests');
+      const selfFile = fileURLToPath(import.meta.url);
+      const forbidden: RegExp[] = [
+        /\bvalidateScript\b/,
+        /\bVALIDATION_RULES\b/,
+        /from ['"]\.\.?\/check\//,
+      ];
+      const offenders: string[] = [];
+
+      function walk(dir: string): void {
+        for (const entry of fssync.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory()) {
+            walk(path.join(dir, entry.name));
+          } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+            const filePath = path.join(dir, entry.name);
+            if (filePath === selfFile) continue;
+            const content = fssync.readFileSync(filePath, 'utf-8');
+            for (const pattern of forbidden) {
+              if (pattern.test(content)) {
+                offenders.push(`${filePath}: ${pattern.toString()}`);
+              }
+            }
+          }
+        }
+      }
+      walk(srcDir);
+      walk(testsDir);
+
+      expect(offenders).toEqual([]);
+    });
+
+    it('every diagnostic code the CLI emits is registered in service RULES', async () => {
+      const serviceCodes = new Set(RULES.map((r) => r.code));
+      const content = `
+42 => $myCamelCase
+5+3
+"ext:foo" => $name
+use<$name>
+prompt("Read file") => $raw
+$raw -> log
+`;
+      const script = await writeFile('provenance-codes.rill', content);
+      const result = await execCheck(['--format', 'json', script]);
+      const parsed = JSON.parse(result.stdout) as {
+        errors: { code: string }[];
+      };
+
+      expect(parsed.errors.length).toBeGreaterThan(0);
+      for (const error of parsed.errors) {
+        expect(serviceCodes.has(error.code)).toBe(true);
+      }
+    });
+
+    it('checkFile sources diagnostics from a single runRules call, not a local dispatch loop', () => {
+      const cliCheckSource = fssync.readFileSync(
+        path.join(process.cwd(), 'src', 'cli-check.ts'),
+        'utf-8'
+      );
+      const runRulesCalls = cliCheckSource.match(/\brunRules\(/g) ?? [];
+      // Exactly one call site: the diagnostics passed to applySeverityOverlay
+      // inside checkFile. A "relocate the old engine behind a new name"
+      // implementation would either add a second call site or, more likely,
+      // dispatch rules itself via a `.validate(` loop instead of calling the
+      // service at all.
+      expect(runRulesCalls).toHaveLength(1);
+      expect(cliCheckSource).not.toMatch(/\.validate\(/);
+    });
+
+    it('the CLI builds its verbose category lookup by iterating service RULES, not a local map', () => {
+      const cliCheckSource = fssync.readFileSync(
+        path.join(process.cwd(), 'src', 'cli-check.ts'),
+        'utf-8'
+      );
+      expect(cliCheckSource).toMatch(
+        /for \(const rule of RULES\)\s*{\s*categoryMap\.set\(rule\.code, rule\.category\)/
+      );
+    });
+  });
+
+  // ============================================================
+  // MIN-SEVERITY ONE-SHOT NOTICE
+  //
+  // The 0.19.1 min-severity default-change notice must fire at most once
+  // per project, suppressed by its marker file, and skipped entirely when
+  // the user opts in via --min-severity or already has a .rill-check.json.
+  // ============================================================
+
+  describe('min-severity one-shot notice', () => {
+    async function execCheckIn(
+      dir: string,
+      args: string[]
+    ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+      return new Promise((resolve) => {
+        const cliPath = path.join(process.cwd(), 'dist', 'cli.js');
+        const env = { ...process.env };
+        delete env['VITEST'];
+        delete env['VITEST_WORKER_ID'];
+        delete env['NODE_ENV'];
+        const proc = spawn('node', [cliPath, 'check', ...args], {
+          cwd: dir,
+          env,
+        });
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', (d) => {
+          stdout += d.toString();
+        });
+        proc.stderr.on('data', (d) => {
+          stderr += d.toString();
+        });
+        proc.on('close', (code) => {
+          resolve({ exitCode: code ?? 0, stdout, stderr });
+        });
+      });
+    }
+
+    it('emits the notice on the first run, then suppresses it via the marker file', async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rill-notice-test-'));
+      try {
+        await fs.mkdir(path.join(dir, '.rill'), { recursive: true });
+        const script = path.join(dir, 'clean.rill');
+        await fs.writeFile(script, '"hello"\n', 'utf-8');
+
+        const first = await execCheckIn(dir, [script]);
+        expect(first.stderr).toContain('rill check defaults changed');
+
+        const marker = path.join(
+          dir,
+          '.rill',
+          '.notices',
+          'min-severity-0.19.1'
+        );
+        expect(fssync.existsSync(marker)).toBe(true);
+
+        const second = await execCheckIn(dir, [script]);
+        expect(second.stderr).not.toContain('rill check defaults changed');
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('is skipped entirely when --min-severity is passed', async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rill-notice-test-'));
+      try {
+        await fs.mkdir(path.join(dir, '.rill'), { recursive: true });
+        const script = path.join(dir, 'clean.rill');
+        await fs.writeFile(script, '"hello"\n', 'utf-8');
+
+        const result = await execCheckIn(dir, [
+          '--min-severity',
+          'warning',
+          script,
+        ]);
+        expect(result.stderr).not.toContain('rill check defaults changed');
+
+        const marker = path.join(
+          dir,
+          '.rill',
+          '.notices',
+          'min-severity-0.19.1'
+        );
+        expect(fssync.existsSync(marker)).toBe(false);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('is skipped when a .rill-check.json overrides defaults', async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rill-notice-test-'));
+      try {
+        await fs.mkdir(path.join(dir, '.rill'), { recursive: true });
+        await fs.writeFile(
+          path.join(dir, '.rill-check.json'),
+          JSON.stringify({ rules: {} }),
+          'utf-8'
+        );
+        const script = path.join(dir, 'clean.rill');
+        await fs.writeFile(script, '"hello"\n', 'utf-8');
+
+        const result = await execCheckIn(dir, [script]);
+        expect(result.stderr).not.toContain('rill check defaults changed');
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  // ============================================================
+  // PRESERVED-BEHAVIOR PARITY (legacy-parity)
+  //
+  // Binds corpus parity to a sample of the Preserved-Behavior Inventory:
+  // one fixture per active detection rule, stub rule, and fix payload
+  // across every rule category in the inventory. Each row maps to a
+  // "COVERED" or "PORTED" row of the inventory's write-surface table and
+  // asserts the migrated (service-backed) engine reproduces the
+  // pre-rework behavior as documented in the inventory for that row.
+  // Expectations below were hand-derived by reading the inventory, not
+  // captured from an execution snapshot; this file does not perform a
+  // recorded-output diff.
+  //
+  // Coverage note: this suite samples one fixture per rule category, not
+  // one per rule code. 14 of the 37 active codes have no fixture here:
+  // FILTER_NEGATION, METHOD_SHORTHAND, PREFER_DO_WHILE,
+  // USE_DEFAULT_OPERATOR, CLOSURE_BRACES, CLOSURE_LATE_BINDING,
+  // VALIDATE_EXTERNAL, COMPLEX_CONDITION, LOOP_OUTER_CAPTURE,
+  // STREAM_PRE_ITERATION, SPACING_CLOSURE, INDENT_CONTINUATION,
+  // USE_UNTYPED_HOST_REF, GUARD_OVER_TRY_CATCH. Rule-level detection for
+  // those codes is exercised by the service's external golden corpus,
+  // not by this file.
+  // ============================================================
+
+  describe('legacy-parity', () => {
+    interface ParityRow {
+      readonly description: string;
+      readonly source: string;
+      /** Codes that must appear in the diagnostics for this source. */
+      readonly expectCodes: readonly string[];
+      /** Codes that must never appear (used for stub rules). */
+      readonly forbidCodes?: readonly string[];
+    }
+
+    // Active detection rules (COVERED), one representative fixture per
+    // rule category in the inventory.
+    const activeRows: ParityRow[] = [
+      {
+        description: 'naming: non-snake_case Capture flagged',
+        source: '42 => $myCamelCase\n',
+        expectCodes: ['NAMING_SNAKE_CASE'],
+      },
+      {
+        description:
+          'flow: capture on one statement then used as next statement head',
+        source: 'prompt("Read file") => $raw\n$raw -> log',
+        expectCodes: ['CAPTURE_INLINE_CHAIN'],
+      },
+      {
+        description:
+          'flow: $ referenced in both then/else branches after a prior capture',
+        source:
+          'prompt("test") => $raw\n$other -> log\ncheckStatus() -> .contains("OK") ? {\n  $ -> log\n} ! {\n  $ -> log\n}',
+        expectCodes: ['CAPTURE_BEFORE_BRANCH'],
+      },
+      {
+        description:
+          'collections: seq body with no side effects, break inside fan',
+        source:
+          'list[1, 2, 3] -> seq({ $ * 2 })\nlist[1, 2, 3] -> fan({\n  ($ == 2) ? break\n  $ * 2\n})\n',
+        expectCodes: ['PREFER_MAP', 'BREAK_IN_PARALLEL'],
+      },
+      {
+        description:
+          'loops: while loop with .len check and body-captured accumulator',
+        source:
+          '0 => $i\nwhile ($index < $items.len) do {\n  $i => $index\n  $items[$index]\n  $index + 1\n}\n',
+        expectCodes: ['USE_EACH', 'LOOP_ACCUMULATOR'],
+      },
+      {
+        description: 'closures: zero-param closure body with bare $',
+        source: '||{ $ * 2 } => $fn',
+        expectCodes: ['CLOSURE_BARE_DOLLAR'],
+      },
+      {
+        description: 'types: literal asserted to its own type',
+        source: '42:number',
+        expectCodes: ['UNNECESSARY_ASSERTION'],
+      },
+      {
+        description:
+          'strings: equality comparison against empty string literal',
+        source: '$str == ""',
+        expectCodes: ['USE_EMPTY_METHOD'],
+      },
+      {
+        description:
+          'anti-patterns: capture of a name already captured in the same scope',
+        source:
+          '|param| {\n  "first" => $result\n  "second" => $result\n  $result\n} => $fn',
+        expectCodes: ['AVOID_REASSIGNMENT'],
+      },
+      {
+        description: 'formatting: missing spaces around operator',
+        source: '5+3\n',
+        expectCodes: ['SPACING_OPERATOR'],
+      },
+      {
+        description: 'formatting: missing space after { or before }',
+        source: '{$x}',
+        expectCodes: ['SPACING_BRACES'],
+      },
+      {
+        description: 'formatting: inner spaces inside index brackets',
+        source: '$list[ 0 ]',
+        expectCodes: ['SPACING_BRACKETS'],
+      },
+      {
+        description: 'formatting: bare-$ receiver over .method',
+        source: '$.len()',
+        expectCodes: ['IMPLICIT_DOLLAR_METHOD'],
+      },
+      {
+        description: 'formatting: single bare-$ arg over -> fn',
+        source: 'log($)',
+        expectCodes: ['IMPLICIT_DOLLAR_FUNCTION'],
+      },
+      {
+        description: 'formatting: single bare-$ arg over -> $fn',
+        source: '|x| $x => $fn\n$fn($)',
+        expectCodes: ['IMPLICIT_DOLLAR_CLOSURE'],
+      },
+      {
+        description: 'use-expressions: use<$var> dynamic form',
+        source: '"ext:foo" => $name\nuse<$name>\n',
+        expectCodes: ['USE_DYNAMIC_IDENTIFIER'],
+      },
+      {
+        description: 'errors: bare guard with no on: codes',
+        source: 'guard { 1 }',
+        expectCodes: ['GUARD_BARE'],
+      },
+      {
+        description: 'errors: retry<limit: N> with N<=1',
+        source: 'retry<limit: 1> { 1 }',
+        expectCodes: ['RETRY_TRIVIAL'],
+      },
+      {
+        description: 'errors: #ATOM not in the builtin set',
+        source: '#FOO_BAR',
+        expectCodes: ['ATOM_UNREGISTERED'],
+      },
+      {
+        description: 'errors: bare .! with no projected field',
+        source: '$result.!',
+        expectCodes: ['STATUS_PROBE_NO_FIELD'],
+      },
+      {
+        description: 'errors: nil-check conditional over presence probe',
+        source: '($x == nil) ? 0 ! $x',
+        expectCodes: ['PRESENCE_OVER_NULL_GUARD'],
+      },
+    ];
+
+    // Stubbed rules (COVERED as inert): the service registers these codes
+    // but their `validate` unconditionally returns zero diagnostics.
+    const stubRows: ParityRow[] = [
+      {
+        description: 'FOLD_INTERMEDIATES stub emits no diagnostics',
+        source: 'list[1, 2, 3] -> fold(0, { $@ + $ })\n',
+        expectCodes: [],
+        forbidCodes: ['FOLD_INTERMEDIATES'],
+      },
+      {
+        description: 'CONDITION_TYPE stub emits no diagnostics',
+        source: '$x > 0 ? "positive" ! "negative"\n',
+        expectCodes: [],
+        forbidCodes: ['CONDITION_TYPE'],
+      },
+      {
+        description: 'THROWAWAY_CAPTURE stub emits no diagnostics',
+        source: '"hello" => $x\n$x -> .upper => $y\n$y -> .len\n',
+        expectCodes: [],
+        forbidCodes: ['THROWAWAY_CAPTURE'],
+      },
+    ];
+
+    const allRows = [...activeRows, ...stubRows];
+
+    for (const row of allRows) {
+      it(row.description, async () => {
+        const name = `parity-${row.description.replace(/[^a-z0-9]+/gi, '-')}.rill`;
+        const script = await writeFile(name, row.source);
+        const result = await execCheck(['--format', 'json', script]);
+        const parsed = JSON.parse(result.stdout) as {
+          errors: { code: string }[];
+        };
+        const codes = parsed.errors.map((e) => e.code);
+
+        for (const expected of row.expectCodes) {
+          expect(codes).toContain(expected);
+        }
+        for (const forbidden of row.forbidCodes ?? []) {
+          expect(codes).not.toContain(forbidden);
+        }
+      });
+    }
+
+    // Fix payloads (2 emitted fixes): the only two rules that ever emit a
+    // non-null `fix` on their diagnostics.
+    it('NAMING_SNAKE_CASE emits an applicable fix replacing the identifier', async () => {
+      const script = await writeFile(
+        'parity-fix-naming.rill',
+        '42 => $myCamelCase\n'
+      );
+      const result = await execCheck(['--format', 'json', script]);
+      const parsed = JSON.parse(result.stdout);
+      const diag = parsed.errors.find(
+        (e: { code: string }) => e.code === 'NAMING_SNAKE_CASE'
+      );
+      expect(diag.fix).toMatchObject({ applicable: true });
+      expect(typeof diag.fix.replacement).toBe('string');
+    });
+
+    it('UNNECESSARY_ASSERTION emits an applicable fix deleting the type assertion', async () => {
+      const script = await writeFile(
+        'parity-fix-assertion.rill',
+        '42:number\n'
+      );
+      const result = await execCheck(['--format', 'json', script]);
+      const parsed = JSON.parse(result.stdout);
+      const diag = parsed.errors.find(
+        (e: { code: string }) => e.code === 'UNNECESSARY_ASSERTION'
+      );
+      expect(diag.fix).toMatchObject({ applicable: true, replacement: '' });
+    });
+
+    it('achieves corpus parity across the Preserved-Behavior Inventory sample', async () => {
+      let matched = 0;
+      let total = 0;
+
+      for (const row of allRows) {
+        total++;
+        const name = `parity-agg-${row.description.replace(/[^a-z0-9]+/gi, '-')}.rill`;
+        const script = await writeFile(name, row.source);
+        const result = await execCheck(['--format', 'json', script]);
+        const parsed = JSON.parse(result.stdout) as {
+          errors: { code: string }[];
+        };
+        const codes = parsed.errors.map((e) => e.code);
+
+        const expectedPresent = row.expectCodes.every((c) => codes.includes(c));
+        const forbiddenAbsent = (row.forbidCodes ?? []).every(
+          (c) => !codes.includes(c)
+        );
+        if (expectedPresent && forbiddenAbsent) matched++;
+      }
+
+      const parityPercent = (matched / total) * 100;
+      expect(parityPercent).toBeGreaterThanOrEqual(99.5);
     });
   });
 });

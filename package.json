@@ -50,18 +50,21 @@
     "fix:format": "oxfmt"
   },
   "dependencies": {
-    "@rcrsr/rill": "~0.19.3",
+    "@rcrsr/rill": "~0.19.5",
     "@rcrsr/rill-config": "~0.19.2",
+    "@rcrsr/rill-language-service": "link:../rill/packages/service",
     "dotenv": "^17.4.2",
     "esbuild": "^0.28.0"
   },
   "peerDependencies": {
-    "@rcrsr/rill": "~0.19.3",
-    "@rcrsr/rill-config": "~0.19.2"
+    "@rcrsr/rill": "~0.19.5",
+    "@rcrsr/rill-config": "~0.19.2",
+    "@rcrsr/rill-language-service": "~0.19.5"
   },
   "devDependencies": {
-    "@rcrsr/rill": "~0.19.3",
+    "@rcrsr/rill": "~0.19.5",
     "@rcrsr/rill-config": "~0.19.2",
+    "@rcrsr/rill-language-service": "link:../rill/packages/service",
     "@rcrsr/rill-ext-datetime": "~0.19.0",
     "@types/node": "^26.1.1",
     "knip": "^6.25.0",

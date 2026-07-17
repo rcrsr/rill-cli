@@ -8,22 +8,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { Diagnostic, Severity } from './check/index.js';
-import {
-  VALIDATION_RULES,
-  loadConfig,
-  createDefaultConfig,
-  validateScript,
-  applyFixes,
-} from './check/index.js';
 import { parseWithRecovery } from '@rcrsr/rill';
+import type {
+  CheckConfig,
+  Diagnostic,
+  DiagnosticSeverity,
+} from '@rcrsr/rill-language-service/rules';
+import {
+  RULES,
+  createDefaultConfig,
+  runRules,
+} from '@rcrsr/rill-language-service/rules';
+import { loadConfig } from './check-adapter/config.js';
+import { applyFixes } from './check-adapter/fixer.js';
+import { applySeverityOverlay } from './check-adapter/severity-overlay.js';
 import { detectHelpVersionFlag } from './cli-shared.js';
 
 /** Severity threshold for failing exit code. */
-type MinSeverity = Severity;
+type MinSeverity = DiagnosticSeverity;
 
 /** Numeric ranking used to compare diagnostic severity to a threshold. */
-const SEVERITY_RANK: Record<Severity, number> = {
+const SEVERITY_RANK: Record<DiagnosticSeverity, number> = {
   info: 0,
   warning: 1,
   error: 2,
@@ -239,9 +244,9 @@ function buildFileJsonResult(
   diagnostics: Diagnostic[],
   verbose: boolean
 ): FileJsonResult {
-  // Build category lookup map from validation rules
+  // Build category lookup map from the service rule registry
   const categoryMap = new Map<string, string>();
-  for (const rule of VALIDATION_RULES) {
+  for (const rule of RULES) {
     categoryMap.set(rule.code, rule.category);
   }
 
@@ -504,7 +509,8 @@ async function checkFile(
     verbose: boolean;
     format: 'text' | 'json';
     minSeverity: MinSeverity;
-    config: ReturnType<typeof createDefaultConfig>;
+    config: CheckConfig;
+    severityMap: Record<string, DiagnosticSeverity>;
     collect?: FileJsonResult[];
   }
 ): Promise<number> {
@@ -577,20 +583,14 @@ async function checkFile(
     return 3;
   }
 
-  const ast = parseResult.ast;
-  const diagnostics = validateScript(ast, source, options.config);
+  const diagnostics = applySeverityOverlay(
+    runRules(parseResult, source, options.config),
+    options.severityMap,
+    options.config.rules
+  );
 
   if (options.fix && diagnostics.length > 0) {
-    const result = applyFixes(source, diagnostics, {
-      source,
-      ast,
-      config: options.config,
-      diagnostics: [],
-      variables: new Map(),
-      assertedHostCalls: new Set(),
-      variableScopes: new Map(),
-      scopeStack: [],
-    });
+    const result = applyFixes(source, diagnostics);
     if (result.applied > 0) {
       fs.writeFileSync(file, result.modified, 'utf-8');
     }
@@ -681,7 +681,10 @@ Exit codes:
     }
 
     // Load configuration from cwd (null if not present)
-    const config = loadConfig(process.cwd()) ?? createDefaultConfig();
+    const resolvedConfig = loadConfig(process.cwd());
+    const config: CheckConfig = resolvedConfig?.config ?? createDefaultConfig();
+    const severityMap: Record<string, DiagnosticSeverity> =
+      resolvedConfig?.severityMap ?? {};
 
     // P1-3: One-shot notice on the 0.19.1 min-severity default change.
     // Suppressed by a marker file under .rill/.notices/. Skipped if the
@@ -704,6 +707,7 @@ Exit codes:
         format: args.format,
         minSeverity: args.minSeverity,
         config,
+        severityMap,
         ...(args.format === 'json' ? { collect } : {}),
       };
       for (const file of files) {
@@ -732,6 +736,7 @@ Exit codes:
         format: args.format,
         minSeverity: args.minSeverity,
         config,
+        severityMap,
       });
     }
 

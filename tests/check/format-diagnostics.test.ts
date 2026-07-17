@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { formatDiagnostics } from '../../src/cli-check.js';
-import type { Diagnostic } from '../../src/check/index.js';
+import type { Diagnostic } from '@rcrsr/rill-language-service/rules';
 
 describe('formatDiagnostics', () => {
   describe('text format', () => {
@@ -269,8 +269,8 @@ describe('formatDiagnostics', () => {
     });
 
     it('includes category when verbose is true and rule exists', () => {
-      // Note: This test will work once VALIDATION_RULES is populated
-      // For now, it tests that category is absent when rule not found
+      // This tests that category is absent when the rule code is not found
+      // in the registered rule set.
       const diagnostics: Diagnostic[] = [
         {
           location: { line: 1, column: 5, offset: 4 },
@@ -285,7 +285,7 @@ describe('formatDiagnostics', () => {
       const result = formatDiagnostics('file.rill', diagnostics, 'json', true);
       const parsed = JSON.parse(result);
 
-      // Category should not be present if rule not in VALIDATION_RULES
+      // Category should not be present if the rule code is not registered
       expect(parsed.errors[0]).not.toHaveProperty('category');
     });
 

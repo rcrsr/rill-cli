@@ -9,11 +9,14 @@ importers:
   .:
     dependencies:
       '@rcrsr/rill':
-        specifier: ~0.19.3
-        version: 0.19.3
+        specifier: ~0.19.5
+        version: 0.19.5
       '@rcrsr/rill-config':
         specifier: ~0.19.2
-        version: 0.19.2(@rcrsr/rill@0.19.3)
+        version: 0.19.2(@rcrsr/rill@0.19.5)
+      '@rcrsr/rill-language-service':
+        specifier: link:../rill/packages/service
+        version: link:../rill/packages/service
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -23,7 +26,7 @@ importers:
     devDependencies:
       '@rcrsr/rill-ext-datetime':
         specifier: ~0.19.0
-        version: 0.19.1(@rcrsr/rill@0.19.3)
+        version: 0.19.1(@rcrsr/rill@0.19.5)
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -719,8 +722,8 @@ packages:
     peerDependencies:
       '@rcrsr/rill': ~0.19.0
 
-  '@rcrsr/rill@0.19.3':
-    resolution: {integrity: sha512-AYCO/FUbZbE52ZY51XCnK8l8FxMBE22+EaWr3ioV3sJYeGJYDjv+spAGDxNBZqYejrcOk6mFoz0Vlxp3L1XA1Q==}
+  '@rcrsr/rill@0.19.5':
+    resolution: {integrity: sha512-Y3313MCsVWdNJu6cv06QbPC8MiyEptRKG2YOHNcSgHOzss4LNmpYOjeJLqiUKuz3rbP3hLYwCmjDK2lLaaE26w==}
     engines: {node: '>=22.16.0'}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
@@ -1781,16 +1784,16 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.74.0':
     optional: true
 
-  '@rcrsr/rill-config@0.19.2(@rcrsr/rill@0.19.3)':
+  '@rcrsr/rill-config@0.19.2(@rcrsr/rill@0.19.5)':
     dependencies:
-      '@rcrsr/rill': 0.19.3
+      '@rcrsr/rill': 0.19.5
       semver: 7.7.4
 
-  '@rcrsr/rill-ext-datetime@0.19.1(@rcrsr/rill@0.19.3)':
+  '@rcrsr/rill-ext-datetime@0.19.1(@rcrsr/rill@0.19.5)':
     dependencies:
-      '@rcrsr/rill': 0.19.3
+      '@rcrsr/rill': 0.19.5
 
-  '@rcrsr/rill@0.19.3': {}
+  '@rcrsr/rill@0.19.5': {}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true

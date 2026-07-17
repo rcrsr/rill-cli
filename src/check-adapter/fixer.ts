@@ -1,10 +1,10 @@
 /**
- * Fix Applier
+ * Fix Applier (service-backed)
  * Apply automatic fixes to source code with collision detection.
  */
 
 import { parse } from '@rcrsr/rill';
-import type { Diagnostic, ValidationContext } from './types.js';
+import type { Diagnostic } from '@rcrsr/rill-language-service/rules';
 
 // ============================================================
 // TYPES
@@ -50,14 +50,12 @@ interface ApplicableFix {
  *
  * @param source - Original source code
  * @param diagnostics - Diagnostics with potential fixes
- * @param context - Validation context (unused but required by spec)
  * @returns ApplyResult with modified source and counts
- * @throws Error if applied fixes create invalid syntax [EC-6]
+ * @throws Error if applied fixes create invalid syntax
  */
 export function applyFixes(
   source: string,
-  diagnostics: Diagnostic[],
-  _context: ValidationContext
+  diagnostics: Diagnostic[]
 ): ApplyResult {
   // Filter to diagnostics with fixes
   const fixableDiagnostics = diagnostics.filter(
@@ -97,7 +95,7 @@ export function applyFixes(
     modified = before + fix.replacement + after;
   }
 
-  // Verify modified source parses successfully [EC-6]
+  // Verify modified source parses successfully
   try {
     parse(modified);
   } catch {
@@ -121,7 +119,6 @@ export function applyFixes(
 
 /**
  * Filter fixes to remove overlapping ranges.
- * Detects collisions where fix ranges overlap [EC-5].
  *
  * Strategy: Keep first fix in sorted order (end to start),
  * skip subsequent fixes that overlap with any kept fix.
@@ -141,7 +138,7 @@ function filterCollisions(sortedFixes: ApplicableFix[]): {
     const hasCollision = validFixes.some((kept) => rangesOverlap(fix, kept));
 
     if (hasCollision) {
-      // Skip this fix due to collision [EC-5]
+      // Skip this fix due to collision
       skippedReasons.push({
         code: fix.code,
         reason: 'Fix range overlaps with another fix',

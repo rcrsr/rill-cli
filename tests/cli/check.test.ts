@@ -137,7 +137,7 @@ describe('rill-check CLI', () => {
 
       proc.on('close', (code) => {
         resolve({
-          exitCode: code ?? 0,
+          exitCode: code ?? 1,
           stdout,
           stderr,
         });
@@ -709,7 +709,7 @@ dict[itemList: list[1, 2, 3]] => $data2
             stderr += d.toString();
           });
           proc.on('close', (code) => {
-            resolve({ exitCode: code ?? 0, stdout, stderr });
+            resolve({ exitCode: code ?? 1, stdout, stderr });
           });
         });
       }

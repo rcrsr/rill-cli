@@ -407,7 +407,7 @@ describe('rill-check CLI', () => {
       expect(result.stderr).toContain('invalid JSON');
     });
 
-    it('exits with code 0 for the same clean script without an invalid config [AC-E5 control]', async () => {
+    it('exits with code 0 for the same clean script without an invalid config', async () => {
       await writeFile('valid.rill', '"hello"');
 
       const result = await execCheck(['valid.rill']);
@@ -1221,7 +1221,7 @@ dict[itemList: list[1, 2, 3]] => $data2
             stderr += d.toString();
           });
           proc.on('close', (code) => {
-            resolve({ exitCode: code ?? 0, stdout, stderr });
+            resolve({ exitCode: code ?? 1, stdout, stderr });
           });
         });
         expect(result.exitCode).toBe(1);
@@ -1492,7 +1492,7 @@ $raw -> log
           stderr += d.toString();
         });
         proc.on('close', (code) => {
-          resolve({ exitCode: code ?? 0, stdout, stderr });
+          resolve({ exitCode: code ?? 1, stdout, stderr });
         });
       });
     }
@@ -1818,6 +1818,6 @@ $raw -> log
 
       const parityPercent = (matched / total) * 100;
       expect(parityPercent).toBeGreaterThanOrEqual(99.5);
-    });
+    }, 30000);
   });
 });

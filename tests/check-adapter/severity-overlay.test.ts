@@ -6,7 +6,9 @@
  * is pure (does not mutate input, preserves order and non-severity fields).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { parseWithRecovery } from '@rcrsr/rill';
 import type { ParseResult } from '@rcrsr/rill';
 import {
@@ -20,6 +22,7 @@ import type {
   RuleState,
 } from '@rcrsr/rill-language-service/rules';
 import { applySeverityOverlay } from '../../src/check-adapter/severity-overlay.js';
+import { loadConfig } from '../../src/check-adapter/config.js';
 
 // ============================================================
 // TEST FIXTURES
@@ -262,5 +265,73 @@ describe('applySeverityOverlay purity', () => {
     const result = applySeverityOverlay([diagnostic], {}, { RULE_A: 'on' });
 
     expect(result[0]).toEqual(diagnostic);
+  });
+});
+
+// ============================================================
+// PRODUCTION PATH INTEGRATION: loadConfig -> runRules -> applySeverityOverlay
+// ============================================================
+
+describe('production path: warn-state remap without a severity override', () => {
+  const TEST_DIR = join(
+    process.cwd(),
+    'tests',
+    'fixtures',
+    'severity-overlay-integration'
+  );
+
+  beforeEach(() => {
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true, force: true });
+    }
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  // Drives the real loadConfig -> runRules -> applySeverityOverlay path. The
+  // load-bearing assertion is the sparse-severityMap check: a dense map (the
+  // pre-fix behavior) forces an override entry for every code and stomps the
+  // service's `warning` back to the rule's `error` default. runRules already
+  // resolves warn-state severity itself, so the overlay's warn branch is a
+  // no-op here and this test is not coverage for that branch in isolation.
+  it('remaps a warn-state rule to warning severity when the config sets no explicit severity override', () => {
+    writeFileSync(
+      join(TEST_DIR, '.rill-check.json'),
+      JSON.stringify({ rules: { NAMING_SNAKE_CASE: 'warn' } }, null, 2),
+      'utf-8'
+    );
+
+    const resolvedConfig = loadConfig(TEST_DIR);
+    expect(resolvedConfig).not.toBeNull();
+    expect(resolvedConfig?.severityMap.NAMING_SNAKE_CASE).toBeUndefined();
+
+    const source = '42 => $myCamelCase\n';
+    const parsed: ParseResult = parseWithRecovery(source);
+    expect(parsed.errors).toHaveLength(0);
+
+    const emitted = runRules(
+      parsed,
+      source,
+      resolvedConfig?.config ?? createDefaultConfig()
+    );
+    const emittedDiagnostic = emitted.find(
+      (d) => d.code === 'NAMING_SNAKE_CASE'
+    );
+    expect(emittedDiagnostic).toBeDefined();
+    expect(emittedDiagnostic?.severity).toBe('warning');
+
+    const overlaid = applySeverityOverlay(
+      emitted,
+      resolvedConfig?.severityMap ?? {},
+      resolvedConfig?.config.rules ?? {}
+    );
+    const overlaidDiagnostic = overlaid.find(
+      (d) => d.code === 'NAMING_SNAKE_CASE'
+    );
+    expect(overlaidDiagnostic).toBeDefined();
+    expect(overlaidDiagnostic?.severity).toBe('warning');
   });
 });

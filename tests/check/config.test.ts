@@ -137,7 +137,7 @@ describe('loadConfig - valid configuration', () => {
     }
   });
 
-  it('builds severityMap from rule defaults, overridden by user entries', () => {
+  it('builds severityMap containing only user-listed codes', () => {
     setupTestConfig({
       severity: { NAMING_SNAKE_CASE: 'info' },
     });
@@ -146,16 +146,9 @@ describe('loadConfig - valid configuration', () => {
 
     expect(result).not.toBeNull();
     expect(result?.severityMap.NAMING_SNAKE_CASE).toBe('info');
-
-    const defaultForOther = RULES.find(
-      (rule) => rule.code !== 'NAMING_SNAKE_CASE'
-    );
-    expect(defaultForOther).toBeDefined();
-    if (defaultForOther) {
-      expect(result?.severityMap[defaultForOther.code]).toBe(
-        defaultForOther.defaultSeverity
-      );
-    }
+    expect(Object.keys(result?.severityMap ?? {})).toEqual([
+      'NAMING_SNAKE_CASE',
+    ]);
   });
 
   it('preserves checkerMode unset', () => {
@@ -318,16 +311,12 @@ describe('loadConfig - severity block validation failures', () => {
     expect(() => loadConfig(TEST_DIR)).toThrow(/severity must be an object/);
   });
 
-  it('treats a null severity block as absent and uses rule defaults', () => {
+  it('treats a null severity block as absent and produces an empty severityMap', () => {
     setupTestConfig({ severity: null });
 
     const result = loadConfig(TEST_DIR);
 
     expect(result).not.toBeNull();
-    const expectedSeverityMap: Record<string, string> = {};
-    for (const rule of RULES) {
-      expectedSeverityMap[rule.code] = rule.defaultSeverity;
-    }
-    expect(result?.severityMap).toEqual(expectedSeverityMap);
+    expect(result?.severityMap).toEqual({});
   });
 });

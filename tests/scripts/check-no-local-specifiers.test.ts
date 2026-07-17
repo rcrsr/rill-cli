@@ -70,7 +70,7 @@ describe('check-no-local-specifiers', () => {
 
       proc.on('close', (code) => {
         resolve({
-          exitCode: code ?? 0,
+          exitCode: code ?? 1,
           stdout,
           stderr,
         });

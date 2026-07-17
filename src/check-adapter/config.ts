@@ -8,7 +8,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  RULES,
   createDefaultConfig,
   validateConfig,
   validateRuleCodes,
@@ -155,9 +154,6 @@ export function loadConfig(cwd: string): ResolvedCheckConfig | null {
   const config: CheckConfig = { rules };
 
   const severityMap: Record<string, DiagnosticSeverity> = {};
-  for (const rule of RULES) {
-    severityMap[rule.code] = rule.defaultSeverity;
-  }
   for (const [code, value] of Object.entries(severityBlock)) {
     severityMap[code] = value as DiagnosticSeverity;
   }

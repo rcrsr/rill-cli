@@ -47,7 +47,8 @@
     "check:format": "oxfmt --check",
     "check:deps": "knip",
     "fix:lint": "oxlint --config .oxlintrc.json --fix src/ tests/",
-    "fix:format": "oxfmt"
+    "fix:format": "oxfmt",
+    "prepublishOnly": "node scripts/check-no-local-specifiers.mjs"
   },
   "dependencies": {
     "@rcrsr/rill": "~0.19.5",

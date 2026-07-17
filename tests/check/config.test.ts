@@ -297,14 +297,37 @@ describe('loadConfig - severity block validation failures', () => {
     );
   });
 
-  it('throws [RILL-C003] when the severity block itself is not an object', () => {
-    // The adapter treats a non-object severity block as an iterable of
-    // character-index keys, which fail the known-rule-code check first.
-    // The prefix and failure are still guaranteed even though the
-    // resulting message names an index rather than the malformed value.
+  it('throws [RILL-C003] when the severity block is a string', () => {
     setupTestConfig({ severity: 'invalid' });
 
     expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
-    expect(() => loadConfig(TEST_DIR)).toThrow(/unknown rule code: 0/);
+    expect(() => loadConfig(TEST_DIR)).toThrow(/severity must be an object/);
+  });
+
+  it('throws [RILL-C003] when the severity block is an array', () => {
+    setupTestConfig({ severity: ['error'] });
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/severity must be an object/);
+  });
+
+  it('throws [RILL-C003] when the severity block is a number', () => {
+    setupTestConfig({ severity: 42 });
+
+    expect(() => loadConfig(TEST_DIR)).toThrow('[RILL-C003]');
+    expect(() => loadConfig(TEST_DIR)).toThrow(/severity must be an object/);
+  });
+
+  it('treats a null severity block as absent and uses rule defaults', () => {
+    setupTestConfig({ severity: null });
+
+    const result = loadConfig(TEST_DIR);
+
+    expect(result).not.toBeNull();
+    const expectedSeverityMap: Record<string, string> = {};
+    for (const rule of RULES) {
+      expectedSeverityMap[rule.code] = rule.defaultSeverity;
+    }
+    expect(result?.severityMap).toEqual(expectedSeverityMap);
   });
 });

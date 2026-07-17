@@ -590,6 +590,8 @@ async function checkFile(
   );
 
   if (options.fix && diagnostics.length > 0) {
+    // Do not reorder: the write below is reachable only after applyFixes
+    // returns, which is what leaves the file untouched when it throws.
     const result = applyFixes(source, diagnostics);
     if (result.applied > 0) {
       fs.writeFileSync(file, result.modified, 'utf-8');

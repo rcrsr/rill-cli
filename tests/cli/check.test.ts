@@ -329,6 +329,7 @@ describe('rill-check CLI', () => {
 
       expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain('File not found');
+      expect(result.stderr).toContain('[RILL-C001]');
     });
 
     it('exits with code 2 for directory path [AC-E1]', async () => {
@@ -336,6 +337,7 @@ describe('rill-check CLI', () => {
 
       expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain('directory');
+      expect(result.stderr).toContain('[RILL-C002]');
     });
 
     it('exits with code 3 for parse error [AC-E2]', async () => {
@@ -395,10 +397,22 @@ describe('rill-check CLI', () => {
     });
 
     it('exits with code 1 for invalid config [AC-E5]', async () => {
-      // Write invalid config file in temp directory
+      await writeFile('valid.rill', '"hello"');
       await writeFile('.rill-check.json', '{ invalid json }');
 
-      expect(() => loadConfig(tempDir)).toThrow(/invalid JSON/i);
+      const result = await execCheck(['valid.rill']);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('[RILL-C003]');
+      expect(result.stderr).toContain('invalid JSON');
+    });
+
+    it('exits with code 0 for the same clean script without an invalid config [AC-E5 control]', async () => {
+      await writeFile('valid.rill', '"hello"');
+
+      const result = await execCheck(['valid.rill']);
+
+      expect(result.exitCode).toBe(0);
     });
   });
 

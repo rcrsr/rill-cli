@@ -68,8 +68,10 @@ function formatValidationErrors(errors: readonly ValidationError[]): string {
  *
  * @param cwd - Directory to search for the configuration file
  * @returns Resolved config and severity map, or `null` if the file is absent
- * @throws Error prefixed `[RILL-C003]` for malformed JSON or a config that
- *   fails service-side structure/rule-code validation
+ * @throws Error prefixed `[RILL-C003]` when the file cannot be read, holds
+ *   malformed JSON, fails service-side structure/rule-code validation, or
+ *   carries a non-object `severity` block (an adapter-side shape guard the
+ *   service does not perform: it inspects severity values, never the block).
  */
 export function loadConfig(cwd: string): ResolvedCheckConfig | null {
   const configPath = join(cwd, CONFIG_FILE_NAME);
@@ -116,6 +118,14 @@ export function loadConfig(cwd: string): ResolvedCheckConfig | null {
   }
 
   const severityBlock = parsed?.severity ?? {};
+
+  if (
+    typeof severityBlock !== 'object' ||
+    severityBlock === null ||
+    Array.isArray(severityBlock)
+  ) {
+    throw new Error('[RILL-C003]: severity must be an object');
+  }
 
   const severityCodeErrors = validateRuleCodes(Object.keys(severityBlock));
   if (severityCodeErrors !== null) {

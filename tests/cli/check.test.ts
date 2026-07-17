@@ -1077,6 +1077,38 @@ dict[itemList: list[1, 2, 3]] => $data2
       });
     });
 
+    // --min-severity gates only the exit code; it is orthogonal to --fix,
+    // which applies every applicable fix regardless of severity (fixes are
+    // keyed on fix applicability, never on severity). UNNECESSARY_ASSERTION
+    // is the only below-error rule that emits an applicable fix, so it is the
+    // sole case where the two flags interact. This pins that interaction:
+    // a fix below the exit threshold is still applied and written, the exit
+    // code stays 0, and the diagnostic still prints (the change is not silent).
+    describe('--fix interaction with --min-severity', () => {
+      it('applies a below-threshold fix and still exits 0 under --min-severity error', async () => {
+        const script = await writeFile(
+          'fix-below-threshold.rill',
+          '42:number\n'
+        );
+
+        const result = await execCheck([
+          '--fix',
+          '--min-severity',
+          'error',
+          script,
+        ]);
+
+        // Info-level diagnostic is below the error threshold, so exit is 0.
+        expect(result.exitCode).toBe(0);
+        // The fix is applied and written despite being below the threshold.
+        expect(fssync.readFileSync(script, 'utf-8')).toBe('42\n');
+        expect(result.stderr).toContain('Applied 1 fix');
+        // The change is not silent: the diagnostic still prints.
+        expect(result.stdout).toContain('info:');
+        expect(result.stdout).toContain('UNNECESSARY_ASSERTION');
+      });
+    });
+
     describe('JSON format integration', () => {
       it('--format json with default min-severity emits envelope and exits 0 for info-only', async () => {
         const script = await writeFile('info-json.rill', INFO_SOURCE);

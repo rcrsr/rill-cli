@@ -163,16 +163,13 @@ describe('check-no-local-specifiers', () => {
     expect(result.stderr).toBe('');
   });
 
-  // DEBT-2b: when the service publishes and the pins swap to npm semver, invert this to expect exit 0.
-  it('exits 1 against the repo package.json while @rcrsr/rill-language-service is link-pinned', async () => {
+  // Guards the DEBT-2b terminal state: every dependency section resolves from
+  // npm. This is the assertion that fails if a link:/file: specifier is ever
+  // reintroduced into the repo's own manifest.
+  it('exits 0 against the repo package.json now that every section is npm-pinned', async () => {
     const result = await execCheck([]);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      'dependencies.@rcrsr/rill-language-service'
-    );
-    expect(result.stderr).toContain(
-      'devDependencies.@rcrsr/rill-language-service'
-    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
   });
 });

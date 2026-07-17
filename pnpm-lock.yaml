@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       '@rcrsr/rill':
-        specifier: ~0.19.5
-        version: 0.19.5
+        specifier: ~0.19.6
+        version: 0.19.6
       '@rcrsr/rill-config':
         specifier: ~0.19.2
-        version: 0.19.2(@rcrsr/rill@0.19.5)
+        version: 0.19.2(@rcrsr/rill@0.19.6)
       '@rcrsr/rill-language-service':
-        specifier: ~0.19.5
-        version: 0.19.5
+        specifier: ~0.19.6
+        version: 0.19.6(@rcrsr/rill@0.19.6)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -26,7 +26,7 @@ importers:
     devDependencies:
       '@rcrsr/rill-ext-datetime':
         specifier: ~0.19.0
-        version: 0.19.1(@rcrsr/rill@0.19.5)
+        version: 0.19.1(@rcrsr/rill@0.19.6)
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -47,7 +47,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@types/node@26.1.1)(vite@8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0))
+        version: 4.1.10(@types/node@26.1.1)(vite@8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0))
 
 packages:
 
@@ -722,12 +722,14 @@ packages:
     peerDependencies:
       '@rcrsr/rill': ~0.19.0
 
-  '@rcrsr/rill-language-service@0.19.5':
-    resolution: {integrity: sha512-P1vuoDRwsJyTchU6TW3nNZacChpeGiq7KbLKEXKo2QzycWwx/ziYj9QBDhbiNem1IxyPlXW4o//RLuOyRmkLew==}
+  '@rcrsr/rill-language-service@0.19.6':
+    resolution: {integrity: sha512-27+MEU0JTlelCRxYkLSxHPLLbEp3ws28esNcUAoy/zsFhLean+zXc58/UeJL/vZsLiodS+sadUpSZftw+dVxyQ==}
     engines: {node: '>=22.16.0'}
+    peerDependencies:
+      '@rcrsr/rill': ^0.19.6
 
-  '@rcrsr/rill@0.19.5':
-    resolution: {integrity: sha512-Y3313MCsVWdNJu6cv06QbPC8MiyEptRKG2YOHNcSgHOzss4LNmpYOjeJLqiUKuz3rbP3hLYwCmjDK2lLaaE26w==}
+  '@rcrsr/rill@0.19.6':
+    resolution: {integrity: sha512-ui2ZC1zJBCA8DGb4gaPX8lyeLfAtXeM+ALq+eFfdMH4ItYE2yv+3Q6f2jqxURGw260XHzbM/T+OafLAlhG6BvA==}
     engines: {node: '>=22.16.0'}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
@@ -1788,20 +1790,20 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.74.0':
     optional: true
 
-  '@rcrsr/rill-config@0.19.2(@rcrsr/rill@0.19.5)':
+  '@rcrsr/rill-config@0.19.2(@rcrsr/rill@0.19.6)':
     dependencies:
-      '@rcrsr/rill': 0.19.5
+      '@rcrsr/rill': 0.19.6
       semver: 7.7.4
 
-  '@rcrsr/rill-ext-datetime@0.19.1(@rcrsr/rill@0.19.5)':
+  '@rcrsr/rill-ext-datetime@0.19.1(@rcrsr/rill@0.19.6)':
     dependencies:
-      '@rcrsr/rill': 0.19.5
+      '@rcrsr/rill': 0.19.6
 
-  '@rcrsr/rill-language-service@0.19.5':
+  '@rcrsr/rill-language-service@0.19.6(@rcrsr/rill@0.19.6)':
     dependencies:
-      '@rcrsr/rill': 0.19.5
+      '@rcrsr/rill': 0.19.6
 
-  '@rcrsr/rill@0.19.5': {}
+  '@rcrsr/rill@0.19.6': {}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true
@@ -1839,9 +1841,9 @@ snapshots:
   '@rolldown/binding-openharmony-arm64@1.0.0-rc.12':
     optional: true
 
-  '@rolldown/binding-wasm32-wasi@1.0.0-rc.12(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
+  '@rolldown/binding-wasm32-wasi@1.0.0-rc.12(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)':
     dependencies:
-      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -1944,13 +1946,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.10(vite@8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.10(vite@8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -2267,7 +2269,7 @@ snapshots:
 
   resolve-pkg-maps@1.0.0: {}
 
-  rolldown@1.0.0-rc.12(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1):
+  rolldown@1.0.0-rc.12(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0):
     dependencies:
       '@oxc-project/types': 0.122.0
       '@rolldown/pluginutils': 1.0.0-rc.12
@@ -2284,7 +2286,7 @@ snapshots:
       '@rolldown/binding-linux-x64-gnu': 1.0.0-rc.12
       '@rolldown/binding-linux-x64-musl': 1.0.0-rc.12
       '@rolldown/binding-openharmony-arm64': 1.0.0-rc.12
-      '@rolldown/binding-wasm32-wasi': 1.0.0-rc.12(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      '@rolldown/binding-wasm32-wasi': 1.0.0-rc.12(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)
       '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.12
       '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.12
     transitivePeerDependencies:
@@ -2353,12 +2355,12 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  vite@8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0):
+  vite@8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
       postcss: 8.5.12
-      rolldown: 1.0.0-rc.12(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+      rolldown: 1.0.0-rc.12(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 26.1.1
@@ -2370,10 +2372,10 @@ snapshots:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  vitest@4.1.10(@types/node@26.1.1)(vite@8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0)):
+  vitest@4.1.10(@types/node@26.1.1)(vite@8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.10(vite@8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -2390,7 +2392,7 @@ snapshots:
       tinyexec: 1.1.1
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 8.0.3(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.0.3(@emnapi/core@1.11.0)(@emnapi/runtime@1.11.0)(@types/node@26.1.1)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.1.1

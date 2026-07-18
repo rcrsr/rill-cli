@@ -268,13 +268,16 @@ Diagnostics below the threshold still print so the user sees them; only the exit
   "rules": {
     "NAMING_SNAKE_CASE": "on",
     "SPACING_OPERATOR": "off"
+  },
+  "severity": {
+    "NAMING_SNAKE_CASE": "info"
   }
 }
 ```
 
-Rule states: `"on"` (enabled), `"off"` (disabled), `"warn"` (downgrade to warning).
+Rule states: `"on"` (enabled), `"off"` (disabled), `"warn"` (downgrade to warning). `rill check` passes the `rules` map directly to `@rcrsr/rill-language-service`, which filters `"off"` rules and remaps `"warn"` rules to `warning` severity while it runs. The `severity` map sets an arbitrary severity per rule code. The rule engine exposes only one optional global severity override, not a per-rule field. So `rill check` reads the `severity` map itself and reapplies it to diagnostics by code after the engine returns. A `severity` entry for a code wins over a `"warn"`-state remap for that same code.
 
-**Lint rules:** 40 rules across 11 categories (naming, flow, collections, loops, conditionals, closures, types, strings, anti-patterns, formatting, errors). Run `rill check --help` for the full list.
+**Lint rules:** 40 rules across 11 categories (naming, flow, collections, loops, conditionals, closures, types, strings, anti-patterns, formatting, errors). 37 rules are active; 3 are reserved for upcoming checks and currently emit no diagnostics. Run `rill check --help` for the full list.
 
 ### rill run
 

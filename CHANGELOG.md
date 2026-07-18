@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Dev tooling:** Updated to TypeScript 7, oxlint, oxfmt, lefthook, and knip; no runtime changes. ([#36](https://github.com/rcrsr/rill-cli/pull/36))
+- **Rules engine:** `rill check` delegates to @rcrsr/rill-language-service instead of the in-repo checker, removing the need for a sibling ../rill checkout to install or build. The engine provides 40 rules across 11 categories; configuration and severity mappings remain supported. ([#37](https://github.com/rcrsr/rill-cli/pull/37))
 
 ## [0.19.6] - 2026-05-12
 

@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       '@rcrsr/rill':
-        specifier: ~0.19.6
-        version: 0.19.6
+        specifier: ~0.20.0
+        version: 0.20.0
       '@rcrsr/rill-config':
-        specifier: ~0.19.2
-        version: 0.19.2(@rcrsr/rill@0.19.6)
+        specifier: ~0.20.0
+        version: 0.20.0(@rcrsr/rill@0.20.0)
       '@rcrsr/rill-language-service':
-        specifier: ~0.19.6
-        version: 0.19.6(@rcrsr/rill@0.19.6)
+        specifier: ~0.20.0
+        version: 0.20.0(@rcrsr/rill@0.20.0)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -25,8 +25,8 @@ importers:
         version: 0.28.0
     devDependencies:
       '@rcrsr/rill-ext-datetime':
-        specifier: ~0.19.0
-        version: 0.19.1(@rcrsr/rill@0.19.6)
+        specifier: ~0.20.0
+        version: 0.20.0(@rcrsr/rill@0.20.0)
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -711,25 +711,25 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rcrsr/rill-config@0.19.2':
-    resolution: {integrity: sha512-3J/L1nhaHfQmxWpLYYz5DiQWfwcuM8hq4UO5Pow0FyK32nkEVe5D5W+nOyCWnzIGr3+tXNlSuXYzsPPamDKaSA==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      '@rcrsr/rill': ~0.19.0
-
-  '@rcrsr/rill-ext-datetime@0.19.1':
-    resolution: {integrity: sha512-McFyEViNTm+gRAkuYPQOcsjuQB5qc2oYmlkfbyDRJSTUomyptmTRUqDTPDjDSohdwGVDcUuCmj0xAjW3SZdJ/w==}
-    peerDependencies:
-      '@rcrsr/rill': ~0.19.0
-
-  '@rcrsr/rill-language-service@0.19.6':
-    resolution: {integrity: sha512-27+MEU0JTlelCRxYkLSxHPLLbEp3ws28esNcUAoy/zsFhLean+zXc58/UeJL/vZsLiodS+sadUpSZftw+dVxyQ==}
+  '@rcrsr/rill-config@0.20.0':
+    resolution: {integrity: sha512-Hnf58g4lHxawAzWirakXLMMPB5W/odI368Bg7aUTXMqnlsOrTI14NF98XFD0ir9ijliCoq5TdWRJVC+a2yq9Ww==}
     engines: {node: '>=22.16.0'}
     peerDependencies:
-      '@rcrsr/rill': ^0.19.6
+      '@rcrsr/rill': ~0.20.0
 
-  '@rcrsr/rill@0.19.6':
-    resolution: {integrity: sha512-ui2ZC1zJBCA8DGb4gaPX8lyeLfAtXeM+ALq+eFfdMH4ItYE2yv+3Q6f2jqxURGw260XHzbM/T+OafLAlhG6BvA==}
+  '@rcrsr/rill-ext-datetime@0.20.0':
+    resolution: {integrity: sha512-Ow47YWrGApAo0DwNmpe8laSXYveUu26mVJtQvToEbuQIqp20ljGugdwu1m2bNxkHnvfcWl7aEHOgjXJexWT1hw==}
+    peerDependencies:
+      '@rcrsr/rill': ~0.20.0
+
+  '@rcrsr/rill-language-service@0.20.0':
+    resolution: {integrity: sha512-QWS+qUwFlvhFI+x+kw2CzuYnUPnLoIIVsf+WtVijdOiMfnm8f5yjV9qfUWYNu9QGXoziwHPwQwr8faTJ79m7kA==}
+    engines: {node: '>=22.16.0'}
+    peerDependencies:
+      '@rcrsr/rill': ^0.20.0
+
+  '@rcrsr/rill@0.20.0':
+    resolution: {integrity: sha512-/OnCLODUNnATQNOjqgBIxNuTqzTL75P7Db2mLkZgptFGqsi5GMwBaZ0kB3lpJaVdIO6KRjnay253QgWJ/1LXHA==}
     engines: {node: '>=22.16.0'}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
@@ -1259,8 +1259,8 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
-  semver@7.7.4:
-    resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -1790,20 +1790,20 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.74.0':
     optional: true
 
-  '@rcrsr/rill-config@0.19.2(@rcrsr/rill@0.19.6)':
+  '@rcrsr/rill-config@0.20.0(@rcrsr/rill@0.20.0)':
     dependencies:
-      '@rcrsr/rill': 0.19.6
-      semver: 7.7.4
+      '@rcrsr/rill': 0.20.0
+      semver: 7.8.5
 
-  '@rcrsr/rill-ext-datetime@0.19.1(@rcrsr/rill@0.19.6)':
+  '@rcrsr/rill-ext-datetime@0.20.0(@rcrsr/rill@0.20.0)':
     dependencies:
-      '@rcrsr/rill': 0.19.6
+      '@rcrsr/rill': 0.20.0
 
-  '@rcrsr/rill-language-service@0.19.6(@rcrsr/rill@0.19.6)':
+  '@rcrsr/rill-language-service@0.20.0(@rcrsr/rill@0.20.0)':
     dependencies:
-      '@rcrsr/rill': 0.19.6
+      '@rcrsr/rill': 0.20.0
 
-  '@rcrsr/rill@0.19.6': {}
+  '@rcrsr/rill@0.20.0': {}
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true
@@ -2293,7 +2293,7 @@ snapshots:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  semver@7.7.4: {}
+  semver@7.8.5: {}
 
   siginfo@2.0.0: {}
 

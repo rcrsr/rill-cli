@@ -1,6 +1,6 @@
 {
   "name": "@rcrsr/rill-cli",
-  "version": "0.19.6",
+  "version": "0.20.0",
   "description": "CLI tools for the rill scripting language",
   "license": "MIT",
   "author": "Andre Bremer",
@@ -51,22 +51,22 @@
     "prepublishOnly": "node scripts/check-no-local-specifiers.mjs"
   },
   "dependencies": {
-    "@rcrsr/rill": "~0.19.6",
-    "@rcrsr/rill-config": "~0.19.2",
-    "@rcrsr/rill-language-service": "~0.19.6",
+    "@rcrsr/rill": "~0.20.0",
+    "@rcrsr/rill-config": "~0.20.0",
+    "@rcrsr/rill-language-service": "~0.20.0",
     "dotenv": "^17.4.2",
     "esbuild": "^0.28.0"
   },
   "peerDependencies": {
-    "@rcrsr/rill": "~0.19.6",
-    "@rcrsr/rill-config": "~0.19.2",
-    "@rcrsr/rill-language-service": "~0.19.6"
+    "@rcrsr/rill": "~0.20.0",
+    "@rcrsr/rill-config": "~0.20.0",
+    "@rcrsr/rill-language-service": "~0.20.0"
   },
   "devDependencies": {
-    "@rcrsr/rill": "~0.19.6",
-    "@rcrsr/rill-config": "~0.19.2",
-    "@rcrsr/rill-language-service": "~0.19.6",
-    "@rcrsr/rill-ext-datetime": "~0.19.0",
+    "@rcrsr/rill": "~0.20.0",
+    "@rcrsr/rill-config": "~0.20.0",
+    "@rcrsr/rill-ext-datetime": "~0.20.0",
+    "@rcrsr/rill-language-service": "~0.20.0",
     "@types/node": "^26.1.1",
     "knip": "^6.25.0",
     "lefthook": "^2.1.10",

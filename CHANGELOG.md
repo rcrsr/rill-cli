@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-30
+
 ### Added
 
 - **Bundle mode:** Multi-package bundles in `rill build`/`rill run` via `rill-bundle.json`, with `rill init` scaffolding and `rill bootstrap` renamed to `rill init`. ([#35](https://github.com/rcrsr/rill-cli/pull/35))
@@ -17,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Dev tooling:** Updated to TypeScript 7, oxlint, oxfmt, lefthook, and knip; no runtime changes. ([#36](https://github.com/rcrsr/rill-cli/pull/36))
 - **Rules engine:** `rill check` delegates to @rcrsr/rill-language-service instead of the in-repo checker, removing the need for a sibling ../rill checkout to install or build. The engine provides 40 rules across 11 categories; configuration and severity mappings remain supported. ([#37](https://github.com/rcrsr/rill-cli/pull/37))
+- **Upstream dependencies:** Upgrade `@rcrsr/rill`, `@rcrsr/rill-config`, `@rcrsr/rill-language-service`, and `@rcrsr/rill-ext-datetime` to `~0.20.0`.
+- **Breaking, new diagnostics:** The 0.20.0 rules engine registers 41 rules, up from 40. `CONDITION_TYPE`, `FOLD_INTERMEDIATES`, and `THROWAWAY_CAPTURE` were inert stubs and now emit diagnostics, `SPACING_CLOSURE` and the new `SPACING_MEMBER` also emit. Scripts that passed `rill check` on 0.19.6 can now report findings. Disable individual rules in `rill-check.json` to retain prior output.
+
+### Known issues
+
+- `rill check --fix` renames a capture declaration to snake_case without renaming its references, leaving the original name undefined and the script unrunnable. The faulty fix payload originates in the rules engine and predates this release; it was masked on 0.19.6 because `THROWAWAY_CAPTURE` was inert. Avoid `--fix` on scripts whose captures are referenced. Tracked upstream in [rcrsr/rill#142](https://github.com/rcrsr/rill/issues/142).
 
 ## [0.19.6] - 2026-05-12
 
@@ -234,7 +242,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.19.6...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/rcrsr/rill-cli/compare/v0.19.6...v0.20.0
 [0.19.6]: https://github.com/rcrsr/rill-cli/compare/v0.19.5...v0.19.6
 [0.19.5]: https://github.com/rcrsr/rill-cli/compare/v0.19.4...v0.19.5
 [0.19.4]: https://github.com/rcrsr/rill-cli/compare/v0.19.3...v0.19.4

@@ -19,8 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Dev tooling:** Updated to TypeScript 7, oxlint, oxfmt, lefthook, and knip; no runtime changes. ([#36](https://github.com/rcrsr/rill-cli/pull/36))
 - **Rules engine:** `rill check` delegates to @rcrsr/rill-language-service instead of the in-repo checker, removing the need for a sibling ../rill checkout to install or build. The engine provides 40 rules across 11 categories; configuration and severity mappings remain supported. ([#37](https://github.com/rcrsr/rill-cli/pull/37))
-- **Upstream dependencies:** Upgrade `@rcrsr/rill`, `@rcrsr/rill-config`, `@rcrsr/rill-language-service`, and `@rcrsr/rill-ext-datetime` to `~0.20.0`.
-- **Breaking, new diagnostics:** The 0.20.0 rules engine registers 41 rules, up from 40. `CONDITION_TYPE`, `FOLD_INTERMEDIATES`, and `THROWAWAY_CAPTURE` were inert stubs and now emit diagnostics, `SPACING_CLOSURE` and the new `SPACING_MEMBER` also emit. Scripts that passed `rill check` on 0.19.6 can now report findings. Disable individual rules in `rill-check.json` to retain prior output.
+- **Upstream dependencies:** Upgrade `@rcrsr/rill`, `@rcrsr/rill-config`, `@rcrsr/rill-language-service`, and `@rcrsr/rill-ext-datetime` to `~0.20.0`. ([#44](https://github.com/rcrsr/rill-cli/pull/44))
+- **Breaking, new diagnostics:** The 0.20.0 rules engine registers 41 rules, up from 40. `CONDITION_TYPE`, `FOLD_INTERMEDIATES`, and `THROWAWAY_CAPTURE` were inert stubs and now emit diagnostics, `SPACING_CLOSURE` and the new `SPACING_MEMBER` also emit. Scripts that passed `rill check` on 0.19.6 can now report findings. Disable individual rules in `rill-check.json` to retain prior output. ([#44](https://github.com/rcrsr/rill-cli/pull/44))
 
 ### Known issues
 

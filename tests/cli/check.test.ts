@@ -546,12 +546,15 @@ describe('rill-check CLI', () => {
 
   describe('boundary tests', () => {
     it('fix idempotency: second run applies zero fixes [AC-B3]', async () => {
-      // Create file with multiple naming violations
+      // Captures are never referenced, so THROWAWAY_CAPTURE fires alongside
+      // NAMING_SNAKE_CASE for each, but renaming an unreferenced capture has
+      // no reference left to go stale. This keeps the fixture clear of the
+      // rename-without-reference-update bug tracked as rcrsr/rill#142 (see
+      // the dedicated regression test below), isolating this test to fix
+      // idempotency for the rule that does carry an applicable fix.
       const content = `
 "userName" => $userName
 "itemList" => $itemList
-$userName -> .len
-$itemList -> .len
 `;
       const script = await writeFile('idempotent.rill', content);
 
@@ -568,16 +571,55 @@ $itemList -> .len
         const secondApplied = applyFixesToFile(script);
         expect(secondApplied).toBe(0);
 
+        // THROWAWAY_CAPTURE has no fix payload, so it legitimately survives
+        // both fix passes; idempotency means no diagnostic with an
+        // applicable fix remains, not that diagnostics reach zero.
         const finalDiagnostics = validateFile(script);
-        expect(finalDiagnostics).toEqual([]);
+        expect(finalDiagnostics.every((d) => d.fix === null)).toBe(true);
       }
     });
 
+    // Tracked upstream in rcrsr/rill#142: `rill check --fix` renames a
+    // capture declaration to snake_case without renaming its references,
+    // leaving the original name undefined and the script unrunnable. The
+    // NAMING_SNAKE_CASE fix payload spans only the declaration, so the
+    // references are never rewritten. This predates the 0.20.0 upgrade.
+    // The assertions below pin the bug by name: they require the renamed
+    // declaration and the STALE references to coexist. Once rcrsr/rill#142
+    // is fixed upstream, the two `$userName`/`$itemList` reference
+    // assertions FAIL, which is the intended alarm. Replace them then with
+    // `expect(fixedSource).toContain('$user_name -> .len')` and assert that
+    // a second --fix pass reports zero remaining applicable fixes.
+    it('regression rcrsr/rill#142: --fix renames a capture without renaming its references', async () => {
+      const content = `
+"userName" => $userName
+"itemList" => $itemList
+$userName -> .len
+$itemList -> .len
+`;
+      const script = await writeFile('rill-142-regression.rill', content);
+
+      const applied = applyFixesToFile(script);
+      expect(applied).toBeGreaterThan(0);
+
+      const fixedSource = await fs.readFile(script, 'utf-8');
+      // The capture declarations were renamed to snake_case...
+      expect(fixedSource).toContain('$user_name');
+      expect(fixedSource).toContain('$item_list');
+      // ...but the references were left pointing at the old camelCase names,
+      // which are now undefined.
+      expect(fixedSource).toContain('$userName -> .len');
+      expect(fixedSource).toContain('$itemList -> .len');
+    });
+
     it('1000-line validation completes in reasonable time [AC-B4]', async () => {
-      // Generate 1000 lines of valid rill code
+      // Generate 1000 lines of valid rill code. Piped (not captured) so no
+      // capture is left unreferenced; a captured-but-unused $line_N would
+      // trip THROWAWAY_CAPTURE and break the zero-diagnostics expectation
+      // below, which is unrelated to what this test measures (throughput).
       const lines: string[] = [];
       for (let i = 0; i < 1000; i++) {
-        lines.push(`"line_${i}" => $line_${i}`);
+        lines.push(`"line_${i}" -> log`);
       }
       const content = lines.join('\n');
       const script = await writeFile('perf-1000.rill', content);
@@ -611,10 +653,18 @@ $itemList -> .len
   describe('error handling', () => {
     it('applies fixes for multiple violations [AC-E6]', async () => {
       // Note: Fix collision handling (EC-5) is tested in tests/check/fixer.test.ts
-      // This test verifies that non-colliding fixes are successfully applied
+      // This test verifies that non-colliding fixes are successfully applied.
+      // $data1/$data2 are each referenced twice, non-adjacently, so neither
+      // trips THROWAWAY_CAPTURE; only the two dict-key NAMING_SNAKE_CASE
+      // violations should remain for the fix to resolve.
       const content = `
 dict[userName: "test"] => $data1
 dict[itemList: list[1, 2, 3]] => $data2
+"noop" -> log
+$data1 -> log
+$data2 -> log
+$data1 -> log
+$data2 -> log
 `;
       const script = await writeFile('collision.rill', content);
 
@@ -1156,9 +1206,12 @@ dict[itemList: list[1, 2, 3]] => $data2
 
   describe('text output literal format', () => {
     it('renders exactly file:line:col: severity: message (code), single space after each colon, no trailing punctuation', async () => {
+      // $myCamelCase is referenced twice, non-adjacently, so it trips only
+      // NAMING_SNAKE_CASE and not THROWAWAY_CAPTURE, keeping this a
+      // single-diagnostic fixture.
       const script = await writeFile(
         'literal-format.rill',
-        '42 => $myCamelCase\n'
+        '42 => $myCamelCase\n5 -> log\n$myCamelCase -> log\n$myCamelCase -> log\n'
       );
       const result = await execCheck([script]);
       const line = result.stdout.trim().split('\n')[0] ?? '';
@@ -1183,9 +1236,12 @@ dict[itemList: list[1, 2, 3]] => $data2
 
   describe('JSON output aggregate fields', () => {
     it('per-file JSON carries errors[] with location/severity/code/message/context and fix when present', async () => {
+      // $myCamelCase is referenced twice, non-adjacently, so it trips only
+      // NAMING_SNAKE_CASE and not THROWAWAY_CAPTURE, keeping this a
+      // single-diagnostic fixture.
       const script = await writeFile(
         'json-fields.rill',
-        '42 => $myCamelCase\n'
+        '42 => $myCamelCase\n5 -> log\n$myCamelCase -> log\n$myCamelCase -> log\n'
       );
       const result = await execCheck(['--format', 'json', script]);
       const parsed = JSON.parse(result.stdout);
@@ -1315,54 +1371,6 @@ $itemList -> .len
           curr.line > prev.line ||
           (curr.line === prev.line && curr.column >= prev.column);
         expect(inOrder).toBe(true);
-      }
-    });
-  });
-
-  // ============================================================
-  // STUBBED RULE INERTNESS
-  //
-  // The service reserves three rule codes for future static-analysis work.
-  // Their `validate` functions unconditionally return an empty array, so
-  // enabling them (the default state) must never produce a diagnostic.
-  // ============================================================
-
-  describe('stubbed rule inertness', () => {
-    const STUB_CODES = [
-      'CONDITION_TYPE',
-      'FOLD_INTERMEDIATES',
-      'THROWAWAY_CAPTURE',
-    ];
-
-    it('registers exactly the three stubbed rule codes as stub in the service registry', () => {
-      const stubRules = RULES.filter((r) => r.stub === true);
-      expect(stubRules.map((r) => r.code).sort()).toEqual(
-        [...STUB_CODES].sort()
-      );
-    });
-
-    it('emits zero diagnostics for each stub code when the default config leaves it enabled', () => {
-      const config = createDefaultConfig();
-      for (const code of STUB_CODES) {
-        expect(config.rules[code]).toBe('on');
-      }
-
-      // Source chosen to plausibly trigger the pattern each stub code is
-      // reserved for (fold accumulation, a conditional's branch type, and a
-      // capture used exactly once), so a stub becoming live would show up here.
-      const source = `
-list[1, 2, 3] -> fold(0, { $@ + $ })
-$x > 0 ? "positive" ! "negative"
-"hello" => $x
-$x -> .upper => $y
-$y -> .len
-`;
-      const parseResult = parseWithRecovery(source);
-      const diagnostics = runRules(parseResult, source, config);
-      const codes = diagnostics.map((d) => d.code);
-
-      for (const code of STUB_CODES) {
-        expect(codes).not.toContain(code);
       }
     });
   });
@@ -1604,24 +1612,22 @@ $raw -> log
   // PRESERVED-BEHAVIOR PARITY (legacy-parity)
   //
   // Binds corpus parity to a sample of the Preserved-Behavior Inventory:
-  // one fixture per active detection rule, stub rule, and fix payload
-  // across every rule category in the inventory. Each row maps to a
-  // "COVERED" or "PORTED" row of the inventory's write-surface table and
-  // asserts the migrated (service-backed) engine reproduces the
-  // pre-rework behavior as documented in the inventory for that row.
-  // Expectations below were hand-derived by reading the inventory, not
-  // captured from an execution snapshot; this file does not perform a
-  // recorded-output diff.
+  // one fixture per active detection rule and fix payload across every rule
+  // category in the inventory. Each row maps to a "COVERED" or "PORTED" row
+  // of the inventory's write-surface table and asserts the migrated
+  // (service-backed) engine reproduces the pre-rework behavior as
+  // documented in the inventory for that row. Expectations below were
+  // hand-derived by reading the inventory, not captured from an execution
+  // snapshot; this file does not perform a recorded-output diff.
   //
   // Coverage: every code in the service RULES registry is named by a row
   // below, enforced by the 'every registered rule code appears in the
-  // inventory' guard test. Each active rule has a fixture whose source
-  // triggers it; registered-but-inert codes (declared stubs, and the
-  // structurally-unreachable SPACING_CLOSURE) carry a forbidCodes row that
-  // asserts they never fire. SPACING_CLOSURE is inert because a Closure
-  // node's span always begins at the first `|`, so the rule's
-  // whitespace-before-pipe check can never match parsed source, and its
-  // second branch has an empty body.
+  // inventory' guard test. Every rule in the 0.20.0 registry is live; there
+  // are no registered-but-inert codes. `CONDITION_TYPE`, `FOLD_INTERMEDIATES`,
+  // `THROWAWAY_CAPTURE`, and `SPACING_CLOSURE` were inert on 0.19.6 and now
+  // emit diagnostics like any other rule; `SPACING_MEMBER` is a new rule
+  // code introduced in 0.20.0. `forbidCodes` remains available on
+  // `ParityRow` for future use but no row currently relies on it.
   // ============================================================
 
   describe('legacy-parity', () => {
@@ -1630,7 +1636,7 @@ $raw -> log
       readonly source: string;
       /** Codes that must appear in the diagnostics for this source. */
       readonly expectCodes: readonly string[];
-      /** Codes that must never appear (used for stub rules). */
+      /** Codes that must never appear (used for inert rules, if any). */
       readonly forbidCodes?: readonly string[];
     }
 
@@ -1825,41 +1831,49 @@ $raw -> log
       },
     ];
 
-    // Stubbed rules (COVERED as inert): the service registers these codes
-    // but their `validate` unconditionally returns zero diagnostics.
-    const stubRows: ParityRow[] = [
+    // Formerly-inert rules (COVERED as live in 0.20.0): CONDITION_TYPE,
+    // FOLD_INTERMEDIATES, and THROWAWAY_CAPTURE were stub codes on 0.19.6
+    // whose `validate` unconditionally returned zero diagnostics.
+    // SPACING_CLOSURE was structurally unreachable for the same reason. All
+    // four now emit diagnostics under 0.20.0's rules engine.
+    const formerlyInertRows: ParityRow[] = [
       {
-        description: 'FOLD_INTERMEDIATES stub emits no diagnostics',
-        source: 'list[1, 2, 3] -> fold(0, { $@ + $ })\n',
-        expectCodes: [],
-        forbidCodes: ['FOLD_INTERMEDIATES'],
+        description: 'FOLD_INTERMEDIATES flags acc(...) -> .tail',
+        source: 'list[1, 2, 3] -> acc(0, { $@ + $ }) -> .tail\n',
+        expectCodes: ['FOLD_INTERMEDIATES'],
       },
       {
-        description: 'CONDITION_TYPE stub emits no diagnostics',
+        // The ternary operator binds tighter than `>` here, so the
+        // condition unwraps to the bare NumberLiteral `0`, not the whole
+        // `$x > 0` comparison; that non-bool primary is what CONDITION_TYPE
+        // flags.
+        description: 'CONDITION_TYPE flags a non-bool literal condition',
         source: '$x > 0 ? "positive" ! "negative"\n',
-        expectCodes: [],
-        forbidCodes: ['CONDITION_TYPE'],
+        expectCodes: ['CONDITION_TYPE'],
       },
       {
-        description: 'THROWAWAY_CAPTURE stub emits no diagnostics',
-        source: '"hello" => $x\n$x -> .upper => $y\n$y -> .len\n',
-        expectCodes: [],
-        forbidCodes: ['THROWAWAY_CAPTURE'],
+        description:
+          'THROWAWAY_CAPTURE flags a capture that is never referenced',
+        source: '"hello" => $x\n5 -> log\n',
+        expectCodes: ['THROWAWAY_CAPTURE'],
       },
       {
-        // SPACING_CLOSURE is registered but structurally unreachable: a
-        // Closure node's span starts at its first `|`, so the rule's
-        // whitespace-before-pipe check never matches, and its second branch
-        // has an empty body. This spaced closure would be its trigger if the
-        // rule could fire; it asserts the code stays inert.
-        description: 'SPACING_CLOSURE is inert on a spaced closure',
+        // A Closure node's span starts at its first `|`, so the rule's
+        // whitespace-before-pipe check never matches on the closure itself;
+        // it fires instead on the surrounding call's whitespace-before-pipe
+        // gap (the space between `seq(` and `|x|`).
+        description: 'SPACING_CLOSURE flags a spaced closure argument',
         source: 'list[1] -> seq( |x| { $x })\n',
-        expectCodes: [],
-        forbidCodes: ['SPACING_CLOSURE'],
+        expectCodes: ['SPACING_CLOSURE'],
+      },
+      {
+        description: 'formatting: SPACING_MEMBER flags a spaced member dot',
+        source: 'dict[a: 1] => $obj\n$obj. a\n',
+        expectCodes: ['SPACING_MEMBER'],
       },
     ];
 
-    const allRows = [...activeRows, ...stubRows];
+    const allRows = [...activeRows, ...formerlyInertRows];
 
     for (const row of allRows) {
       it(row.description, async () => {

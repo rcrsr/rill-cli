@@ -5,7 +5,7 @@
   "license": "MIT",
   "author": "Andre Bremer",
   "type": "module",
-  "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8",
+  "packageManager": "pnpm@11.18.0+sha512.33d83c77da82f49fba836925c6f1b841181ec3132b670639bd012f7075f5c7cf634c5f870147c19aae7478fac01df09d8892e880454896edd23ee9b33757563c",
   "keywords": [
     "rill",
     "cli",
@@ -28,7 +28,8 @@
     "rill": "./dist/cli.js"
   },
   "engines": {
-    "node": ">=22.16.0"
+    "node": ">=22.16.0",
+    "pnpm": ">=11"
   },
   "files": [
     "dist"
@@ -85,16 +86,5 @@
   },
   "publishConfig": {
     "access": "public"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "lefthook"
-    ],
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "vite>esbuild": "0.28.x"
-      }
-    }
   }
 }

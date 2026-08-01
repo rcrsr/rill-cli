@@ -1,0 +1,44 @@
+# pnpm settings. This repository is a single package and declares no `packages:`
+# key, so it is not a workspace; pnpm reads this file for settings either way,
+# which is where these keys now live. See dev/REPO-STANDARDS.md §8 and §9.
+
+# Dependencies allowed to run install scripts. pnpm 11 no longer reads
+# `pnpm.onlyBuiltDependencies` from package.json, which is the major-to-major
+# move STD-PM-6 warns about; this is the location the pinned major expects.
+allowBuilds:
+  esbuild: true
+  lefthook: true
+
+# vitest resolves vite, which pins a narrower esbuild than this package depends
+# on directly. Held at the 0.28 line so both resolve to one copy. Moved here
+# with the rest of the pnpm settings for the same STD-PM-6 reason as allowBuilds.
+peerDependencyRules:
+  allowedVersions:
+    vite>esbuild: 0.28.x
+
+# Minutes a version must have been on the registry before pnpm will install it,
+# which is the window in which a compromised release is normally yanked. Set
+# explicitly rather than inherited: pnpm 11 defaults this to 1440, pnpm 10
+# defaults it to off, so pinning the value keeps the policy the same across a
+# major bump. 1440 also matches the weekly dependabot cadence, where a longer
+# window would just defer every bump by an extra cycle. STD-SUP-3.
+minimumReleaseAge: 1440
+
+# The @rcrsr/* packages are peers pinned in lockstep to the matching rill minor,
+# and the compatibility workflow tests against their latest publish daily.
+# Holding them for 24 hours would mean that workflow tests the previous version
+# on the day a release lands, which is the one day it matters. Excluded by name,
+# not by exact version, so they survive the next release without a hand edit.
+# STD-SUP-4.
+minimumReleaseAgeExclude:
+  - '@rcrsr/rill'
+  - '@rcrsr/rill-config'
+  - '@rcrsr/rill-language-service'
+  - '@rcrsr/rill-ext-datetime'
+
+# Fail the install when a package's trust evidence weakens against an
+# earlier-published version, for example a drop from a trusted publisher to
+# provenance-only. STD-SUP-5. `trustLockfile` is left at its default of false:
+# setting it true would skip re-applying both this and minimumReleaseAge to
+# existing lockfile entries, silently disabling both.
+trustPolicy: no-downgrade

@@ -5,20 +5,39 @@ on:
     tags:
       - 'v*'
 
+# Least privilege at the top; the release job re-grants exactly what it needs.
+permissions:
+  contents: read
+
+# Serialized, never cancelled. A publish interrupted part-way leaves the
+# registry holding half a release, which the pre-publish existence check then
+# reads as already-done on the retry. See dev/REPO-STANDARDS.md STD-CI-6.
+concurrency:
+  group: release-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
+      # write: creates the GitHub Release. id-token: mints the OIDC token the
+      # npm provenance attestation requires. `pnpm publish --provenance` below
+      # is what consumes it. STD-REL-3 and STD-REL-4.
+      #
+      # `pnpm publish --help` does not advertise --provenance, which makes it
+      # look unsupported. It is not: pnpm 11 bundles libnpmpublish's
+      # provenance.js and the flag reaches ensureProvenanceGeneration. pnpm 10
+      # ignores it silently, which is why STD-PM-2 pins this repository to 11.
       contents: write
       id-token: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Enable Corepack and install pnpm
         run: corepack enable && corepack prepare --activate
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '25'
           cache: 'pnpm'
@@ -26,6 +45,22 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # STD-REL-2. Nothing else ties the tag to what actually ships: the publish
+      # below reads the version from package.json, so a `v0.21.0` tag pushed
+      # against a manifest still on 0.20.0 would publish 0.20.0 under a tag
+      # claiming otherwise, or no-op as already-published, and then cut a
+      # GitHub Release for it either way. Fail before anything is published.
+      - name: Verify the tag matches the manifest version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag ${GITHUB_REF_NAME} disagrees with package.json version ${PKG_VERSION}." >&2
+            echo "Bump the manifest or retag; refusing to publish." >&2
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches package.json ${PKG_VERSION}."
 
       - name: Build
         run: pnpm run build
@@ -37,6 +72,11 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          # Without pipefail the `pnpm publish | tee` below reports tee's exit
+          # status, so a failed publish reads as success and the job goes on to
+          # cut a GitHub Release for a package that never shipped. An ENEEDAUTH
+          # failure prints "Published" and exits 0. See STD-REL-6.
+          set -o pipefail
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
           if npm view "${NAME}@${VERSION}" version &>/dev/null; then
@@ -44,9 +84,19 @@ jobs:
           else
             echo "Publishing $NAME@$VERSION..."
             PUBLISH_LOG=$(mktemp)
-            if pnpm publish --access public --no-git-checks 2>&1 | tee "$PUBLISH_LOG"; then
+            # The npm view check above races a concurrent publish: it can pass
+            # while another run is mid-publish of the same version. Treat the
+            # registry's own conflict response as already-published rather than
+            # failing the job. STD-REL-5.
+            #
+            # Matched on the specific conflict strings, never on a bare E403.
+            # npm returns E403 for a revoked token, a token missing publish
+            # scope, an org policy change and lost package ownership as well as
+            # for a version conflict, so treating it as "already published"
+            # turns four different auth failures into a silent green release.
+            if pnpm publish --provenance --access public --no-git-checks 2>&1 | tee "$PUBLISH_LOG"; then
               echo "Published $NAME@$VERSION"
-            elif grep -Eqi '(EPUBLISHCONFLICT|E403|cannot publish over( the)? previously published versions|cannot modify pre-existing version)' "$PUBLISH_LOG"; then
+            elif grep -Eqi '(EPUBLISHCONFLICT|cannot publish over( the)? previously published versions|cannot modify pre-existing version)' "$PUBLISH_LOG"; then
               echo "Skipping $NAME@$VERSION (already published, confirmed by registry)"
             else
               echo "Failed to publish $NAME@$VERSION"

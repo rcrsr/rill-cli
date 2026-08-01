@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Repository standards:** Repository now conforms to rill ecosystem standards with pnpm 11.18.0 pinning, release provenance, pinned CI actions, and asset drift detection. No CLI runtime changes. ([#45](https://github.com/rcrsr/rill-cli/pull/45))
+
 ## [0.20.0] - 2026-07-30
 
 ### Added

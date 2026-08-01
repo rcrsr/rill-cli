@@ -1,6 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "oxc"],
+  // Naming this array replaces oxlint's CLI defaults rather than extending
+  // them, so a plugin left out here is silently off even though the tool
+  // enables it by default. `unicorn` is the one that bites: it is default-on
+  // from the CLI and was inert in this repo until it was listed. Every plugin
+  // this repo wants is therefore named explicitly, including the ones that
+  // report nothing. This is the same set as rill's config, per STD-LINT-5.
+  // See dev/REPO-STANDARDS.md STD-LINT-5 and STD-LINT-8.
+  "plugins": ["typescript", "oxc", "import", "vitest", "promise", "unicorn"],
   "categories": {
     "correctness": "error"
   },
@@ -24,12 +31,51 @@
     "typescript/no-duplicate-enum-values": "error",
     "typescript/no-unsafe-function-type": "error",
     "typescript/no-wrapper-object-types": "error",
-    "typescript/no-array-constructor": "error"
+    "typescript/no-array-constructor": "error",
+
+    // These two ship in the vitest plugin's `correctness` category, so loading
+    // the plugin above turns them on against the `categories` setting. Each is
+    // switched off deliberately rather than by omission, and both match the
+    // decision recorded in rill's config, so STD-LINT-9 holds. Counts measured
+    // on this tree with the full src/ + tests/ scope.
+    //
+    // - vitest/no-conditional-expect (59 hits): the suite asserts inside
+    //   branches by design, e.g. after a guard narrows a union, and the check
+    //   parity tables assert per row only where the row opted in.
+    // - vitest/require-mock-type-parameters (41 hits): stylistic; wants an
+    //   explicit type parameter on every vi.fn().
+    "vitest/no-conditional-expect": "off",
+    "vitest/require-mock-type-parameters": "off"
+
+    // Also deliberately NOT disabled, recorded so the next reader does not
+    // re-measure: vitest/warn-todo and vitest/valid-title both fired and were
+    // fixed in the tree instead. warn-todo's 2 hits were documentation-only
+    // `it.todo` stubs, now prose comments; valid-title's 1 hit is a
+    // table-driven `it(row.description, ...)` where the rule cannot resolve the
+    // title statically, suppressed at that one site with its reason.
   },
   "ignorePatterns": [
     "**/dist/**",
     "**/node_modules/**",
     "**/*.d.ts",
     "**/generated/**"
+  ],
+  // Path is relative to this config. The rules it registers are opt-in, so
+  // loading the plugin alone changes nothing; the override below enables the
+  // one that applies here. `rill/no-duplicate-error-id` is not enabled: it is
+  // keyed to RuntimeError construction, and this repository only narrows with
+  // `instanceof RuntimeError` and imports its type, never constructs one.
+  "jsPlugins": ["./dev/lint-rules/index.js"],
+  "overrides": [
+    {
+      // Scoped to shipped source. This repository has a private planning
+      // directory at conduct/, so STD-LINT-3 applies: its identifiers are
+      // unresolvable for anyone reading the published package. tests/ is out of
+      // scope because nothing there ships. See dev/REPO-STANDARDS.md STD-LINT-3.
+      "files": ["src/**/*.{ts,tsx}"],
+      "rules": {
+        "rill/no-spec-id-reference": "error"
+      }
+    }
   ]
 }

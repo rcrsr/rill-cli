@@ -82,7 +82,7 @@ this is what was found.
 |---|---|
 | STD-CI-2 | **Holds.** Matrix is `['22', '24', '25']` in all five ecosystem repositories. |
 | STD-REL-2 | **Holds.** The publish gate is a `TAG_VERSION` versus `PKG_VERSION` comparison in `release.yml` that exits 1 on disagreement, before anything is published. The checker reports this as `--` because the comparison is spelled per repository. |
-| STD-GATE-2 | **Holds after a host change.** Required contexts must name every matrix leg: `check (22)`, `check (24)`, `check (25)`, plus `Repository standards`. See the pending change below. |
+| STD-GATE-2 | **Holds for the matrix.** Required contexts name every leg: `check (22)`, `check (24)`, `check (25)`, each pinned to the GitHub Actions app. `Repository standards` is still to be added; see the pending change below. |
 | STD-GATE-3 | **Holds.** The required contexts are the `check` matrix legs, which run the full suite, and `Repository standards`. Neither is a path-filter or gating job; this repository has no gating job, because STD-CI-7 removed the path filters outright. |
 | STD-SET-1 | **Holds.** Squash-only, matching rill: `allow_merge_commit=false`, `allow_rebase_merge=false`, `allow_squash_merge=true`. |
 | STD-SET-3 | **Holds.** Issues are enabled. This is not a downstream mirror; it files its own issues. |
@@ -113,8 +113,9 @@ Re-check them by hand with:
 ```bash
 gh api repos/rcrsr/rill-cli/branches/main/protection \
   --jq '{strict: .required_status_checks.strict,
-         contexts: .required_status_checks.contexts,
-         linear: .required_linear_history.enabled}'
+         contexts: [.required_status_checks.checks[].context],
+         linear: .required_linear_history.enabled,
+         admins: .enforce_admins.enabled}'
 
 gh api repos/rcrsr/rill-cli \
   --jq '{squash: .allow_squash_merge, merge: .allow_merge_commit,
@@ -129,28 +130,57 @@ name (`check (22)`, `check (24)`, `check (25)`) plus `Repository standards`.
 A gating job must never be the required context: a skipped job reports
 *skipped*, which never satisfies a required check (STD-GATE-3).
 
-### Outstanding host changes
+### Changing branch protection
 
-Three elements still FAIL under `--remote`. All three are host settings, none
-is fixable from the tree:
+`required_linear_history` has **no standalone sub-resource**. Only
+`required_status_checks`, `required_pull_request_reviews`,
+`required_signatures`, `enforce_admins` and `restrictions` do; a `PUT` to
+`.../protection/required_linear_history` returns 404. It is settable only
+through the full protection `PUT`, which **replaces the whole object**, so
+anything omitted from the payload is cleared.
 
-```bash
-# STD-SET-2 and STD-GATE-6
-gh api -X PATCH repos/rcrsr/rill-cli -F has_wiki=false -F delete_branch_on_merge=true
-
-# STD-GATE-5. merge_commit and rebase are already disabled; only the
-# protection rule is missing.
-gh api -X PUT repos/rcrsr/rill-cli/branches/main/protection/required_linear_history
-```
-
-And, **only after this branch is on `main`**, add `Repository standards` to the
-required contexts. Adding it while the workflow exists on no default-branch
-commit is the STD-GATE-3 deadlock arriving from the other direction: the
-context never reports and every PR blocks.
+Read the current object first and send it back with the one field changed. Use
+`checks` rather than the deprecated `contexts`, which preserves the `app_id`
+pinning; with bare `contexts` any app can satisfy them.
 
 ```bash
-gh api -X PATCH repos/rcrsr/rill-cli/branches/main/protection/required_status_checks \
-  -F strict=true \
-  -f 'contexts[]=check (22)' -f 'contexts[]=check (24)' \
-  -f 'contexts[]=check (25)' -f 'contexts[]=Repository standards'
+gh api -X PUT repos/rcrsr/rill-cli/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "checks": [
+      { "context": "check (22)", "app_id": 15368 },
+      { "context": "check (24)", "app_id": 15368 },
+      { "context": "check (25)", "app_id": 15368 }
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": null,
+  "restrictions": null,
+  "required_linear_history": true,
+  "allow_force_pushes": false,
+  "allow_deletions": false,
+  "block_creations": false,
+  "required_conversation_resolution": false,
+  "lock_branch": false,
+  "allow_fork_syncing": false
+}
+JSON
 ```
+
+`required_signatures` is managed by its own endpoint and is not part of this
+payload, so it survives the replacement untouched.
+
+### One host change still pending
+
+**Only after this branch is on `main`**, add `Repository standards` to the
+`checks` array above and re-run the same `PUT`. Adding it while the workflow
+exists on no default-branch commit is the STD-GATE-3 deadlock arriving from
+the other direction: the context never reports and every PR blocks.
+
+```json
+      { "context": "check (25)", "app_id": 15368 },
+      { "context": "Repository standards", "app_id": 15368 }
+```
+
+Until then STD-GATE-2 is satisfied for the matrix legs only.

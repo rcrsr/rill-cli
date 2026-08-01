@@ -1,0 +1,54 @@
+# Pre-sets the native Issue Type. Decision rule vs Chore: "would a rill-cli user
+# notice it in a release note?" Yes -> Feature. Taxonomy: .github/labeler.yml.
+name: Feature
+description: 'Net-new capability a rill-cli user can see: a new command, flag, or output mode'
+type: Feature
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: >-
+        What cannot be done today, and who hits it (script author, project
+        maintainer, CI pipeline)? Show the command you wish you could run.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: >-
+        What does done look like as an observable behavior, not the
+        implementation. Include the new flag or output surface and how it fails
+        when misused (exit code and message). Keep it scoped; link related
+        issues with #N.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Supporting context
+      description: >-
+        Optional. Prior art in other CLIs, related issues (#N), and pointers to
+        relevant source. What to look at, not the solution to build.
+    validations:
+      required: false
+  - type: dropdown
+    id: areas
+    attributes:
+      label: Area(s)
+      description: Where in the codebase, becomes the area:* labels at triage.
+      multiple: true
+      options:
+        - cli
+        - run
+        - build
+        - bundle
+        - extensions
+        - check
+        - errors
+        - harness
+        - docs
+        - dx
+    validations:
+      required: true

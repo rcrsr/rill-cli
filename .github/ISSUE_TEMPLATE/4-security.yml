@@ -1,0 +1,61 @@
+# Pre-sets the native Issue Type. Security WINS over Bug/Feature/Chore when the
+# issue is fundamentally about executing untrusted scripts or resolving
+# untrusted input safely: npm spawn argument handling, mount path traversal,
+# resolver access scope, bundle output escaping its target directory.
+# `type:Security` is the org-wide hardening sweep query. This CLI runs
+# LLM-generated scripts and spawns npm on user-supplied specifiers, so this is a
+# first-class concern.
+name: Security
+description: Untrusted specifier handling, path traversal, npm spawn surface, resolver access
+type: Security
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        **Do not post working exploit payloads against a live project.**
+        Describe the class of issue and a minimal reproduction. If this is a
+        disclosed vulnerability in a published `@rcrsr/rill-cli` release, prefer
+        private disclosure over a public issue. See SECURITY.md.
+  - type: textarea
+    id: concern
+    attributes:
+      label: The concern
+      description: What a script, specifier, or config can reach that it should not, and the execution path involved.
+    validations:
+      required: true
+  - type: textarea
+    id: surface
+    attributes:
+      label: Threat surface
+      description: Which boundary is at stake (npm subprocess arguments, mount path resolution, rill-config.json writes, bundle output paths, extension resolution)?
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Supporting context
+      description: >-
+        Optional. Related issues (#N) and pointers to the execution path /
+        relevant source. What to look at. Do not post the fix here: the codebase
+        changes and a solution in the ticket ages.
+    validations:
+      required: false
+  - type: dropdown
+    id: areas
+    attributes:
+      label: Area(s)
+      description: Where in the codebase, becomes the area:* labels at triage.
+      multiple: true
+      options:
+        - cli
+        - run
+        - build
+        - bundle
+        - extensions
+        - check
+        - errors
+        - harness
+        - docs
+        - dx
+    validations:
+      required: true

@@ -1,0 +1,57 @@
+# Pre-sets the native Issue Type so issues filed from the web UI land correctly
+# typed without scripts (gh CLI can set types since 2.94; forms also can).
+# Taxonomy: .github/labeler.yml header.
+name: Bug report
+description: A command exits wrongly, produces incorrect output, or writes the wrong files
+type: Bug
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: >-
+        What you observed vs. what you expected, the symptom, not a guess at the
+        cause or the fix. If it is about executing untrusted scripts or
+        resolving untrusted specifiers safely, file it as a Security issue
+        instead. Security wins over Bug.
+      placeholder: Include the exact command, the actual output, and the expected output.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The minimal command and project layout that triggers it, plus the rill-cli and Node versions.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Supporting context
+      description: >-
+        Optional. Error IDs (RILL-*), exit codes, stack traces, related issues
+        (#N), and pointers to relevant source. Do not propose a fix: the
+        codebase changes and a solution in the ticket ages.
+    validations:
+      required: false
+  - type: dropdown
+    id: areas
+    attributes:
+      label: Area(s)
+      description: >-
+        Where in the codebase the work lives, becomes the area:* labels at
+        triage (forms cannot apply per-answer labels).
+      multiple: true
+      options:
+        - cli
+        - run
+        - build
+        - bundle
+        - extensions
+        - check
+        - errors
+        - harness
+        - docs
+        - dx
+    validations:
+      required: true

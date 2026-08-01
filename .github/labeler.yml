@@ -1,0 +1,198 @@
+# =============================================================================
+# THE RILL-CLI ISSUE TAXONOMY, in one place. Four axes; one is a label set.
+#
+# The shape mirrors rcrsr/rill (see its .github/labeler.yml). What differs is
+# axis 1: the areas are derived from THIS repository's structure, not rill's.
+# Copying rill's area list would produce labels for a lexer and a parser this
+# repository does not contain, which is the STD-PROC-1 failure mode.
+#
+#   1. AREA (where) -- `area:*` labels, the glob map below. Path-derivable, so
+#      PRs get them automatically (actions/labeler via
+#      .github/workflows/pr-labels.yml). On issues the filer sets them.
+#      Pick ONE primary area, the one that owns the work, and add a second only
+#      when the work is genuinely co-owned. The PR labeler is additive and
+#      mechanical, so cross-cutting PRs collect one label per touched path. The
+#      minimize rule governs what humans and skills apply, not the labeler.
+#      Eight areas, mapped to this repository's command surfaces:
+#        area:cli       the command dispatcher and shared CLI plumbing --
+#                       cli.ts, cli-exec.ts, cli-shared.ts, and the per-command
+#                       entry points. Flag parsing, exit codes, help output.
+#        area:run       script execution -- src/run/, cli-run.ts, cli-eval.ts.
+#                       The runner, extension resolution, halt diagnostics.
+#        area:build     `rill build` -- src/build/, cli-build.ts. Bundling,
+#                       config rewriting, esbuild integration.
+#        area:bundle    `rill bundle` and bundle-mode serve -- src/bundle/,
+#                       and the bundle paths in src/commands/.
+#        area:extensions extension lifecycle -- src/commands/install.ts,
+#                       uninstall.ts, upgrade.ts, list.ts, mount-derive.ts,
+#                       npm-runner.ts, prefix.ts, config-edit.ts. Anything that
+#                       spawns npm or edits rill-config.json.
+#        area:check     `rill check` and the language-service adapter --
+#                       src/check-adapter/, cli-check.ts, cli-lsp-diagnostic.ts.
+#        area:errors    the error subsystem -- cli-error-enrichment.ts,
+#                       cli-error-formatter.ts, cli-error-from-halt.ts,
+#                       cli-explain.ts. A message-format change lives here.
+#        area:harness   the published test harness -- src/harness/, harness.ts.
+#        area:docs      documentation -- README, CHANGELOG, demo/.
+#        area:dx        CI, toolchain, lint rules, and root config. Anything no
+#                       consumer of `@rcrsr/rill-cli` sees. A root deps bump
+#                       touches none of the source globs above, so it would
+#                       otherwise get no area.
+#
+#   2. STATUS (why not now) -- the `on-hold` label, issues-only, optional.
+#      The one state GitHub has no native home for (unprefixed, matching
+#      needs-triage):
+#        on-hold       valid, shaped work deliberately parked. Not low priority
+#                      (that is Priority Low, how urgent, not why parked) and
+#                      not blocked-on-a-specific-issue.
+#      Blocked on a SPECIFIC issue: use the native issue dependency ("Mark as
+#      blocked by" in the sidebar; query is:blocked) and NO label. Never
+#      duplicate a native relationship as a label. Deliberate park with no
+#      single blocker: on-hold. Both: both. An unshaped idea is NOT a status,
+#      it is Type Idea (see axis 3).
+#      Anti-rot ritual: periodically sweep `is:open label:on-hold` (has the
+#      prerequisite landed?) and `is:open type:Idea` (promote or close).
+#
+#   3. TYPE (what kind) -- native org-level Issue Type, NOT a label, issues-only:
+#        Bug . Feature . Chore . Security . Idea
+#      Feature = net-new capability a user of the CLI can see: a new command, a
+#      new flag, new output. Chore = robustness work on existing machinery:
+#      debt, refactors, test suites, perf, internals with no visible surface
+#      change. Decision rule: "would a rill-cli user notice it in a release
+#      note? Feature. Otherwise Chore."
+#      Bug = existing behavior is wrong: a command exits non-zero when it
+#      should succeed, an error message misleads, a bundle omits a file.
+#      Security takes precedence when the issue is fundamentally about
+#      executing untrusted scripts or resolving untrusted specifiers safely:
+#      npm spawn argument handling, mount path traversal, resolver access
+#      scope.
+#      Idea = captured but not yet shaped into implementable work. Still
+#      carries >=1 area: (best guess); Priority stays unset. Promotion = change
+#      the Type to what it turned out to be, refine area, set Priority.
+#      Documentation work is NOT a type: it is `area:docs` on a Bug (docs are
+#      wrong), Feature (new guide), or Chore (restructure).
+#
+#   4. PRIORITY (how urgent) -- native org-level Priority Issue Field, NOT a
+#      label, issues-only, optional: High = the queue (next 1-2 weeks, keep
+#      <=5) . Medium = this cycle . Low = someday. Unset = not yet triaged.
+#      Urgent exists as a GitHub default option; by convention we never set it.
+#
+# TITLES: issues are titled `[<primary-area>] <title>`, lowercase, bare area
+# name without the `area:` prefix: "[extensions] upgrade drops the range".
+# Exactly one bracket, the primary area. PR titles do NOT take the bracket:
+# they become main's squash-commit subjects and keep conventional-commit
+# format (`fix(build): ...`), where the scope already names the primary area.
+#
+# COLORS: one signal per axis, label text is the load-bearing distinction
+# (WCAG 1.4.1, color reinforces, never the only signal). area:* uniform blue
+# #1d76db; on-hold gray #d2dae1 (the parked convention); needs-triage yellow
+# #fbca04 (the pending convention). Create them with
+# .github/scripts/sync-labels.sh.
+#
+# Rule (enforced advisorily by .github/workflows/issue-labels.yml): every open
+# issue carries >=1 area: label + exactly one Type; Priority is set at triage;
+# on-hold is optional and never satisfies the area requirement. Issue forms
+# (.github/ISSUE_TEMPLATE/) pre-set the Type when filing from the web UI. PRs
+# carry only area labels; the linked issue holds Type/Priority/on-hold.
+# The rcrsr org must have Issue Types (Bug/Feature/Chore/Security/Idea) and the
+# Priority field enabled for the native axes to apply.
+# This file doubles as the one-stop taxonomy doc; there is no separate
+# CONTRIBUTING section to keep in sync.
+# =============================================================================
+
+'area:cli':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/cli.ts'
+          - 'src/cli-exec.ts'
+          - 'src/cli-shared.ts'
+          - 'src/cli-describe.ts'
+          - 'tests/cli/**'
+
+'area:run':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/run/**'
+          - 'src/cli-run.ts'
+          - 'src/cli-eval.ts'
+          - 'tests/run/**'
+
+'area:build':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/build/**'
+          - 'src/cli-build.ts'
+          - 'tests/build/**'
+
+'area:bundle':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/bundle/**'
+          - 'src/commands/bundle-*.ts'
+          - 'tests/bundle/**'
+
+'area:extensions':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/commands/install.ts'
+          - 'src/commands/uninstall.ts'
+          - 'src/commands/upgrade.ts'
+          - 'src/commands/list.ts'
+          - 'src/commands/mount-derive.ts'
+          - 'src/commands/npm-runner.ts'
+          - 'src/commands/prefix.ts'
+          - 'src/commands/config-edit.ts'
+          - 'tests/commands/**'
+
+'area:check':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/check-adapter/**'
+          - 'src/cli-check.ts'
+          - 'src/cli-lsp-diagnostic.ts'
+          - 'tests/check/**'
+          - 'tests/check-adapter/**'
+
+'area:errors':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/cli-error-enrichment.ts'
+          - 'src/cli-error-formatter.ts'
+          - 'src/cli-error-from-halt.ts'
+          - 'src/cli-explain.ts'
+
+'area:harness':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/harness/**'
+          - 'src/harness.ts'
+
+'area:docs':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'README.md'
+          - 'CHANGELOG.md'
+          - 'demo/**'
+
+'area:dx':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - 'dev/**'
+          - 'scripts/**'
+          - 'tests/helpers/**'
+          - 'tests/scripts/**'
+          - '.claude/**'
+          # Root toolchain inputs. A root-only deps bump touches none of the
+          # source globs above, so it would otherwise get no area at all.
+          - 'package.json'
+          - 'pnpm-lock.yaml'
+          - 'pnpm-workspace.yaml'
+          - 'tsconfig*.json'
+          - 'vitest.config.ts'
+          - '.oxlintrc.json'
+          - '.oxfmtrc.json'
+          - 'knip.jsonc'
+          - 'lefthook.yml'
+          - '.node-version'
+          - '.nvmrc'

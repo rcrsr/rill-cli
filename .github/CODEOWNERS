@@ -1,0 +1,28 @@
+# Code owners for rill-cli. Copied from rcrsr/rill and adjusted for this
+# repository's layout; see dev/REPO-STANDARDS.md STD-SUP-7.
+#
+# Last matching pattern wins, so the high-blast-radius paths sit at the bottom.
+# STD-SUP-7 pairs this with required review on those paths, which is a branch
+# protection setting and not visible in this file.
+
+# Everything, unless a later rule overrides.
+*                           @AndreBremer
+
+# Release and CI machinery. A change here can disable every other gate in the
+# repository, publish from an unverified tree, or widen a token's scope.
+/.github/                   @AndreBremer
+/.github/workflows/         @AndreBremer
+/scripts/                   @AndreBremer
+
+# Shared dev assets: the conformance standard and the lint rules every
+# ecosystem repo derives from. This repository holds a copy, so a change here
+# is drift from rcrsr/rill rather than an authored change.
+/dev/                       @AndreBremer
+
+# Toolchain and lint policy. Changes here silently alter what CI accepts.
+/.oxlintrc.json             @AndreBremer
+/.oxfmtrc.json              @AndreBremer
+/lefthook.yml               @AndreBremer
+/knip.jsonc                 @AndreBremer
+/package.json               @AndreBremer
+/pnpm-workspace.yaml        @AndreBremer

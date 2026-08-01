@@ -1,0 +1,61 @@
+# Copied from rcrsr/rill and adjusted for this repository's layout: a single
+# package at the root, so `directories` needs no packages/ glob. See
+# dev/REPO-STANDARDS.md STD-SUP-1.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directories:
+      - '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - 'area:dx'
+    groups:
+      # One PR per tool family. Ungrouped, the shared toolchain produces a
+      # separate PR per bump, which guarantees the updates get ignored.
+      oxc:
+        patterns:
+          - 'oxlint'
+          - 'oxfmt'
+      typescript:
+        patterns:
+          - 'typescript'
+          - '@types/*'
+      testing:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+      dev-tooling:
+        patterns:
+          - 'knip'
+          - 'lefthook'
+          - 'tsx'
+          - 'tsup'
+    ignore:
+      # The @rcrsr/* packages are pinned in lockstep to the matching rill minor
+      # and moved by the release process, which bumps the dependency, the peer
+      # range and this package's own version together. A dependabot bump would
+      # move one of the three and break that lockstep. The compatibility
+      # workflow already tests against their latest publish daily.
+      - dependency-name: '@rcrsr/rill'
+      - dependency-name: '@rcrsr/rill-config'
+      - dependency-name: '@rcrsr/rill-language-service'
+      - dependency-name: '@rcrsr/rill-ext-datetime'
+
+  # Action versions. Separate ecosystem, so it needs its own entry. This is
+  # what keeps the STD-CI-8 SHA pins current: dependabot reads the trailing
+  # release comment on each `uses:` to know which release the SHA represents.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - 'area:dx'
+    groups:
+      actions:
+        patterns:
+          - '*'

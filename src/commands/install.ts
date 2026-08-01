@@ -297,7 +297,7 @@ export async function run(argv: string[]): Promise<number> {
     typeof values['range'] === 'string' ? values['range'] : undefined;
   const dryRun = values['dry-run'] === true;
 
-  // EC-12: --pin/--exact and --range are mutually exclusive
+  // --pin/--exact and --range are mutually exclusive
   if (pin && rangeArg !== undefined) {
     process.stderr.write('--pin/--exact and --range are mutually exclusive\n');
     return 1;
@@ -353,7 +353,7 @@ export async function run(argv: string[]): Promise<number> {
   let targetPackageDir = projectDir;
 
   // ---- Step 1: assertBootstrapped (package mode) ----
-  // EC-7: .rill/npm/ missing -> UXT-EXT-5 verbatim
+  // .rill/npm/ missing -> the bootstrap-missing message, verbatim, exit 1
   // In bundle mode, the bootstrap gate is checked per-role below (Step 4c),
   // against the bundle root for harnesses or the target package for
   // extensions.
@@ -495,12 +495,12 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   if (local) {
-    // UXT-EXT-3 first line
+    // Local path, first of two lines.
     process.stdout.write(`ℹ Installing ${mount} from ${specifier}...\n`);
   }
   // Registry path: no "ℹ Installing" line here.
   // npm streams its own progress via stdio: 'inherit'.
-  // UXT-EXT-2 first line is emitted after the version is resolved (step 6).
+  // Its first line is emitted after the version is resolved (step 6).
 
   // ---- Step 5: Spawn npm ----
   let npmSpec: string;
@@ -516,7 +516,7 @@ export async function run(argv: string[]): Promise<number> {
     npmResult = await npmInstall({ spec: npmSpec, prefix: effectivePrefix });
   } catch (err) {
     if (err instanceof NpmNotFoundError) {
-      // EC-31
+      // npm absent from PATH is a user-fixable setup problem, not a crash.
       process.stderr.write('npm not found on PATH; install Node.js with npm\n');
       return 1;
     }
@@ -524,7 +524,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   if (npmResult.exitCode !== 0) {
-    // EC-9: propagate npm exit code; npm already streamed its stderr
+    // propagate npm exit code; npm already streamed its stderr
     return npmResult.exitCode;
   }
 
@@ -594,16 +594,17 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Step 8: Print install confirmation ----
   if (local) {
-    // UXT-EXT-3 second line
+    // Local path, second of two lines.
     process.stdout.write(
       `✓ Installed to .rill/npm/node_modules/${mount} (symlinked)\n`
     );
   } else {
-    // UXT-EXT-2 first line: emitted here, after version is resolved from package.json
+    // Registry path, first of two lines: emitted here, after the version is
+    // resolved from package.json.
     const versionSuffix =
       installedVersion !== undefined ? `@${installedVersion}` : '';
     process.stdout.write(`ℹ Installing ${pkgName}${versionSuffix}...\n`);
-    // UXT-EXT-2 second line
+    // Registry path, second of two lines.
     process.stdout.write(`✓ Installed to .rill/npm/node_modules/${pkgName}\n`);
   }
 
@@ -650,7 +651,7 @@ export async function run(argv: string[]): Promise<number> {
     });
   } catch (err) {
     if (err instanceof ConfigWriteError) {
-      // EC-11: writeFileSync failed after npm install — out-of-sync state
+      // writeFileSync failed after npm install — out-of-sync state
       process.stderr.write(
         '✗ Failed to write rill-config.json after npm install. Package state and config are out of sync.\n'
       );
@@ -668,7 +669,7 @@ export async function run(argv: string[]): Promise<number> {
     "ℹ Configure the mount in rill-config.json, then run 'rill describe project' or 'rill run' to validate.\n"
   );
 
-  // UXT-EXT-2: registry-only "Ready to use" line (not emitted for local path per UXT-EXT-3)
+  // Registry-only "Ready to use" line; the local path does not emit it.
   if (!local) {
     process.stdout.write(`Ready to use: use:${mount}\n`);
   }

@@ -57,7 +57,7 @@ export function formatError(
   error: EnrichedError,
   options: FormatOptions
 ): string {
-  // EC-5: Unknown format throws TypeError
+  // Unknown format throws TypeError
   if (
     options.format !== 'human' &&
     options.format !== 'json' &&
@@ -527,7 +527,7 @@ export function renderCaretUnderline(
   span: SourceSpan,
   lineContent: string
 ): string {
-  // EC-8: Invalid span throws RangeError
+  // Invalid span throws RangeError
   if (
     span.start.line > span.end.line ||
     (span.start.line === span.end.line && span.start.column > span.end.column)

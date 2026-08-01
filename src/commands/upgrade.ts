@@ -1,13 +1,13 @@
 /**
  * rill upgrade: Upgrade an installed extension to a newer version.
  *
- * Constraints (FR-EXT-6, UXI-EXT-6):
- * - assertBootstrapped pre-check before any npm subprocess (EC-17)
- * - Mount existence pre-check before any npm subprocess (EC-18)
- * - Local-path mounts rejected immediately; no npm, no config edit (EC-19)
- * - npm uses --prefix so project-root package.json is never modified (NFR-EXT-6)
- * - Config edit + validation < 1s (NFR-EXT-2)
- * - applyMountEdit rolls back on validation failure (EC-21)
+ * Constraints:
+ * - assertBootstrapped pre-check before any npm subprocess
+ * - Mount existence pre-check before any npm subprocess
+ * - Local-path mounts rejected immediately; no npm, no config edit
+ * - npm uses --prefix so project-root package.json is never modified
+ * - Config edit + validation < 1s
+ * - applyMountEdit rolls back on validation failure
  */
 
 import fs from 'node:fs';
@@ -68,11 +68,9 @@ function isPinnedMountValue(value: string): boolean {
 /**
  * Upgrade an extension in the current project.
  *
- * Implements UXI-EXT-6 order of operations per spec FR-EXT-6.
- *
- * EC-21 compliance: applyMountEdit rolls back rill-config.json on validation
- * failure before re-throwing. The caller (this function) emits the
- * UXT-EXT-6-style error + rollback messages and returns 1.
+ * applyMountEdit rolls back rill-config.json on validation failure before
+ * re-throwing. The caller (this function) emits the error and rollback
+ * messages and returns 1.
  */
 export async function run(argv: string[]): Promise<number> {
   // ---- Argument parsing ----
@@ -106,7 +104,7 @@ export async function run(argv: string[]): Promise<number> {
   const rangeArg =
     typeof values['range'] === 'string' ? values['range'] : undefined;
 
-  // [ASSUMPTION] Spec does not explicitly assign EC-12 to upgrade, but
+  // [ASSUMPTION] The spec assigns this check to install only, but
   // --pin/--exact and --range are still mutually exclusive by the same logic.
   // Documented as a defensive check.
   if (pin && rangeArg !== undefined) {
@@ -223,7 +221,7 @@ export async function run(argv: string[]): Promise<number> {
   const { targetDir, prefix } = resolved.target;
 
   // ---- Step 1: assertBootstrapped ----
-  // EC-17: .rill/npm/ missing -> UXT-EXT-5 verbatim, exit 1
+  // .rill/npm/ missing -> the bootstrap-missing message, verbatim, exit 1
   try {
     assertBootstrapped(targetDir);
   } catch (err) {
@@ -240,7 +238,7 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Step 2: Read config snapshot + mount existence check ----
   const snapshot = await readConfigSnapshot(targetDir);
 
-  // EC-18: Mount not in config -> UXT-EXT-8 verbatim, exit 1
+  // Mount not in config -> the not-installed message, verbatim, exit 1
   if (!hasMount(snapshot, mount)) {
     process.stderr.write(`✗ Mount '${mount}' not found in rill-config.json\n`);
     process.stderr.write("  Run 'rill list' to see installed extensions\n");
@@ -250,7 +248,7 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Step 3: Read current value + local-path detection ----
   const currentValue = snapshot.parsed.extensions?.mounts?.[mount] ?? mount;
 
-  // EC-19: Local-path mount -> UXT-EXT-10 verbatim, no npm, no config edit
+  // Local-path mount -> the not-upgradable message, verbatim, no npm, no config edit
   if (isLocalPath(currentValue)) {
     process.stderr.write(
       `✗ Mount '${mount}' is a local-path source ('${currentValue}')\n`
@@ -299,14 +297,14 @@ export async function run(argv: string[]): Promise<number> {
     npmResult = await npmInstall({ spec: installSpec, prefix });
   } catch (err) {
     if (err instanceof NpmNotFoundError) {
-      // EC-31 mapping
+      // npm absent from PATH is a user-fixable setup problem, not a crash.
       process.stderr.write('npm not found on PATH; install Node.js with npm\n');
       return 1;
     }
     throw err;
   }
 
-  // EC-20: npm non-zero exit -> propagate; npm already streamed stderr; no rollback line
+  // npm non-zero exit -> propagate; npm already streamed stderr; no rollback line
   if (npmResult.exitCode !== 0) {
     return npmResult.exitCode;
   }
@@ -343,7 +341,7 @@ export async function run(argv: string[]): Promise<number> {
     newMountValue = `${pkgName}@^${newVersion}`;
   }
 
-  // ---- Step 10: Already at latest check (AC-B10) ----
+  // ---- Step 10: Already at latest check ----
   if (newMountValue === currentValue) {
     process.stdout.write('Already at latest\n');
     return 0;
@@ -360,12 +358,12 @@ export async function run(argv: string[]): Promise<number> {
       prefix
     );
   } catch (err) {
-    // EC-21: validation failed; applyMountEdit already rolled back the file
+    // validation failed; applyMountEdit already rolled back the file
     const errName = err instanceof Error ? err.constructor.name : 'Error';
     const errMsg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`✗ Config validation failed: ${errName}: ${errMsg}\n`);
     process.stderr.write('✓ Rolled back rill-config.json\n');
-    // [ASSUMPTION] Guidance line adapted from install's UXT-EXT-6 for upgrade context.
+    // [ASSUMPTION] Guidance line adapted from install's for upgrade context.
     // Install says "Check the extension or use --as to pick a different mount path".
     // Upgrade equivalent directs user to check the upgrade target or use --range.
     process.stderr.write(

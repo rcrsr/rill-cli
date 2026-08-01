@@ -10,7 +10,7 @@ export interface NpmResult {
 
 /**
  * Thrown when the npm binary is not found on PATH (ENOENT on spawn).
- * Callers map this to EC-31: print "npm not found on PATH; install Node.js with npm" and exit 1.
+ * Callers print "npm not found on PATH; install Node.js with npm" and exit 1.
  */
 export class NpmNotFoundError extends Error {
   constructor() {
@@ -24,10 +24,10 @@ export class NpmNotFoundError extends Error {
  *
  * Constraints:
  * - Uses child_process.spawn (NOT spawnSync) for non-blocking output streaming.
- * - stdio: 'inherit' for stdout/stderr (UXS-EXT-6 progress passthrough).
- * - No CLI-imposed timeout (UXS-EXT-6).
- * - Returns the npm exit code; caller decides exit semantics (EC-32).
- * - npm command resolved from PATH; on ENOENT, throws NpmNotFoundError (EC-31).
+ * - stdio: 'inherit' for stdout/stderr, so npm's progress passes straight through.
+ * - No CLI-imposed timeout.
+ * - Returns the npm exit code; caller decides exit semantics.
+ * - npm command resolved from PATH; on ENOENT, throws NpmNotFoundError.
  * - All arguments passed as separate argv elements; no shell concatenation (security).
  */
 function runNpm(

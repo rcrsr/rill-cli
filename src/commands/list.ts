@@ -1,11 +1,11 @@
 /**
  * rill list: Display all installed extension mounts.
  *
- * Constraints (FR-EXT-7, UXI-EXT-7, UXT-EXT-12):
- * - Pre-check: rill-config.json exists (EC-22)
- * - --json mode: also requires .rill/npm/package.json (EC-23)
- * - Output rows equal Object.keys(extensions.mounts).length (NFR-EXT-8)
- * - File I/O < 500ms (NFR-EXT-4)
+ * Constraints:
+ * - Pre-check: rill-config.json exists
+ * - --json mode: also requires .rill/npm/package.json
+ * - Output rows equal Object.keys(extensions.mounts).length
+ * - File I/O < 500ms
  */
 
 import fs from 'node:fs';
@@ -40,7 +40,7 @@ Options:
 `;
 
 // ============================================================
-// COLUMN WIDTHS (UXT-EXT-12)
+// COLUMN WIDTHS
 // ============================================================
 
 // Verbatim header from spec: 'MOUNT      PACKAGE                          VERSION   SOURCE'
@@ -66,7 +66,7 @@ interface MountRow {
 
 /**
  * Try to read the installed version from node_modules/<pkgName>/package.json.
- * Returns the version string on success, 'unknown' on any failure (EC-25).
+ * Returns the version string on success, 'unknown' on any failure.
  */
 function readInstalledVersion(prefix: string, pkgName: string): string {
   const pkgJsonPath = path.join(
@@ -110,12 +110,12 @@ function buildRows(prefix: string, mounts: Record<string, string>): MountRow[] {
 
     let version: string | null;
     if (local) {
-      // Local-path (file or dir): no installed version to read (EC-25 / UXC-EXT-2)
+      // Local-path (file or dir): no installed version to read
       version = null;
     } else {
       const pkgName = extractPackageName(specifier);
       const installed = readInstalledVersion(prefix, pkgName);
-      version = installed; // 'unknown' on read failure (EC-25)
+      version = installed; // 'unknown' on read failure
     }
 
     return { mount, specifier, version, source };
@@ -123,7 +123,7 @@ function buildRows(prefix: string, mounts: Record<string, string>): MountRow[] {
 }
 
 /**
- * Render the verbatim 4-column human-mode table (UXT-EXT-12) for a set of
+ * Render the verbatim 4-column human-mode table for a set of
  * rows: column-width computation, header, data rows, and the
  * "N extensions installed." / "0 extensions installed." footer.
  */
@@ -131,7 +131,7 @@ function renderTable(rows: MountRow[]): string {
   // Compute column widths: at least the verbatim header widths, expand if data is wider.
   // [ASSUMPTION] Column widths: use verbatim header widths as defaults; expand when
   //   any data row entry (plus 2-space separator) would exceed the header width.
-  //   This satisfies UXT-EXT-12 verbatim and UXC-EXT-2 auto-expand requirement.
+  //   This keeps the header row verbatim and still auto-expands for wide data.
   let mountWidth = COL_MOUNT_MIN;
   let packageWidth = COL_PACKAGE_MIN;
   let versionWidth = COL_VERSION_MIN;
@@ -151,7 +151,7 @@ function renderTable(rows: MountRow[]): string {
   let out = header + '\n';
 
   if (rows.length === 0) {
-    // EC-24: empty mounts — header + footer only
+    // empty mounts — header + footer only
     out += '0 extensions installed.\n';
     return out;
   }
@@ -267,9 +267,9 @@ async function runBundleMode(
 // ============================================================
 
 /**
- * List all extension mounts from rill-config.json.
- *
- * Implements FR-EXT-7, UXT-EXT-12, UXI-EXT-7, EC-22..EC-25.
+ * List all extension mounts from rill-config.json, as the verbatim 4-column
+ * human table or as --json. Pre-checks the config and, in --json mode, the
+ * .rill/npm/ prefix; empty mounts render header and footer only.
  */
 export async function run(argv: string[]): Promise<number> {
   // ---- Argument parsing ----
@@ -299,7 +299,7 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Package mode ----
   const prefix = resolvePrefix(projectDir);
 
-  // ---- Step 1: Read config snapshot (EC-22) ----
+  // ---- Step 1: Read config snapshot ----
   let snapshot: Awaited<ReturnType<typeof readConfigSnapshot>>;
   try {
     snapshot = await readConfigSnapshot(projectDir);
@@ -311,7 +311,7 @@ export async function run(argv: string[]): Promise<number> {
     throw err;
   }
 
-  // ---- Step 2: --json mode requires .rill/npm/ (EC-23) ----
+  // ---- Step 2: --json mode requires .rill/npm/ ----
   if (jsonMode) {
     const prefixPkgJson = path.join(prefix, 'package.json');
     if (!fs.existsSync(prefixPkgJson)) {
@@ -324,15 +324,15 @@ export async function run(argv: string[]): Promise<number> {
   const mounts = snapshot.parsed.extensions?.mounts ?? {};
   const rows: MountRow[] = buildRows(prefix, mounts);
 
-  // ---- Step 4/5: Empty mounts handling (EC-24) ----
+  // ---- Step 4/5: Empty mounts handling ----
   if (jsonMode) {
     if (rows.length === 0) {
       process.stdout.write('[]\n');
       return 0;
     }
 
-    // UXI-EXT-7: serialize with 2-space indent + trailing newline
-    // [ASSUMPTION] JSON indent: 2-space chosen to match spec example (UXI-EXT-7)
+    // serialize with 2-space indent + trailing newline
+    // [ASSUMPTION] JSON indent: 2-space chosen to match spec example
     // [ASSUMPTION] Unreadable registry package.json -> "unknown" string (not null)
     //   for consistency with human mode output. Spec does not pin the JSON value.
     const jsonRows = rows.map(({ mount, specifier, version, source }) => ({

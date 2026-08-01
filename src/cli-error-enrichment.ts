@@ -66,7 +66,7 @@ export function extractSnippet(
   span: SourceSpan,
   contextLines: number = 2
 ): SourceSnippet {
-  // EC-7: Empty source returns empty snippet
+  // Empty source returns empty snippet
   if (source === '') {
     return { lines: [], highlightSpan: span };
   }
@@ -74,7 +74,7 @@ export function extractSnippet(
   const lines = source.split('\n');
   const totalLines = lines.length;
 
-  // EC-6: Validate span is within bounds (1-based line numbers)
+  // Validate span is within bounds (1-based line numbers)
   if (span.start.line < 1 || span.start.line > totalLines) {
     throw new RangeError('Span exceeds source bounds');
   }
@@ -140,12 +140,12 @@ export function suggestSimilarNames(
   target: string,
   candidates: string[]
 ): string[] {
-  // EC-9: Empty target returns []
+  // Empty target returns []
   if (target === '') {
     return [];
   }
 
-  // EC-10: Empty candidates returns []
+  // Empty candidates returns []
   if (candidates.length === 0) {
     return [];
   }
@@ -156,7 +156,7 @@ export function suggestSimilarNames(
       name: candidate,
       distance: levenshteinDistance(target, candidate),
     }))
-    .filter((item) => item.distance <= 2); // IR-8: Edit distance threshold
+    .filter((item) => item.distance <= 2); // Edit distance threshold
 
   // Sort: ascending by distance, then alphabetically
   candidatesWithDistance.sort((a, b) => {
@@ -166,7 +166,7 @@ export function suggestSimilarNames(
     return a.name.localeCompare(b.name);
   });
 
-  // IR-8: Max 3 suggestions
+  // Max 3 suggestions
   return candidatesWithDistance.slice(0, 3).map((item) => item.name);
 }
 
@@ -193,7 +193,7 @@ function levenshteinDistance(a: string, b: string): number {
 
   // Use rolling array optimization (only need previous row)
   let prevRow = Array.from({ length: m + 1 }, (_, i) => i);
-  let currRow = new Array<number>(m + 1);
+  let currRow = Array.from<number>({ length: m + 1 });
 
   for (let j = 1; j <= n; j++) {
     currRow[0] = j;
@@ -239,12 +239,12 @@ export function enrichError(
   scope?: ScopeInfo,
   filePath?: string
 ): EnrichedError {
-  // EC-4: Null error
+  // Null error
   if (!error) {
     throw new TypeError('Error is required');
   }
 
-  // EC-3: Invalid source encoding (JavaScript strings are always valid UTF-16)
+  // Invalid source encoding (JavaScript strings are always valid UTF-16)
   if (typeof source !== 'string') {
     throw new TypeError('Source must be valid UTF-8');
   }

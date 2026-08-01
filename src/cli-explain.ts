@@ -24,13 +24,13 @@ import { ERROR_REGISTRY } from '@rcrsr/rill';
  * // Returns: null
  */
 export function explainError(errorId: string): string | null {
-  // EC-12: Invalid errorId format returns null
+  // Invalid errorId format returns null
   const errorIdPattern = /^RILL-[LPRC]\d{3}$/;
   if (!errorIdPattern.test(errorId)) {
     return null;
   }
 
-  // EC-13: Unknown errorId returns null
+  // Unknown errorId returns null
   const definition = ERROR_REGISTRY.get(errorId);
   if (!definition) {
     return null;

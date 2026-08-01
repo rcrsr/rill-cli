@@ -282,8 +282,7 @@ export default harness;
 // bundle-run lifecycle contract.
 // ============================================================
 
-describe('concurrent install behavior', () => {
-  it.todo(
-    'concurrent rill install during serve is out of scope — no locking is provided'
-  );
-});
+// Concurrent `rill install` during serve is out of scope and no locking is
+// provided, so there is no behaviour to assert. Recorded as a note rather than
+// an `it.todo`: a todo never runs, so it reads as owed coverage when the
+// decision was that none is owed.

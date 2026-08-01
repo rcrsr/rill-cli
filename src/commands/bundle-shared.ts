@@ -74,7 +74,7 @@ export async function buildPackages(
   // bounds concurrent esbuild memory; chdirQueue already serializes the dry-run
   const settled: Array<
     PromiseSettledResult<Awaited<ReturnType<typeof buildPackage>>>
-  > = new Array(packageEntries.length);
+  > = Array.from({ length: packageEntries.length });
   let nextIndex = 0;
   const worker = async (): Promise<void> => {
     for (;;) {

@@ -1,12 +1,12 @@
 /**
  * rill uninstall: Remove an extension mount and uninstall from .rill/npm/.
  *
- * Constraints (FR-EXT-5, UXI-EXT-5):
- * - assertBootstrapped pre-check before any config or npm operation (EC-13)
- * - Mount existence pre-check before any config edit (EC-14)
+ * Constraints:
+ * - assertBootstrapped pre-check before any config or npm operation
+ * - Mount existence pre-check before any config edit
  * - Config written first (mount removed), then npm uninstall, then loadProject validation
- * - On validation failure (EC-16): do NOT roll back — mount removal is the desired terminal state
- * - Project-root package.json MUST NOT be modified (NFR-EXT-6)
+ * - On validation failure: do NOT roll back — mount removal is the desired terminal state
+ * - Project-root package.json MUST NOT be modified
  */
 
 import path from 'node:path';
@@ -90,11 +90,9 @@ function deriveNpmPackageName(specifier: string, mount: string): string {
 /**
  * Uninstall an extension from the current project.
  *
- * Implements UXI-EXT-5 order of operations per spec FR-EXT-5.
- *
- * EC-16 compliance: config is written without rollback wiring. If loadProject
- * validation fails after config write, we do NOT restore the original config.
- * The mount removal is the desired terminal state even on validation failure.
+ * Config is written without rollback wiring. If loadProject validation fails
+ * after the config write, we do NOT restore the original config: the mount
+ * removal is the desired terminal state even on validation failure.
  */
 export async function run(argv: string[]): Promise<number> {
   // ---- Argument parsing ----
@@ -185,7 +183,7 @@ export async function run(argv: string[]): Promise<number> {
   const { targetDir, prefix } = resolved.target;
 
   // ---- Step 1: assertBootstrapped ----
-  // EC-13: .rill/npm/ missing -> UXT-EXT-5 verbatim, exit 1
+  // .rill/npm/ missing -> the bootstrap-missing message, verbatim, exit 1
   try {
     assertBootstrapped(targetDir);
   } catch (err) {
@@ -202,7 +200,7 @@ export async function run(argv: string[]): Promise<number> {
   // ---- Step 2: Read config snapshot + mount existence check ----
   const snapshot = await readConfigSnapshot(targetDir);
 
-  // EC-14: Mount not in config -> UXT-EXT-8 verbatim, exit 1; NO edit, NO npm
+  // Mount not in config -> the not-installed message, verbatim, exit 1; NO edit, NO npm
   if (!hasMount(snapshot, mount)) {
     process.stderr.write(`✗ Mount '${mount}' not found in rill-config.json\n`);
     process.stderr.write("  Run 'rill list' to see installed extensions\n");
@@ -215,17 +213,17 @@ export async function run(argv: string[]): Promise<number> {
   const pkgName = deriveNpmPackageName(specifierVerbatim, mount);
   const localFile = looksLikeLocalFilePath(specifierVerbatim);
 
-  // ---- Step 4: Print removal start message (UXT-EXT-7 line 1) ----
+  // ---- Step 4: Print removal start message (line 1 of 4) ----
   process.stdout.write(
     `ℹ Removing mount '${mount}' (${specifierVerbatim})...\n`
   );
 
-  // ---- Step 5: Write config with mount removed (EC-16: skipValidation = no rollback wiring) ----
+  // ---- Step 5: Write config with mount removed (skipValidation = no rollback wiring) ----
   await applyMountEdit(snapshot, { kind: 'remove', mount }, prefix, {
     skipValidation: true,
   });
 
-  // ---- Step 6: Print config updated (UXT-EXT-7 line 2) ----
+  // ---- Step 6: Print config updated (line 2 of 4) ----
   process.stdout.write('✓ Updated rill-config.json\n');
 
   // ---- Step 7: npm uninstall (skipped for single-file local sources) ----
@@ -248,20 +246,20 @@ export async function run(argv: string[]): Promise<number> {
       throw err;
     }
 
-    // EC-15: npm uninstall non-zero exit -> propagate exit code; npm already streamed stderr
+    // npm uninstall non-zero exit -> propagate exit code; npm already streamed stderr
     if (npmResult.exitCode !== 0) {
       return npmResult.exitCode;
     }
 
-    // UXT-EXT-7 line 3: uninstalled message
-    // AC-B9: missing package directory is NOT an error; npm uninstall returns 0 in that case.
+    // Line 3 of 4: uninstalled message
+    // missing package directory is NOT an error; npm uninstall returns 0 in that case.
     process.stdout.write(
       `✓ Uninstalled from .rill/npm/node_modules/${pkgName}\n`
     );
   }
 
   // ---- Step 8: Post-uninstall loadProject validation ----
-  // EC-16: on failure do NOT roll back config; emit error and return 1.
+  // on failure do NOT roll back config; emit error and return 1.
   const configPath = path.resolve(targetDir, 'rill-config.json');
   try {
     await loadProjectWithPrefix({
@@ -280,7 +278,7 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
-  // UXT-EXT-7 line 4
+  // Line 4 of 4
   process.stdout.write('✓ Verified config loads cleanly\n');
 
   return 0;

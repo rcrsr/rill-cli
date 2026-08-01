@@ -43,7 +43,7 @@ export function formatError(
   scope?: ScopeInfo,
   filePath?: string
 ): string {
-  // IC-12: Use enrichment pipeline when source is available and error is RillError
+  // Use enrichment pipeline when source is available and error is RillError
   if (
     source !== undefined &&
     (err instanceof LexerError ||
@@ -59,7 +59,7 @@ export function formatError(
     }
   }
 
-  // IC-12: Fallback to existing behavior for backward compatibility
+  // Fallback to existing behavior for backward compatibility
   if (err instanceof LexerError) {
     const location = err.location;
     return `Lexer error at line ${location.line}: ${err.message.replace(/ at \d+:\d+$/, '')}`;

@@ -1876,6 +1876,10 @@ $raw -> log
     const allRows = [...activeRows, ...formerlyInertRows];
 
     for (const row of allRows) {
+      // Table-driven: the title is a field of the row, so the rule cannot
+      // resolve it statically and reports a false positive. Suppressed here
+      // rather than in .oxlintrc.json so the rule stays on everywhere else.
+      // oxlint-disable-next-line vitest/valid-title
       it(row.description, async () => {
         const name = `parity-${row.description.replace(/[^a-z0-9]+/gi, '-')}.rill`;
         const script = await writeFile(name, row.source);

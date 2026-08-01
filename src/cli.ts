@@ -92,7 +92,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   // No subcommand → show top-level help.
-  // `rill <cmd> --help` and `rill help <cmd>` still produce identical output (FR-EXT-8).
+  // `rill <cmd> --help` and `rill help <cmd>` still produce identical output.
   if (subcommand === undefined) {
     printHelp(process.stdout);
     return 0;
@@ -105,7 +105,7 @@ export async function main(argv: string[]): Promise<number> {
       printHelp(process.stdout);
       return 0;
     }
-    // rill help <cmd> → equivalent to rill <cmd> --help (FR-EXT-8)
+    // rill help <cmd> → equivalent to rill <cmd> --help
     return dispatchSubcommand(helpTarget, ['--help']);
   }
 

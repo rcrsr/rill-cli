@@ -275,14 +275,14 @@ describe('install', () => {
   });
 
   // ============================================================
-  // AC-B8: concurrent installs — last-write-wins (documentation test)
+  // AC-B8: concurrent installs — last-write-wins
+  //
+  // Two concurrent install calls each write their own config edit and the last
+  // write wins. The spec does not require CLI-side locking, so there is no
+  // behaviour here to assert. Recorded as a note rather than an `it.todo`: a
+  // todo never runs, so it reads as owed coverage when the decision was that
+  // none is owed.
   // ============================================================
-
-  describe('AC-B8: concurrent installs (last-write-wins, no CLI-side locking)', () => {
-    it.todo(
-      'two concurrent install calls each write their own config edit; last write wins (spec does not require CLI-side locking)'
-    );
-  });
 
   // ============================================================
   // FRICTION-NOTES 2026-05-03: install never invokes the extension factory

@@ -464,7 +464,7 @@ async function buildPackageFiles(
       | Record<string, unknown>
       | undefined;
     outputConfig['extensions'] = {
-      ...(existingExtBlock ?? {}),
+      ...existingExtBlock,
       mounts: rewrittenMounts,
     };
   }
@@ -770,7 +770,7 @@ export async function buildPackage(
       | Record<string, unknown>
       | undefined;
     outputConfigWithBuild['extensions'] = {
-      ...(existingExtBlock ?? {}),
+      ...existingExtBlock,
       mounts: extensionMountPaths,
     };
   }

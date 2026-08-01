@@ -56,7 +56,7 @@ export function looksLikeLocalFilePath(specifier: string): boolean {
 /**
  * Derive mount path from a package specifier or local path.
  *
- * Algorithm (FR-EXT-2/3/4):
+ * Algorithm:
  * - If asOverride supplied: return asOverride.
  * - If specifier is empty: throw Error.
  * - If specifier is a local path (./  ../  /): return basename of path.

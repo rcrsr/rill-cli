@@ -11,7 +11,8 @@ export function resolvePrefix(projectDir: string): string {
 
 /**
  * Throws BootstrapMissingError when .rill/npm/package.json is absent.
- * Used by install/uninstall/upgrade/list as a UXS-EXT-2 gate.
+ * Used by install/uninstall/upgrade/list as a pre-flight gate, before any
+ * config edit or npm subprocess.
  */
 export function assertBootstrapped(projectDir: string): void {
   const prefix = resolvePrefix(projectDir);
@@ -23,7 +24,7 @@ export function assertBootstrapped(projectDir: string): void {
 
 /**
  * Thrown when .rill/npm/package.json is absent.
- * Callers map this to UXT-EXT-5 and exit code 1.
+ * Callers print the bootstrap-missing message verbatim and exit 1.
  */
 export class BootstrapMissingError extends Error {
   readonly prefix: string;

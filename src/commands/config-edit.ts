@@ -33,7 +33,7 @@ export interface ConfigSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// ConfigWriteError (EC-30)
+// ConfigWriteError
 // ---------------------------------------------------------------------------
 
 /**
@@ -51,7 +51,7 @@ export class ConfigWriteError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// IR-12: readConfigSnapshot
+// readConfigSnapshot
 // ---------------------------------------------------------------------------
 
 /**
@@ -81,7 +81,7 @@ export async function readConfigSnapshot(
 }
 
 // ---------------------------------------------------------------------------
-// IR-13: applyMountEdit
+// applyMountEdit
 // ---------------------------------------------------------------------------
 
 /**
@@ -89,9 +89,9 @@ export async function readConfigSnapshot(
  * validates the result via loadProject. On validation failure the original
  * rawText is written back byte-for-byte and the original error is re-thrown.
  *
- * @throws {ConfigWriteError} when the disk write itself fails (EC-30).
+ * @throws {ConfigWriteError} when the disk write itself fails.
  * @throws {MountValidationError | NamespaceCollisionError} on validation
- *   failure after rollback (EC-29).
+ *   failure after rollback.
  */
 export async function applyMountEdit(
   snapshot: ConfigSnapshot,
@@ -105,7 +105,7 @@ export async function applyMountEdit(
 ): Promise<void> {
   // Build a mutable copy of the parsed config.
   const currentMounts: Record<string, string> = {
-    ...(snapshot.parsed.extensions?.mounts ?? {}),
+    ...snapshot.parsed.extensions?.mounts,
   };
 
   if (edit.kind === 'add' || edit.kind === 'overwrite') {
@@ -117,7 +117,7 @@ export async function applyMountEdit(
   const updatedConfig: RillConfigFile = {
     ...snapshot.parsed,
     extensions: {
-      ...(snapshot.parsed.extensions ?? {}),
+      ...snapshot.parsed.extensions,
       mounts: currentMounts,
     },
   };
@@ -156,7 +156,7 @@ export async function applyMountEdit(
 }
 
 // ---------------------------------------------------------------------------
-// IR-14: hasMount
+// hasMount
 // ---------------------------------------------------------------------------
 
 /**

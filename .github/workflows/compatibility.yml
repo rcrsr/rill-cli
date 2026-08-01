@@ -1,21 +1,34 @@
 name: Compatibility Check
 
+# STD-CI-9: builds and tests against the latest published version of the
+# ecosystem packages this repository consumes, so a breaking change upstream
+# surfaces here rather than in a user's install.
 on:
   schedule:
     - cron: '0 6 * * *' # Daily at 06:00 UTC
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Scheduled and manual runs only, so there is no superseded-run problem to
+# solve; the group exists to stop a manual dispatch racing the nightly run.
+concurrency:
+  group: compat-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   compat:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Before setup-node, which needs pnpm on PATH to resolve its cache key.
       - name: Enable Corepack
         run: corepack enable
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '25'
           cache: 'pnpm'
@@ -23,11 +36,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Update @rcrsr/rill to latest compatible
-        run: pnpm update @rcrsr/rill
-
-      - name: Update @rcrsr/rill-config to latest compatible
-        run: pnpm update @rcrsr/rill-config
+      # These four are excluded from minimumReleaseAge in pnpm-workspace.yaml.
+      # Without that, a package published in the last 24 hours would be held
+      # back and this workflow would test the previous version on the one day
+      # it matters.
+      - name: Update ecosystem packages to latest compatible
+        run: |
+          pnpm update @rcrsr/rill
+          pnpm update @rcrsr/rill-config
+          pnpm update @rcrsr/rill-language-service
+          pnpm update @rcrsr/rill-ext-datetime
 
       - name: Build
         run: pnpm run build

@@ -21,6 +21,6 @@ pre-push:
   parallel: true
   commands:
     typecheck:
-      run: pnpm run typecheck
+      run: pnpm run check:types
     test:
       run: pnpm run test

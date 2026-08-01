@@ -48,7 +48,7 @@ condition covers them.
   `no-shadow`, four `import/*`, seven `vitest/*`, and three `promise/*`.
   STD-LINT-5 governs the plugin set (identical) and STD-LINT-9 governs shared
   rules (identical severity), so neither element requires these. Measured
-  2026-07-31: adopting them costs **5 findings** — 2 `no-shadow` (benign
+  2026-07-31: adopting them costs **5 findings**: 2 `no-shadow` (benign
   shadowing in `src/run/runner.ts` and `tests/build/build.test.ts`) and 3
   `vitest/no-commented-out-tests`, all three false positives on section-header
   comments containing the word `describe(`.
@@ -130,57 +130,23 @@ name (`check (22)`, `check (24)`, `check (25)`) plus `Repository standards`.
 A gating job must never be the required context: a skipped job reports
 *skipped*, which never satisfies a required check (STD-GATE-3).
 
-### Changing branch protection
-
-`required_linear_history` has **no standalone sub-resource**. Only
+**Changing protection is read-modify-write, never a patch.**
+`required_linear_history` has no standalone sub-resource; only
 `required_status_checks`, `required_pull_request_reviews`,
-`required_signatures`, `enforce_admins` and `restrictions` do; a `PUT` to
+`required_signatures`, `enforce_admins` and `restrictions` do, so a `PUT` to
 `.../protection/required_linear_history` returns 404. It is settable only
-through the full protection `PUT`, which **replaces the whole object**, so
-anything omitted from the payload is cleared.
+through the full protection `PUT`, which **replaces the whole object**: every
+field omitted from the payload is cleared.
 
-Read the current object first and send it back with the one field changed. Use
-`checks` rather than the deprecated `contexts`, which preserves the `app_id`
-pinning; with bare `contexts` any app can satisfy them.
+So read the live object, change the one field, and send it back. Do not paste a
+payload from memory or from a document, including this one, because such a
+payload records the object as it was when written and will silently drop
+whatever was added since. Send `checks` rather than the deprecated `contexts`, which keeps
+each context pinned to its `app_id`; with bare `contexts` any app can satisfy
+them. `required_signatures` is managed by its own endpoint and survives the
+replacement untouched.
 
-```bash
-gh api -X PUT repos/rcrsr/rill-cli/branches/main/protection --input - <<'JSON'
-{
-  "required_status_checks": {
-    "strict": true,
-    "checks": [
-      { "context": "check (22)", "app_id": 15368 },
-      { "context": "check (24)", "app_id": 15368 },
-      { "context": "check (25)", "app_id": 15368 }
-    ]
-  },
-  "enforce_admins": true,
-  "required_pull_request_reviews": null,
-  "restrictions": null,
-  "required_linear_history": true,
-  "allow_force_pushes": false,
-  "allow_deletions": false,
-  "block_creations": false,
-  "required_conversation_resolution": false,
-  "lock_branch": false,
-  "allow_fork_syncing": false
-}
-JSON
-```
-
-`required_signatures` is managed by its own endpoint and is not part of this
-payload, so it survives the replacement untouched.
-
-### One host change still pending
-
-**Only after this branch is on `main`**, add `Repository standards` to the
-`checks` array above and re-run the same `PUT`. Adding it while the workflow
-exists on no default-branch commit is the STD-GATE-3 deadlock arriving from
-the other direction: the context never reports and every PR blocks.
-
-```json
-      { "context": "check (25)", "app_id": 15368 },
-      { "context": "Repository standards", "app_id": 15368 }
-```
-
-Until then STD-GATE-2 is satisfied for the matrix legs only.
+Adding a required context is the same operation, with one ordering rule: the
+job must already exist on `main` first. Requiring a context that no
+default-branch commit produces is the STD-GATE-3 deadlock arriving from the
+other direction, and every PR blocks until it is removed again.

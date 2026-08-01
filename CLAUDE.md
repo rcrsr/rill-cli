@@ -67,7 +67,7 @@ without a matching stated condition is a defect, not a decision.
 | STD-CHK-7 | "The repository publishes exactly one package and has no root-versus-package version split to reconcile." One publishable package, published from the root; the tag-versus-manifest gate in `release.yml` is the only version assertion there is to make. |
 | STD-SCRIPT-3 | Same condition as STD-CHK-7. No `check:versions` / `fix:versions` because there are no two versions to reconcile. |
 | STD-SCRIPT-7 | "The repository is a single package." No `packages/` tree, so there is no package vocabulary distinct from the root vocabulary. |
-| STD-PM-7 | "The repository is a single package with no workspace file." Single package with no workspace **globs**: `pnpm-workspace.yaml` exists but declares no `packages:` key, so there are no globs to match anything. See the upstream note below — the condition's wording predates settings-only workspace files. |
+| STD-PM-7 | No workspace packages are declared. `pnpm-workspace.yaml` exists for the §8/§9 settings but carries no `packages:` key, so there are no globs that could go dead. The checker states the condition this way; `dev/REPO-STANDARDS.md` still words it as "no workspace file", which no pnpm-11 single-package repository can meet, because STD-PM-6, STD-SUP-3 and STD-SUP-5 all require that file. Raised upstream. |
 | STD-DEP-4 | "The repository is a single package." One manifest, so `vitest` is declared once and there is no per-package consistency to hold. |
 
 Section 7 (Release workflow) is **not** N/A: this repository publishes
@@ -81,6 +81,11 @@ this is what was found.
 | ID | Finding |
 |---|---|
 | STD-CI-2 | **Holds.** Matrix is `['22', '24', '25']` in all five ecosystem repositories. |
+| STD-REL-2 | **Holds.** The publish gate is a `TAG_VERSION` versus `PKG_VERSION` comparison in `release.yml` that exits 1 on disagreement, before anything is published. The checker reports this as `--` because the comparison is spelled per repository. |
+| STD-GATE-2 | **Holds after a host change.** Required contexts must name every matrix leg: `check (22)`, `check (24)`, `check (25)`, plus `Repository standards`. See the pending change below. |
+| STD-GATE-3 | **Holds.** The required contexts are the `check` matrix legs, which run the full suite, and `Repository standards`. Neither is a path-filter or gating job; this repository has no gating job, because STD-CI-7 removed the path filters outright. |
+| STD-SET-1 | **Holds.** Squash-only, matching rill: `allow_merge_commit=false`, `allow_rebase_merge=false`, `allow_squash_merge=true`. |
+| STD-SET-3 | **Holds.** Issues are enabled. This is not a downstream mirror; it files its own issues. |
 | STD-SCRIPT-8 | **Holds.** Root exposes `check:*` / `fix:*` aggregators and bare `build`, `test`, `check`, `bootstrap`. No bare `typecheck` or `lint` at root. `test:rules` and `test:watch` are `<verb>:<target>` under the `test` verb. |
 | STD-LINT-1 | **Holds.** oxlint + oxfmt, the same pair as every ecosystem repository. |
 | STD-LINT-3 | **Holds, newly.** `conduct/` exists, so the element applies. `rill/no-spec-id-reference` is now enabled for `src/**/*.{ts,tsx}`; 121 identifiers across 15 files were removed to make it pass. |
@@ -123,3 +128,29 @@ Required status contexts must name **every** leg of the CI matrix by exact
 name (`check (22)`, `check (24)`, `check (25)`) plus `Repository standards`.
 A gating job must never be the required context: a skipped job reports
 *skipped*, which never satisfies a required check (STD-GATE-3).
+
+### Outstanding host changes
+
+Three elements still FAIL under `--remote`. All three are host settings, none
+is fixable from the tree:
+
+```bash
+# STD-SET-2 and STD-GATE-6
+gh api -X PATCH repos/rcrsr/rill-cli -F has_wiki=false -F delete_branch_on_merge=true
+
+# STD-GATE-5. merge_commit and rebase are already disabled; only the
+# protection rule is missing.
+gh api -X PUT repos/rcrsr/rill-cli/branches/main/protection/required_linear_history
+```
+
+And, **only after this branch is on `main`**, add `Repository standards` to the
+required contexts. Adding it while the workflow exists on no default-branch
+commit is the STD-GATE-3 deadlock arriving from the other direction: the
+context never reports and every PR blocks.
+
+```bash
+gh api -X PATCH repos/rcrsr/rill-cli/branches/main/protection/required_status_checks \
+  -F strict=true \
+  -f 'contexts[]=check (22)' -f 'contexts[]=check (24)' \
+  -f 'contexts[]=check (25)' -f 'contexts[]=Repository standards'
+```

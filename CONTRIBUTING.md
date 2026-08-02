@@ -44,7 +44,6 @@ This is a single package, `@rcrsr/rill-cli`, published from the repository root.
 | `src/commands/` | Extension lifecycle: install, uninstall, upgrade, list |
 | `src/check-adapter/` | `rill check`, delegating to the language service |
 | `src/harness/` | The published test harness |
-| `dev/` | Shared assets copied from [rcrsr/rill](https://github.com/rcrsr/rill); see below |
 
 The language runtime, the extensions, the agent framework, and the config library live in separate repositories under the same organization.
 
@@ -65,20 +64,13 @@ pnpm fix:format        # Auto-format
 
 `pnpm check` reaches every one of them. It deliberately does not delegate to `pnpm -r`, which excludes the workspace root and would skip the lot.
 
-## `dev/` is a copy, not source
+## Shared dev assets come from `@rcrsr/rill-dev`
 
-`dev/` holds the shared repository standards, the conformance checker, the bootstrap script, and the custom lint rules. It is a plain copy of [rcrsr/rill](https://github.com/rcrsr/rill)'s `dev/`, placed by `dev/apply.sh`.
+The repository standards, the conformance checker, and the custom lint rules ship as the [`@rcrsr/rill-dev`](https://www.npmjs.com/package/@rcrsr/rill-dev) devDependency, pinned in the lockfile. `check:standards` and `test:rules` run its two binaries, `rill-check-standards` and `rill-test-rules`, and `.oxlintrc.json` loads its lint rules by package specifier.
 
-**Do not edit it here.** Fix it in `rill` and re-propagate:
+**Do not patch `node_modules/@rcrsr/rill-dev`.** The change is lost on the next install and every other repository keeps the old behaviour. Fixes go to [rcrsr/rill](https://github.com/rcrsr/rill) under `packages/dev/`, get published from a `dev-v*` tag, and arrive here as a dependency bump that dependabot proposes.
 
-```bash
-# from a rill checkout
-dev/apply.sh ../rill-cli
-```
-
-CI clones `rill` and runs `dev/apply.sh --check .`, so a local edit fails the build.
-
-`dev/REPO-STANDARDS.md` is the conformance index every repository in the ecosystem is measured against. `pnpm check:standards` enforces the elements readable from a checkout; CI adds `--remote` for the branch-protection and repository-settings elements. Elements it reports as `--` were not checked and still apply.
+Read the standards index at `node_modules/@rcrsr/rill-dev/REPO-STANDARDS.md`. It is the conformance index every repository in the ecosystem is measured against. `pnpm check:standards` enforces the elements readable from a checkout, which is what CI runs. The branch-protection and repository-settings elements need `pnpm exec rill-check-standards --remote` from a maintainer's authenticated shell; CI has no credentials that could decide them. Elements reported as `--` were not checked and still apply.
 
 ## The bar for a pull request
 
@@ -86,7 +78,7 @@ CI clones `rill` and runs `dev/apply.sh --check .`, so a local edit fails the bu
 
 Two failure modes worth calling out, because neither is obvious:
 
-1. **`tsconfig.json` limits `include` to `src/**/*`.** Type errors in test files do not surface in `pnpm check:types`. Run the tests as well as the typechecker. This is a known gap, recorded in `dev/REPO-STANDARDS.md` §3, not a settled decision.
+1. **`tsconfig.json` limits `include` to `src/**/*`.** Type errors in test files do not surface in `pnpm check:types`. Run the tests as well as the typechecker. This is a known gap, recorded in `@rcrsr/rill-dev`'s `REPO-STANDARDS.md` §3, not a settled decision.
 2. **A test file that fails to import reports as a file-level failure, not as failing tests.** A suite that never collects can read as "no failures" at a glance. Confirm your tests actually execute and that the count is what you expect.
 
 Other expectations:

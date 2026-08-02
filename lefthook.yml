@@ -5,7 +5,7 @@
 
 # Format before lint. The reverse order lets the formatter undo a lint fix,
 # so the commit lands with the lint fix reverted and nothing reports it.
-# See dev/REPO-STANDARDS.md STD-HOOK-2.
+# See @rcrsr/rill-dev/REPO-STANDARDS.md STD-HOOK-2.
 pre-commit:
   piped: true
   commands:

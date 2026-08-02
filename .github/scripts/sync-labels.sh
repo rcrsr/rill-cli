@@ -2,7 +2,7 @@
 # Creates or updates the rill-cli label taxonomy (the label axes only).
 # Types (Bug/Feature/Chore/Security/Idea) and Priority are native org-level
 # GitHub fields, not labels, and are configured in org settings, not here.
-# See dev/REPO-STANDARDS.md STD-PROC-7.
+# See @rcrsr/rill-dev/REPO-STANDARDS.md STD-PROC-7.
 #
 # The areas below are this repository's own, derived from its structure. They
 # deliberately differ from rill's: copying that list would create labels for a

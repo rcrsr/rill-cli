@@ -67,7 +67,8 @@ Before requesting review:
 - Comments carry no internal planning identifiers. `rill/no-spec-id-reference`
   enforces this on `src/`; keep the fact a comment states and drop the
   reference.
-- `dev/` is unmodified. It is a copy of rcrsr/rill; fixes go there and come
-  back through `dev/apply.sh`, and CI fails on drift either way.
+- `node_modules/@rcrsr/rill-dev` is unmodified. The standards checker and the
+  lint rules ship as a dependency; fixes go to rcrsr/rill under `packages/dev/`
+  and arrive here as a version bump.
 - Version bumps are not needed. Maintainers handle releases.
 -->

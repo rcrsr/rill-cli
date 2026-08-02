@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Repository standards:** Repository now conforms to rill ecosystem standards with pnpm 11.18.0 pinning, release provenance, pinned CI actions, and asset drift detection. No CLI runtime changes. ([#45](https://github.com/rcrsr/rill-cli/pull/45))
+- **Repository standards:** Repository now conforms to rill ecosystem standards with pnpm 11.18.0 pinning, release provenance, and pinned CI actions. No CLI runtime changes. ([#45](https://github.com/rcrsr/rill-cli/pull/45))
+- **Shared dev assets:** The standards checker, the standards index, and the custom lint rules now arrive as the `@rcrsr/rill-dev` devDependency instead of a copied `dev/` directory. `check:standards` and `test:rules` run its `rill-check-standards` and `rill-test-rules` binaries, `.oxlintrc.json` loads its lint rules by package specifier, and the CI drift-check job is gone. Conformance is unchanged at 52 checked, 52 passed, 21 not machine-checkable. No CLI runtime changes. ([#45](https://github.com/rcrsr/rill-cli/pull/45))
 
 ## [0.20.0] - 2026-07-30
 

@@ -1,6 +1,6 @@
 # Copied from rcrsr/rill and adjusted for this repository's layout: a single
 # package at the root, so `directories` needs no packages/ glob. See
-# dev/REPO-STANDARDS.md STD-SUP-1.
+# @rcrsr/rill-dev/REPO-STANDARDS.md STD-SUP-1.
 version: 2
 
 updates:
@@ -34,6 +34,11 @@ updates:
           - 'lefthook'
           - 'tsx'
           - 'tsup'
+          # Deliberately not in the ignore list below with the other @rcrsr/*
+          # packages. It carries no runtime code and is versioned on its own
+          # `dev-v*` tags, independent of the rill minor, so bumping it moves
+          # nothing that lockstep depends on.
+          - '@rcrsr/rill-dev'
     ignore:
       # The @rcrsr/* packages are pinned in lockstep to the matching rill minor
       # and moved by the release process, which bumps the dependency, the peer

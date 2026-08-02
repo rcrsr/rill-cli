@@ -178,7 +178,6 @@
   - changed-files:
       - any-glob-to-any-file:
           - '.github/**'
-          - 'dev/**'
           - 'scripts/**'
           - 'tests/helpers/**'
           - 'tests/scripts/**'

@@ -1,5 +1,5 @@
 # Code owners for rill-cli. Copied from rcrsr/rill and adjusted for this
-# repository's layout; see dev/REPO-STANDARDS.md STD-SUP-7.
+# repository's layout; see @rcrsr/rill-dev/REPO-STANDARDS.md STD-SUP-7.
 #
 # Last matching pattern wins, so the high-blast-radius paths sit at the bottom.
 # STD-SUP-7 pairs this with required review on those paths, which is a branch
@@ -13,11 +13,6 @@
 /.github/                   @AndreBremer
 /.github/workflows/         @AndreBremer
 /scripts/                   @AndreBremer
-
-# Shared dev assets: the conformance standard and the lint rules every
-# ecosystem repo derives from. This repository holds a copy, so a change here
-# is drift from rcrsr/rill rather than an authored change.
-/dev/                       @AndreBremer
 
 # Toolchain and lint policy. Changes here silently alter what CI accepts.
 /.oxlintrc.json             @AndreBremer

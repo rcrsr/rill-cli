@@ -1,6 +1,7 @@
 # pnpm settings. This repository is a single package and declares no `packages:`
 # key, so it is not a workspace; pnpm reads this file for settings either way,
-# which is where these keys now live. See dev/REPO-STANDARDS.md §8 and §9.
+# which is where these keys now live. See @rcrsr/rill-dev/REPO-STANDARDS.md §8
+# and §9.
 
 # Dependencies allowed to run install scripts. pnpm 11 no longer reads
 # `pnpm.onlyBuiltDependencies` from package.json, which is the major-to-major
@@ -30,11 +31,18 @@ minimumReleaseAge: 1440
 # on the day a release lands, which is the one day it matters. Excluded by name,
 # not by exact version, so they survive the next release without a hand edit.
 # STD-SUP-4.
+#
+# `@rcrsr/rill-dev` is here for a different reason: it is the toolchain this
+# repository is checked with, published from the same rcrsr/rill CI on its own
+# `dev-v*` tags. A 24-hour hold on it would mean a lint-rule or checker fix
+# lands a day after it is cut, and a hold cannot protect a package whose own
+# release the maintainer of this repository authorises. STD-SUP-4.
 minimumReleaseAgeExclude:
   - '@rcrsr/rill'
   - '@rcrsr/rill-config'
   - '@rcrsr/rill-language-service'
   - '@rcrsr/rill-ext-datetime'
+  - '@rcrsr/rill-dev'
 
 # Fail the install when a package's trust evidence weakens against an
 # earlier-published version, for example a drop from a trusted publisher to

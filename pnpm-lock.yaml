@@ -24,6 +24,9 @@ importers:
         specifier: ^0.28.0
         version: 0.28.0
     devDependencies:
+      '@rcrsr/rill-dev':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@rcrsr/rill-ext-datetime':
         specifier: ~0.20.0
         version: 0.20.0(@rcrsr/rill@0.20.0)
@@ -710,6 +713,11 @@ packages:
     engines: {node: '>=22.16.0'}
     peerDependencies:
       '@rcrsr/rill': ~0.20.0
+
+  '@rcrsr/rill-dev@0.1.0':
+    resolution: {integrity: sha512-xk+OaxyF0iKFb1BC574/LKXuViQJWXDIri6ZrCJd8Kb92ESZkNSTF+hjmUoeSaKQUWjwDRNQDzwclhFaFPJ0oA==}
+    engines: {node: '>=22.16.0'}
+    hasBin: true
 
   '@rcrsr/rill-ext-datetime@0.20.0':
     resolution: {integrity: sha512-Ow47YWrGApAo0DwNmpe8laSXYveUu26mVJtQvToEbuQIqp20ljGugdwu1m2bNxkHnvfcWl7aEHOgjXJexWT1hw==}
@@ -1775,6 +1783,8 @@ snapshots:
       '@rcrsr/rill': 0.20.0
       semver: 7.8.5
 
+  '@rcrsr/rill-dev@0.1.0': {}
+
   '@rcrsr/rill-ext-datetime@0.20.0(@rcrsr/rill@0.20.0)':
     dependencies:
       '@rcrsr/rill': 0.20.0
@@ -2344,7 +2354,7 @@ snapshots:
   vite@8.0.3(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)(@types/node@26.1.2)(esbuild@0.28.0)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
-      picomatch: 4.0.4
+      picomatch: 4.0.5
       postcss: 8.5.12
       rolldown: 1.0.0-rc.12(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
       tinyglobby: 0.2.17

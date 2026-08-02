@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # These four are excluded from minimumReleaseAge in pnpm-workspace.yaml.
+      # These five are excluded from minimumReleaseAge in pnpm-workspace.yaml.
       # Without that, a package published in the last 24 hours would be held
       # back and this workflow would test the previous version on the one day
       # it matters.
@@ -46,9 +46,25 @@ jobs:
           pnpm update @rcrsr/rill-config
           pnpm update @rcrsr/rill-language-service
           pnpm update @rcrsr/rill-ext-datetime
+          pnpm update @rcrsr/rill-dev
 
       - name: Build
         run: pnpm run build
 
       - name: Run tests
         run: pnpm run test
+
+      # @rcrsr/rill-dev is consumed as a toolchain, not as a runtime dependency,
+      # so build and test alone would never exercise it. These three are the
+      # surface a new release of it can break: a new standards element, a
+      # changed lint rule, or a regression in the rules' own unit tests. Running
+      # them here is what makes its STD-CI-9 coverage real rather than a name
+      # appearing in the file.
+      - name: Check repository standards conformance
+        run: pnpm exec rill-check-standards
+
+      - name: Lint
+        run: pnpm run check:lint
+
+      - name: Run lint rule unit tests
+        run: pnpm run test:rules

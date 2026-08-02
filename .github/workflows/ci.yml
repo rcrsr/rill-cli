@@ -4,8 +4,8 @@ name: CI
 # with required status checks: `paths-ignore` prevents the run entirely, so a
 # required context is never reported and the PR blocks forever; a job-level
 # `if:` gate reports "skipped", which never satisfies a required context. See
-# dev/REPO-STANDARDS.md STD-CI-7. Filtering `**/*.md` would also skip the
-# standards check, which reads this repository's Markdown.
+# @rcrsr/rill-dev/REPO-STANDARDS.md STD-CI-7. Filtering `**/*.md` would also
+# skip the standards check, which reads this repository's Markdown.
 #
 # Every `uses:` in this repository pins a commit SHA with the release it belongs
 # to in a trailing comment, per STD-CI-8. A major tag such as `@v5` is mutable:
@@ -21,10 +21,11 @@ on:
 permissions:
   contents: read
 
-# See dev/REPO-STANDARDS.md STD-CI-6. Keyed on the ref, so a force-push to a PR
-# branch cancels the superseded run instead of leaving a 3-node matrix plus the
-# other job racing the new one. `github.workflow` is in the group because a
-# bare ref would collide with the other ref-keyed workflows on this repository.
+# See @rcrsr/rill-dev/REPO-STANDARDS.md STD-CI-6. Keyed on the ref, so a
+# force-push to a PR branch cancels the superseded run instead of leaving a
+# 3-node matrix plus the other job racing the new one. `github.workflow` is in
+# the group because a bare ref would collide with the other ref-keyed workflows
+# on this repository.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   # Never on main: every push to main must leave a completed status behind, and
@@ -66,16 +67,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # A copy nobody checks rots quietly. dev/ is a plain copy of rcrsr/rill
-      # dev/, so this fails the build when it drifts from the source or when
-      # the source drops a file this repository still holds. Raw git rather
-      # than actions/checkout: a shallow public clone needs no action, and so
-      # no STD-CI-8 pin to keep accurate.
-      - name: Check dev assets are current
-        run: |
-          git clone --depth 1 https://github.com/rcrsr/rill ../rill
-          ../rill/dev/apply.sh --check .
-
       # Before setup-node, which needs pnpm on PATH to resolve its cache key.
       - name: Enable Corepack
         run: corepack enable
@@ -88,10 +79,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # --remote adds the branch-protection and repository-settings elements,
-      # which are host state and cannot be read from a checkout. GITHUB_TOKEN
-      # covers the read-only API calls it makes.
+      # Tree only. No --remote, no token, deliberately: a pull request cannot
+      # change host state, so gating merges on it turns every open PR red for a
+      # reason no author can fix. GITHUB_TOKEN could not decide those elements
+      # anyway -- the administrative fields are omitted from the repository
+      # object it reads and branches/*/protection answers 404, so both element
+      # groups report unchecked with the flag and without it. Host settings are
+      # checked with `pnpm exec rill-check-standards --remote` from a
+      # maintainer's authenticated shell; see CLAUDE.md.
       - name: Check repository standards conformance
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash dev/check-standards.sh --remote
+        run: pnpm exec rill-check-standards

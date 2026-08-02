@@ -11,7 +11,8 @@ permissions:
 
 # Serialized, never cancelled. A publish interrupted part-way leaves the
 # registry holding half a release, which the pre-publish existence check then
-# reads as already-done on the retry. See dev/REPO-STANDARDS.md STD-CI-6.
+# reads as already-done on the retry. See @rcrsr/rill-dev/REPO-STANDARDS.md
+# STD-CI-6.
 concurrency:
   group: release-${{ github.workflow }}
   cancel-in-progress: false

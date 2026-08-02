@@ -1,6 +1,6 @@
 name: CodeQL
 
-# Copied from rcrsr/rill. See dev/REPO-STANDARDS.md STD-SUP-6.
+# Copied from rcrsr/rill. See @rcrsr/rill-dev/REPO-STANDARDS.md STD-SUP-6.
 #
 # No path filtering, for the same reason as ci.yml: a skipped run reports no
 # status, and this workflow is a candidate required context.

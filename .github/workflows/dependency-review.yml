@@ -1,6 +1,6 @@
 name: Dependency review
 
-# Copied from rcrsr/rill. See dev/REPO-STANDARDS.md STD-SUP-6.
+# Copied from rcrsr/rill. See @rcrsr/rill-dev/REPO-STANDARDS.md STD-SUP-6.
 #
 # Diffs the dependency manifest of the PR against its base and fails on a
 # vulnerable or disallowed-licence addition. Pull-request only: the action

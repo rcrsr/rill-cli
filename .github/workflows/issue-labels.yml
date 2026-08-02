@@ -24,7 +24,7 @@ name: Issue taxonomy
 # labeler action to pin or audit).
 #
 # Copied from rcrsr/rill with the area list and wording adjusted to this
-# repository. See dev/REPO-STANDARDS.md STD-PROC-4, which is the requirement
+# repository. See @rcrsr/rill-dev/REPO-STANDARDS.md STD-PROC-4, the requirement
 # that this reads issue state fresh at execution time rather than from the
 # webhook payload; the reasoning is inline at the GraphQL query below.
 

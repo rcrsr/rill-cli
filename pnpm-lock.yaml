@@ -25,8 +25,8 @@ importers:
         version: 0.28.0
     devDependencies:
       '@rcrsr/rill-dev':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.2.0
+        version: 0.2.0
       '@rcrsr/rill-ext-datetime':
         specifier: ~0.20.0
         version: 0.20.0(@rcrsr/rill@0.20.0)
@@ -714,8 +714,8 @@ packages:
     peerDependencies:
       '@rcrsr/rill': ~0.20.0
 
-  '@rcrsr/rill-dev@0.1.0':
-    resolution: {integrity: sha512-xk+OaxyF0iKFb1BC574/LKXuViQJWXDIri6ZrCJd8Kb92ESZkNSTF+hjmUoeSaKQUWjwDRNQDzwclhFaFPJ0oA==}
+  '@rcrsr/rill-dev@0.2.0':
+    resolution: {integrity: sha512-ZANka055F0EZICY587e20XPThzVWT+sdkcR2pez1Kh50g+4Ui7ch9dl5l6BSoLGOzntF+isralHDNYR4H5gRIQ==}
     engines: {node: '>=22.16.0'}
     hasBin: true
 
@@ -1783,7 +1783,7 @@ snapshots:
       '@rcrsr/rill': 0.20.0
       semver: 7.8.5
 
-  '@rcrsr/rill-dev@0.1.0': {}
+  '@rcrsr/rill-dev@0.2.0': {}
 
   '@rcrsr/rill-ext-datetime@0.20.0(@rcrsr/rill@0.20.0)':
     dependencies:

@@ -119,8 +119,10 @@ Host settings are checked by hand, from a maintainer's authenticated shell:
 pnpm exec rill-check-standards --remote
 ```
 
-Last run on 2026-08-01: `CONFORMANT  58 checked, 58 passed, 23 not
-machine-checkable`, against 52/52/21 for the tree-only run. Intent: squash-only
+Last run on 2026-08-01, under `@rcrsr/rill-dev` 0.1.0: `CONFORMANT  58 checked,
+58 passed, 23 not machine-checkable`, against 52/52/21 for the tree-only run.
+The tree-only run under 0.2.0 is 63/63/14; the host half is unchanged, so the
+`--remote` run is due a re-run only to restate its own count. Intent: squash-only
 with linear history, branches deleted on merge, wiki off, admins included, and
 required contexts naming every matrix leg. Re-check the raw settings with:
 

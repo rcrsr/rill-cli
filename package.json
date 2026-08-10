@@ -73,7 +73,7 @@
     "@types/node": "^26.1.2",
     "knip": "^6.29.0",
     "lefthook": "^2.1.10",
-    "oxfmt": "^0.61.0",
+    "oxfmt": "^0.62.0",
     "oxlint": "^1.76.0",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

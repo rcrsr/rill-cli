@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Open bug-report sweep:** Fix 12 open bug reports across build, extension lifecycle, exit codes, config resolution, check reporting, and CLI messaging. ([#70](https://github.com/rcrsr/rill-cli/pull/70))
 - **`rill build --flat` no longer deletes the output directory:** In flat mode `packageOutDir` equalled `--output`, so the build ran `rm(recursive, force)` on the user-supplied directory. Flat builds now create the directory, refuse a non-empty directory not owned by a prior build, and remove only build-owned artifacts. ([#63](https://github.com/rcrsr/rill-cli/issues/63))
 - **Built-in harness runs generated handlers:** `dispatchByMount` required a `default` export that `generateHandlerSource` never emits; it now drives the named `init`/`execute`/`dispose`/`describe` lifecycle, so a freshly built bundle serves under the built-in harness. ([#56](https://github.com/rcrsr/rill-cli/issues/56))
 - **Extension commands fail loud, not with raw stacks:** `install`/`uninstall` now guard `BundleConfigError`, missing `rill-config.json`, and malformed config JSON (new `ConfigParseError`), each printing a `✗` line and returning 1. ([#61](https://github.com/rcrsr/rill-cli/issues/61))

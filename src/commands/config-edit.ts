@@ -51,6 +51,24 @@ export class ConfigWriteError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// ConfigParseError
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when rill-config.json exists but is not valid JSON.
+ * Wraps the underlying parse error message.
+ */
+export class ConfigParseError extends Error {
+  constructor(configPath: string, cause: unknown) {
+    const underlying = cause instanceof Error ? cause.message : String(cause);
+    super(`Failed to parse config file ${configPath}: ${underlying}`, {
+      cause,
+    });
+    this.name = 'ConfigParseError';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // readConfigSnapshot
 // ---------------------------------------------------------------------------
 
@@ -75,7 +93,12 @@ export async function readConfigSnapshot(
     throw err;
   }
 
-  const parsed = JSON.parse(rawText) as RillConfigFile;
+  let parsed: RillConfigFile;
+  try {
+    parsed = JSON.parse(rawText) as RillConfigFile;
+  } catch (err) {
+    throw new ConfigParseError(configPath, err);
+  }
 
   return { path: configPath, rawText, parsed };
 }
@@ -144,15 +167,47 @@ export async function applyMountEdit(
       prefix,
     });
   } catch (validationErr) {
-    // Rollback: restore raw text byte-for-byte, then re-throw ORIGINAL error.
+    // Rollback: restore raw text byte-for-byte, then re-throw ORIGINAL error,
+    // annotated with whether the rollback write itself succeeded. A rollback
+    // write failure must NOT be swallowed: the caller needs to know that
+    // rill-config.json may be left in the modified (invalid) state.
     try {
       await fs.promises.writeFile(snapshot.path, snapshot.rawText, 'utf8');
-    } catch {
-      // Rollback write failure is swallowed; the caller receives the original
-      // validation error which is more actionable.
+      markRollbackResult(validationErr, true);
+    } catch (rollbackErr) {
+      markRollbackResult(validationErr, false, rollbackErr);
     }
     throw validationErr;
   }
+}
+
+/**
+ * Attaches rollback outcome metadata to a validation error before it is
+ * re-thrown, so callers (e.g. `rill upgrade`) can distinguish a successful
+ * rollback from a rollback-write failure and report each accurately.
+ */
+function markRollbackResult(
+  err: unknown,
+  rolledBack: boolean,
+  cause?: unknown
+): void {
+  if (typeof err !== 'object' || err === null) return;
+  const marked = err as RollbackAnnotatedError;
+  marked.rolledBack = rolledBack;
+  if (cause !== undefined) {
+    marked.rollbackCause = cause;
+  }
+}
+
+/**
+ * Error shape produced by {@link applyMountEdit}'s rollback path. `rolledBack`
+ * is `true` when the original config was successfully restored, `false` when
+ * the rollback write itself failed (in which case `rollbackCause` holds the
+ * write error and rill-config.json may be left modified).
+ */
+export interface RollbackAnnotatedError {
+  rolledBack?: boolean;
+  rollbackCause?: unknown;
 }
 
 // ---------------------------------------------------------------------------

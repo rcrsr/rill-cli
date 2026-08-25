@@ -33,6 +33,16 @@ export async function run(argv: string[]): Promise<number> {
   // Resolve bundle name from first positional arg or cwd basename
   const name = argv[0] ?? path.basename(cwd);
 
+  // Reject a supplied name that could escape the bundle directory. The
+  // basename fallback is always a single path segment, so it needs no check.
+  if (
+    argv[0] !== undefined &&
+    (name.includes('/') || name.includes('\\') || name.includes('..'))
+  ) {
+    process.stderr.write(`invalid bundle name: '${name}'\n`);
+    return 1;
+  }
+
   const bundleConfigPath = path.join(cwd, 'rill-bundle.json');
 
   // Guard: fail if rill-bundle.json already exists

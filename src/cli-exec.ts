@@ -198,8 +198,11 @@ export async function executeScript(
     // Check if file exists
     try {
       await fs.access(file);
-    } catch {
-      throw new Error(`File not found: ${file}`);
+    } catch (err) {
+      if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
+        throw new Error(`File not found: ${file}`);
+      }
+      throw err;
     }
 
     // Read from file
@@ -305,8 +308,15 @@ Examples:
         } else {
           try {
             source = await fs.readFile(parsed.file, 'utf-8');
-          } catch {
-            throw new Error(`File not found: ${parsed.file}`);
+          } catch (err) {
+            if (
+              err instanceof Error &&
+              'code' in err &&
+              err.code === 'ENOENT'
+            ) {
+              throw new Error(`File not found: ${parsed.file}`);
+            }
+            throw err;
           }
         }
 

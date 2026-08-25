@@ -7,7 +7,7 @@
  * configs with known extension mounts and handler-form mains.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -319,5 +319,106 @@ describe('rill-describe CLI', () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('handler.greet');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-process dispose-once tests
+//
+// Mocks @rcrsr/rill-config so runProject/runHandler exercise both error and
+// success paths against an in-memory project whose disposes are spied on,
+// verifying the single enclosing try/finally disposes exactly once per call
+// regardless of which return path is taken.
+// ---------------------------------------------------------------------------
+
+const disposeMocks = vi.hoisted(() => ({
+  resolveConfigPath: vi.fn(),
+  loadProject: vi.fn(),
+}));
+
+vi.mock('@rcrsr/rill-config', async (importActual) => {
+  const actual = await importActual<typeof import('@rcrsr/rill-config')>();
+  return {
+    ...actual,
+    resolveConfigPath: disposeMocks.resolveConfigPath,
+    loadProject: disposeMocks.loadProject,
+  };
+});
+
+describe('dispose-once (in-process, mocked project)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makeProjectWithDisposeSpy(
+    overrides: Partial<{ main: string }> = {}
+  ) {
+    const disposeSpy = vi.fn().mockResolvedValue(undefined);
+    const config: { main?: string } = {};
+    if (overrides.main !== undefined) {
+      config.main = overrides.main;
+    }
+    return {
+      disposeSpy,
+      project: {
+        config,
+        extTree: {},
+        disposes: [disposeSpy],
+        resolverConfig: { resolvers: {}, configurations: { resolvers: {} } },
+        hostOptions: {},
+        extensionBindings: '[:]',
+        contextBindings: '',
+      },
+    };
+  }
+
+  it('runProject disposes exactly once on the mount-not-found error path', async () => {
+    const { main } = await import('../../src/cli-describe.js');
+    disposeMocks.resolveConfigPath.mockReturnValue('/proj/rill-config.json');
+    const { disposeSpy, project } = makeProjectWithDisposeSpy();
+    disposeMocks.loadProject.mockResolvedValue(project);
+
+    const code = await main(['project', '--mount', 'missing']);
+
+    expect(code).toBe(1);
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('runProject disposes exactly once on the success path', async () => {
+    const { main } = await import('../../src/cli-describe.js');
+    disposeMocks.resolveConfigPath.mockReturnValue('/proj/rill-config.json');
+    const { disposeSpy, project } = makeProjectWithDisposeSpy();
+    disposeMocks.loadProject.mockResolvedValue(project);
+
+    const code = await main(['project']);
+
+    expect(code).toBe(0);
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('runHandler disposes exactly once on the no-main-field error path', async () => {
+    const { main } = await import('../../src/cli-describe.js');
+    disposeMocks.resolveConfigPath.mockReturnValue('/proj/rill-config.json');
+    const { disposeSpy, project } = makeProjectWithDisposeSpy();
+    disposeMocks.loadProject.mockResolvedValue(project);
+
+    const code = await main(['handler']);
+
+    expect(code).toBe(1);
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('runHandler disposes exactly once when main is not a handler reference', async () => {
+    const { main } = await import('../../src/cli-describe.js');
+    disposeMocks.resolveConfigPath.mockReturnValue('/proj/rill-config.json');
+    const { disposeSpy, project } = makeProjectWithDisposeSpy({
+      main: 'index.rill',
+    });
+    disposeMocks.loadProject.mockResolvedValue(project);
+
+    const code = await main(['handler']);
+
+    expect(code).toBe(1);
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
   });
 });

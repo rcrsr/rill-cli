@@ -79,7 +79,7 @@ describe('formatError', () => {
       expect(result).toContain(' 1 | "start" => $begin');
       expect(result).toContain(' 2 | $begin -> .upper => $upper');
       expect(result).toContain(' 3 | $foo -> .len');
-      expect(result).toContain('   |   ^^^^');
+      expect(result).toContain('   |  ^^^^');
       expect(result).toContain(' 4 | end');
     });
 
@@ -440,6 +440,18 @@ describe('formatError', () => {
 
 describe('renderCaretUnderline', () => {
   describe('IR-7: Single char shows ^', () => {
+    it('renders no padding for a span starting at column 1', () => {
+      const span: SourceSpan = {
+        start: { line: 1, column: 1, offset: 0 },
+        end: { line: 1, column: 2, offset: 1 },
+      };
+      const lineContent = 'hello world';
+
+      const result = renderCaretUnderline(span, lineContent);
+
+      expect(result).toBe('^'); // column 1 is the first character: 0 spaces
+    });
+
     it('renders single caret for single character span', () => {
       const span: SourceSpan = {
         start: { line: 1, column: 5, offset: 5 },
@@ -449,7 +461,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('     ^');
+      expect(result).toBe('    ^'); // 4 spaces (column 5 - 1) + 1 caret
     });
   });
 
@@ -463,7 +475,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('  ^^^^'); // 2 spaces + 4 carets
+      expect(result).toBe(' ^^^^'); // 1 space (column 2 - 1) + 4 carets
     });
 
     it('handles zero-width span as single caret', () => {
@@ -475,7 +487,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('   ^'); // 3 spaces + 1 caret (minimum)
+      expect(result).toBe('  ^'); // 2 spaces (column 3 - 1) + 1 caret (minimum)
     });
   });
 
@@ -489,7 +501,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('      ^^^^^'); // 6 spaces + 5 carets (from col 6 to end)
+      expect(result).toBe('     ^^^^^'); // 5 spaces (column 6 - 1) + 5 carets (from col 6 to end)
     });
   });
 
@@ -537,8 +549,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('          ^'); // 10 spaces + 1 caret
-      expect(result.length).toBe(lineContent.length); // Underline should align
+      expect(result).toBe('         ^'); // 9 spaces (column 10 - 1) + 1 caret
     });
 
     it('renders caret at very end of line (past last char)', () => {
@@ -550,7 +561,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('    ^'); // 4 spaces + 1 caret
+      expect(result).toBe('   ^'); // 3 spaces (column 4 - 1) + 1 caret
     });
   });
 
@@ -588,7 +599,7 @@ describe('renderCaretUnderline', () => {
 
       const result = renderCaretUnderline(span, lineContent);
 
-      expect(result).toBe('   ^^^^^^^'); // 3 spaces + 7 carets
+      expect(result).toBe('  ^^^^^^^'); // 2 spaces (column 3 - 1) + 7 carets
     });
   });
 });

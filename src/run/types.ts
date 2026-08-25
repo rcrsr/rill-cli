@@ -13,6 +13,7 @@ export interface RunCliOptions {
   readonly scriptPath?: string | undefined;
   readonly scriptArgs: string[];
   readonly config: string;
+  readonly resolvedConfigPath?: string | undefined;
   readonly format: 'human' | 'json' | 'compact';
   readonly verbose: boolean;
   readonly maxStackDepth: number;

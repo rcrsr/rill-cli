@@ -172,5 +172,17 @@ describe('rill-eval CLI flags', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain('5');
     });
+
+    it('treats a leading negative number as an expression, not a flag', () => {
+      const result = run(['-5 + 3']);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('-2');
+    });
+
+    it('still rejects an unknown long-form flag like --bogus', () => {
+      const result = run(['--bogus']);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Unknown option: --bogus');
+    });
   });
 });

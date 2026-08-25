@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeTmpDir } from '../helpers/cli-fixtures.js';
 import { builtinHarness } from '../../src/harness/builtin.js';
-import { BuildError } from '../../src/build/build.js';
+import { BuildError, buildPackage } from '../../src/build/build.js';
 import type {
   CompiledPackage,
   PostBuildContext,
@@ -58,12 +58,32 @@ function makeCompiledPackage(
   };
 }
 
-function writeHandlerJs(outputDir: string, mount: string, exitCode = 0): void {
+/**
+ * Write a handler.js fixture that mirrors the named-export lifecycle
+ * contract build.ts's generateHandlerSource emits (describe/init/execute/
+ * dispose) — never a default export. `result` is returned verbatim from
+ * execute(); the sentinel log line lets tests assert the handler actually
+ * ran and observe the args it received.
+ */
+function writeHandlerJs(
+  outputDir: string,
+  mount: string,
+  result: unknown = 0
+): void {
   const pkgDir = path.join(outputDir, mount);
   fs.mkdirSync(pkgDir, { recursive: true });
   fs.writeFileSync(
     path.join(pkgDir, 'handler.js'),
-    `export default async function(args) { console.log(${JSON.stringify(mount + '-ran')}, JSON.stringify(args)); return ${exitCode}; }\n`,
+    [
+      `export function describe() { return null; }`,
+      `export async function init() {}`,
+      `export async function execute(request) {`,
+      `  console.log(${JSON.stringify(mount + '-ran')}, JSON.stringify(request.params));`,
+      `  return { state: 'completed', result: ${JSON.stringify(result)}, streamed: false };`,
+      `}`,
+      `export async function dispose() {}`,
+      ``,
+    ].join('\n'),
     'utf-8'
   );
 }
@@ -314,12 +334,21 @@ describe('builtinHarness.serve dispatch', () => {
     expect(exitCode).toBe(0);
   });
 
-  it('forwards ctx.args to the dispatched handler', async () => {
+  it('forwards ctx.args to the dispatched handler, mapped to request.params via describe()', async () => {
     const pkgDir = path.join(tmpDir, 'alpha');
     fs.mkdirSync(pkgDir, { recursive: true });
     fs.writeFileSync(
       path.join(pkgDir, 'handler.js'),
-      `export default async function(args) { return args.length === 2 && args[0] === 'a' && args[1] === 'b' ? 0 : 1; }\n`,
+      [
+        `export function describe() { return { params: [{ name: 'first' }, { name: 'second' }] }; }`,
+        `export async function init() {}`,
+        `export async function execute(request) {`,
+        `  const ok = request.params.first === 'a' && request.params.second === 'b';`,
+        `  return { state: 'completed', result: ok ? 0 : false, streamed: false };`,
+        `}`,
+        `export async function dispose() {}`,
+        ``,
+      ].join('\n'),
       'utf-8'
     );
     const packages = [makeCompiledPackage('alpha', tmpDir)];
@@ -331,6 +360,26 @@ describe('builtinHarness.serve dispatch', () => {
     const exitCode = await builtinHarness.serve!(ctx);
 
     expect(exitCode).toBe(0);
+  });
+
+  it('returns exit code 1 when the handler result is false', async () => {
+    writeHandlerJs(tmpDir, 'alpha', false);
+    const packages = [makeCompiledPackage('alpha', tmpDir)];
+    const ctx = makeServeContext(packages, { requestedMount: 'alpha' });
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(1);
+  });
+
+  it('returns exit code 1 when the handler result is an empty string', async () => {
+    writeHandlerJs(tmpDir, 'alpha', '');
+    const packages = [makeCompiledPackage('alpha', tmpDir)];
+    const ctx = makeServeContext(packages, { requestedMount: 'alpha' });
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(1);
   });
 });
 
@@ -379,14 +428,8 @@ describe('emitted main.js dispatch', () => {
       expect(result.status).toBe(0);
     });
 
-    it('exits with the non-zero code returned by the handler', async () => {
-      // Write a handler that returns exit code 42
-      fs.mkdirSync(path.join(tmpDir, 'alpha'), { recursive: true });
-      fs.writeFileSync(
-        path.join(tmpDir, 'alpha', 'handler.js'),
-        `export default async function(args) { return 42; }\n`,
-        'utf-8'
-      );
+    it('exits 1 when the handler result is false', async () => {
+      writeHandlerJs(tmpDir, 'alpha', false);
       const packages = [makeCompiledPackage('alpha', tmpDir)];
       const ctx = makePostBuildContext(tmpDir, packages);
       await builtinHarness.postBuild!(ctx);
@@ -400,7 +443,25 @@ describe('emitted main.js dispatch', () => {
         }
       );
 
-      expect(result.status).toBe(42);
+      expect(result.status).toBe(1);
+    });
+
+    it('exits 1 when the handler result is an empty string', async () => {
+      writeHandlerJs(tmpDir, 'alpha', '');
+      const packages = [makeCompiledPackage('alpha', tmpDir)];
+      const ctx = makePostBuildContext(tmpDir, packages);
+      await builtinHarness.postBuild!(ctx);
+
+      const result = spawnSync(
+        process.execPath,
+        [path.join(tmpDir, 'main.js'), 'alpha'],
+        {
+          cwd: tmpDir,
+          encoding: 'utf-8',
+        }
+      );
+
+      expect(result.status).toBe(1);
     });
   });
 
@@ -469,5 +530,114 @@ describe('emitted main.js dispatch', () => {
       expect(result.stderr).toContain('beta');
       expect(result.status).not.toBe(0);
     });
+  });
+});
+
+// ============================================================
+// real build.ts output: dispatchByMount/serve run an actual
+// generateHandlerSource + runtime.js pair, not a hand-written mirror
+// ============================================================
+
+/**
+ * Initialize the .rill/npm/package.json marker so buildPackage's
+ * bootstrap pre-check passes. Mirrors tests/build/build.test.ts's
+ * initRillNpm helper.
+ */
+function initRillNpm(projectDir: string): void {
+  const rillNpmDir = path.join(projectDir, '.rill', 'npm');
+  fs.mkdirSync(rillNpmDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(rillNpmDir, 'package.json'),
+    JSON.stringify({ name: 'rill-extensions', private: true }, null, 2),
+    'utf-8'
+  );
+}
+
+/**
+ * Build a real rill package via build.ts's buildPackage() — the same
+ * function tests/build/build.test.ts exercises — so the handler.js and
+ * runtime.js fed into dispatchByMount/serve below are actual
+ * generateHandlerSource/generateRuntimeSource output, not a hand-written
+ * mirror of the lifecycle contract.
+ */
+async function buildRealPackage(
+  mount: string,
+  outputParentDir: string,
+  createdDirs: string[]
+): Promise<CompiledPackage> {
+  const projectDir = makeTmpDir();
+  createdDirs.push(projectDir);
+  initRillNpm(projectDir);
+  fs.writeFileSync(
+    path.join(projectDir, 'rill-config.json'),
+    JSON.stringify({
+      name: mount,
+      version: '1.0.0',
+      main: 'main.rill:greet',
+    }),
+    'utf-8'
+  );
+  fs.writeFileSync(
+    path.join(projectDir, 'main.rill'),
+    '|name: string| { $name } => $greet',
+    'utf-8'
+  );
+
+  const result = await buildPackage(projectDir, {
+    outputDir: outputParentDir,
+  });
+
+  return {
+    mount,
+    packageName: mount,
+    packageDir: outputParentDir,
+    buildOutput: result,
+  };
+}
+
+describe('dispatchByMount/serve against real buildPackage output', () => {
+  let tmpDir: string;
+  let createdDirs: string[];
+  let originalCwd: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    createdDirs = [];
+    originalCwd = process.cwd();
+  });
+
+  afterEach(() => {
+    // The real handler.js's init() does `process.chdir(__dirname)` as part
+    // of its production single-process-per-worker contract (mirrors
+    // generateHandlerSource in src/build/build.ts) — restore the real
+    // process cwd before deleting the temp dirs it may still be sitting in,
+    // otherwise a later test's process.cwd() call fails with ENOENT.
+    process.chdir(originalCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    for (const dir of createdDirs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs a real generateHandlerSource/runtime.js pair through serve() and returns the closure result', async () => {
+    const pkg = await buildRealPackage('greeter', tmpDir, createdDirs);
+    const ctx = makeServeContext([pkg], {
+      requestedMount: 'greeter',
+      args: ['world'],
+    });
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('rejects with BuildError phase harness when the real build output handler.js is missing', async () => {
+    const pkg = await buildRealPackage('greeter', tmpDir, createdDirs);
+    await fsPromises.rm(path.join(pkg.buildOutput.outputPath, 'handler.js'));
+    const ctx = makeServeContext([pkg], { requestedMount: 'greeter' });
+
+    await expect(builtinHarness.serve!(ctx)).rejects.toSatisfy(
+      (err: unknown) => err instanceof BuildError && err.phase === 'harness'
+    );
   });
 });

@@ -35,10 +35,13 @@ function parseArgs(
     return { mode: 'help' };
   }
 
-  // Check for unknown flags (anything starting with -)
+  // Check for unknown flags. Only tokens that look like flags (`--foo` or
+  // `-x`) are treated as flags; `-5` and similar negative-number-leading
+  // expressions fall through to eval mode instead of erroring.
   const knownFlags = new Set(['--help', '-h']);
   for (const arg of argv) {
-    if (arg.startsWith('-') && arg !== '-' && !knownFlags.has(arg)) {
+    const looksLikeFlag = arg.startsWith('--') || /^-[A-Za-z]/.test(arg);
+    if (looksLikeFlag && !knownFlags.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
     }
   }

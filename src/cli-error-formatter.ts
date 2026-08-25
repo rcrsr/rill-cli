@@ -549,7 +549,7 @@ export function renderCaretUnderline(
   }
 
   // Build underline: spaces before, carets for the span
-  const padding = ' '.repeat(startColumn);
+  const padding = ' '.repeat(Math.max(0, startColumn - 1));
   const caretCount = Math.max(1, endColumn - startColumn);
   const carets = '^'.repeat(caretCount);
 

@@ -743,6 +743,7 @@ describe('install', () => {
       expect(out).toContain('[dry-run] mount: datetime');
       expect(out).toContain('[dry-run] specifier: @rcrsr/rill-ext-datetime');
       expect(out).toContain('[dry-run] would run: npm install');
+      expect(out).not.toContain('role is finalized at install time');
     });
   });
 
@@ -852,6 +853,309 @@ describe('install', () => {
       const err = cap.stderr.join('');
       expect(err).toContain('rill-config.json not found');
       expect(err).toContain("Run 'rill init'");
+    });
+  });
+
+  // ============================================================
+  // W-1 / #62: local package name preferred over derived mount basename
+  // ============================================================
+
+  describe('local package name preferred over derived mount basename', () => {
+    it('records the harness by its package.json name, not the directory basename, in a bundle', async () => {
+      const localHarnessDir = path.join(tmpDir, 'local-harness');
+      fs.mkdirSync(localHarnessDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(localHarnessDir, 'package.json'),
+        JSON.stringify({
+          name: 'custom-harness-name',
+          version: '1.0.0',
+          rill: { role: 'harness' },
+        }),
+        'utf8'
+      );
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'rill-bundle.json'),
+        JSON.stringify(
+          {
+            name: 'test-bundle',
+            version: '1.0.0',
+            packages: [{ mount: 'app', project: 'packages/app' }],
+          },
+          null,
+          2
+        ) + '\n',
+        'utf8'
+      );
+      bootstrapProject(tmpDir);
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./local-harness']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      const bundleConfig = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
+      ) as { harness?: string };
+      expect(bundleConfig.harness).toBe('custom-harness-name');
+      expect(cap.stdout.join('')).toContain(
+        "Harness 'custom-harness-name' recorded"
+      );
+    });
+  });
+
+  // ============================================================
+  // W-1 / #61-1: writeBundleHarness BundleConfigError is caught, not thrown
+  // ============================================================
+
+  describe('writeBundleHarness failure surfaces as a ✗-prefixed error, not a stack trace', () => {
+    it('exits 1 with a ✗-prefixed message and no raw stack trace when the write fails', async () => {
+      const localHarnessDir = path.join(tmpDir, 'local-harness');
+      fs.mkdirSync(localHarnessDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(localHarnessDir, 'package.json'),
+        JSON.stringify({
+          name: 'custom-harness-name',
+          version: '1.0.0',
+          rill: { role: 'harness' },
+        }),
+        'utf8'
+      );
+
+      fs.writeFileSync(
+        path.join(tmpDir, 'rill-bundle.json'),
+        JSON.stringify(
+          {
+            name: 'test-bundle',
+            version: '1.0.0',
+            packages: [{ mount: 'app', project: 'packages/app' }],
+          },
+          null,
+          2
+        ) + '\n',
+        'utf8'
+      );
+      bootstrapProject(tmpDir);
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+      // Force the rill-bundle.json write inside writeBundleHarness to fail
+      // with EACCES by making the file read-only; readRawBundleJson (a read)
+      // still succeeds, so the collision pre-check passes and only the write
+      // itself fails.
+      const bundleJsonPath = path.join(tmpDir, 'rill-bundle.json');
+      fs.chmodSync(bundleJsonPath, 0o444);
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['./local-harness']);
+      } finally {
+        cap.restore();
+        fs.chmodSync(bundleJsonPath, 0o644);
+      }
+
+      expect(exitCode).toBe(1);
+      const stderr = cap.stderr.join('');
+      expect(stderr).toMatch(/^✗ /);
+      expect(stderr).not.toContain('at ');
+    });
+  });
+
+  // ============================================================
+  // W-1 / #61-2: package-mode readConfigSnapshot guard (missing config)
+  // ============================================================
+
+  describe('package-mode install with rill-config.json missing', () => {
+    it('exits 1 with the bootstrap-hint message, verbatim, before any npm call', async () => {
+      // Bootstrap .rill/npm/ only; rill-config.json is never written.
+      const rillNpm = path.join(tmpDir, '.rill', 'npm');
+      fs.mkdirSync(rillNpm, { recursive: true });
+      fs.writeFileSync(
+        path.join(rillNpm, 'package.json'),
+        '{"name":"rill-extensions","private":true}\n',
+        'utf8'
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      const err = cap.stderr.join('');
+      expect(err).toContain('✗ rill-config.json not found');
+      expect(err).toContain("Run 'rill init'");
+      expect(mocks.spawn).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // W-1 / #61-3: malformed rill-config.json surfaces as ConfigParseError
+  // ============================================================
+
+  describe('malformed rill-config.json surfaces as a ConfigParseError, not a raw SyntaxError', () => {
+    it('exits 1 with a ✗-prefixed parse error before any npm call', async () => {
+      bootstrapProject(tmpDir);
+      fs.writeFileSync(
+        path.join(tmpDir, 'rill-config.json'),
+        '{ not valid json',
+        'utf8'
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      const err = cap.stderr.join('');
+      expect(err).toMatch(/^✗ /);
+      expect(err).toContain('Failed to parse');
+      expect(mocks.spawn).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // W-1 / #65g: single-file source rejects --for and --role
+  // ============================================================
+
+  describe('single-file source rejects --for and --role', () => {
+    it('exits 1 without touching rill-config.json when --for is passed', async () => {
+      bootstrapProject(tmpDir);
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+      const configBefore = fs.readFileSync(
+        path.join(tmpDir, 'rill-config.json'),
+        'utf8'
+      );
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([
+          './extensions/crawler.ts',
+          '--as',
+          'crawler',
+          '--for',
+          'app',
+        ]);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        '--for/--role are not valid for single-file sources'
+      );
+      const configAfter = fs.readFileSync(
+        path.join(tmpDir, 'rill-config.json'),
+        'utf8'
+      );
+      expect(configAfter).toBe(configBefore);
+    });
+
+    it('exits 1 when --role is passed', async () => {
+      bootstrapProject(tmpDir);
+      const extPath = path.join(tmpDir, 'extensions', 'crawler.ts');
+      fs.mkdirSync(path.dirname(extPath), { recursive: true });
+      fs.writeFileSync(extPath, 'export default {};', 'utf8');
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([
+          './extensions/crawler.ts',
+          '--as',
+          'crawler',
+          '--role',
+          'extension',
+        ]);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        '--for/--role are not valid for single-file sources'
+      );
+    });
+  });
+
+  // ============================================================
+  // W-1 / #65g: --dry-run preview echoes --for and --role
+  // ============================================================
+
+  describe('--dry-run preview echoes the effective --for target and --role', () => {
+    it('prints [dry-run] for/role lines and a role-finalizes-at-install-time note', async () => {
+      bootstrapProject(tmpDir);
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run([
+          '@rcrsr/rill-ext-datetime',
+          '--dry-run',
+          '--for',
+          'app',
+          '--role',
+          'harness',
+        ]);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+      expect(mocks.spawn).not.toHaveBeenCalled();
+      const out = cap.stdout.join('');
+      expect(out).toContain('[dry-run] for: app');
+      expect(out).toContain('[dry-run] role: harness');
+      expect(out).toContain('role is finalized at install time');
+    });
+  });
+
+  // ============================================================
+  // W-1 / #65j: --exact deprecation warning names 0.21, not 0.20
+  // ============================================================
+
+  describe('--exact deprecation warning names the removal version 0.21', () => {
+    it('warns with "removed in 0.21"', async () => {
+      bootstrapProject(tmpDir);
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      try {
+        await run(['@rcrsr/rill-ext-datetime', '--exact']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(cap.stderr.join('')).toContain('removed in 0.21');
+      expect(cap.stderr.join('')).not.toContain('removed in 0.20');
     });
   });
 });

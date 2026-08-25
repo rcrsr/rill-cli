@@ -464,7 +464,7 @@ describe('install (bundle-aware)', () => {
 
       expect(exitCode).toBe(1);
       expect(cap.stderr.join('')).toContain(
-        `Bundle already has a harness declared: ${existingHarness}. Run \`rill uninstall ${existingHarness}\` first, or use \`rill install ${newHarness} --replace\` to swap harnesses.`
+        `Bundle already has a harness declared: ${existingHarness}. Run \`rill uninstall --harness\` first, or use \`rill install ${newHarness} --replace\` to swap harnesses.`
       );
 
       // Config files must be byte-identical (no writes occurred)

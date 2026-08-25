@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { parseArgs, executeScript } from '../../src/cli-exec.js';
+import { parseArgs, executeScript, main } from '../../src/cli-exec.js';
 import { formatError, determineExitCode } from '../../src/cli-shared.js';
 import { ParseError, RuntimeError } from '@rcrsr/rill';
 import { LexerError } from '@rcrsr/rill';
@@ -233,6 +233,15 @@ describe('rill-exec', () => {
       );
     });
 
+    it('surfaces the original error message for a directory, not a rewritten "File not found"', async () => {
+      // fs.access() succeeds on a directory (it exists and is accessible),
+      // so the ENOENT-only rewrite must not fire here; the original error
+      // (EISDIR, thrown by fs.readFile) should propagate unmodified.
+      await expect(executeScript(tempDir, [])).rejects.toMatchObject({
+        code: 'EISDIR',
+      });
+    });
+
     it('propagates parse errors', async () => {
       const script = await writeScript('parse-err.rill', '|x| x }');
       await expect(executeScript(script, [])).rejects.toThrow(ParseError);
@@ -395,6 +404,42 @@ describe('rill-exec', () => {
     it('uses first element as exit code for arrays starting with 0 or 1', () => {
       expect(determineExitCode([0, 123])).toEqual({ code: 0 });
       expect(determineExitCode([1, 2, 3])).toEqual({ code: 1 });
+    });
+  });
+
+  describe('main() file-not-found vs. other fs errors', () => {
+    it('surfaces the original EISDIR error, not a rewritten "File not found", when the target is a directory', async () => {
+      const stderrChunks: string[] = [];
+      const origStderr = console.error;
+      console.error = (msg: string) => {
+        stderrChunks.push(msg);
+      };
+
+      try {
+        const code = await main([tempDir]);
+        expect(code).toBe(1);
+        const combined = stderrChunks.join('\n');
+        expect(combined).not.toContain('File not found');
+        expect(combined).toMatch(/EISDIR/);
+      } finally {
+        console.error = origStderr;
+      }
+    });
+
+    it('rewrites a genuinely missing file to "File not found"', async () => {
+      const stderrChunks: string[] = [];
+      const origStderr = console.error;
+      console.error = (msg: string) => {
+        stderrChunks.push(msg);
+      };
+
+      try {
+        const code = await main([path.join(tempDir, 'does-not-exist.rill')]);
+        expect(code).toBe(1);
+        expect(stderrChunks.join('\n')).toContain('File not found');
+      } finally {
+        console.error = origStderr;
+      }
     });
   });
 

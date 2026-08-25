@@ -25,12 +25,14 @@ import {
   extractPackageName,
   isLocalPath,
   looksLikeLocalFilePath,
+  readLocalPackageName,
 } from './mount-derive.js';
 import {
   readConfigSnapshot,
   applyMountEdit,
   hasMount,
   ConfigNotFoundError,
+  ConfigParseError,
   ConfigWriteError,
 } from './config-edit.js';
 import { npmInstall, npmView, NpmNotFoundError } from './npm-runner.js';
@@ -70,7 +72,7 @@ Options:
   --as <mount>         Override the mount path (default: derived from package name).
                        Required when <pkg-or-path> is a single-file source.
   --pin                Record exact installed version (no caret). Registry installs only.
-  --exact              Deprecated alias for --pin (will be removed in 0.20).
+  --exact              Deprecated alias for --pin (will be removed in 0.21).
   --range <semver>     Record a custom semver range verbatim. Registry installs only.
   --dry-run            Print what would be done without writing config or running npm.
   --for <mount>        Target package mount to install an extension into (bundle mode).
@@ -115,6 +117,10 @@ async function installLocalFile(opts: {
       process.stderr.write(
         "  Run 'rill init' first to initialize the project\n"
       );
+      return 1;
+    }
+    if (err instanceof ConfigParseError) {
+      process.stderr.write(`✗ ${err.message}\n`);
       return 1;
     }
     throw err;
@@ -288,7 +294,7 @@ export async function run(argv: string[]): Promise<number> {
   // P2-1: --exact is deprecated; warn once before continuing.
   if (values['exact'] === true) {
     process.stderr.write(
-      'warning: --exact is deprecated, use --pin (will be removed in 0.20)\n'
+      'warning: --exact is deprecated, use --pin (will be removed in 0.21)\n'
     );
   }
 
@@ -329,6 +335,12 @@ export async function run(argv: string[]): Promise<number> {
     if (pin || rangeArg !== undefined) {
       process.stderr.write(
         '✗ --pin/--exact/--range are not valid for single-file sources\n'
+      );
+      return 1;
+    }
+    if (forMount !== undefined || roleFlag !== undefined) {
+      process.stderr.write(
+        '✗ --for/--role are not valid for single-file sources\n'
       );
       return 1;
     }
@@ -379,7 +391,22 @@ export async function run(argv: string[]): Promise<number> {
   let kind: 'add' | 'overwrite' = 'add';
 
   if (bundleRoot === null) {
-    snapshot = await readConfigSnapshot(projectDir);
+    try {
+      snapshot = await readConfigSnapshot(projectDir);
+    } catch (err) {
+      if (err instanceof ConfigNotFoundError) {
+        process.stderr.write('✗ rill-config.json not found\n');
+        process.stderr.write(
+          "  Run 'rill init' first to initialize the project\n"
+        );
+        return 1;
+      }
+      if (err instanceof ConfigParseError) {
+        process.stderr.write(`✗ ${err.message}\n`);
+        return 1;
+      }
+      throw err;
+    }
     const mountExists = hasMount(snapshot, mount);
     if (mountExists && asOverride === undefined) {
       process.stderr.write(`✗ Mount path '${mount}' already exists\n`);
@@ -414,10 +441,21 @@ export async function run(argv: string[]): Promise<number> {
     }
     process.stdout.write(`[dry-run] mount: ${mount}\n`);
     process.stdout.write(`[dry-run] specifier: ${specifier}\n`);
+    if (forMount !== undefined) {
+      process.stdout.write(`[dry-run] for: ${forMount}\n`);
+    }
+    if (roleFlag !== undefined) {
+      process.stdout.write(`[dry-run] role: ${roleFlag}\n`);
+    }
     process.stdout.write(
       `[dry-run] would write to rill-config.json: extensions.mounts.${mount} = "${plannedValue}"\n`
     );
     process.stdout.write(`[dry-run] would run: ${plannedNpm}\n`);
+    if (forMount !== undefined || roleFlag !== undefined) {
+      process.stdout.write(
+        'ℹ role is finalized at install time from the package manifest (--role overrides it)\n'
+      );
+    }
     return 0;
   }
 
@@ -533,8 +571,9 @@ export async function run(argv: string[]): Promise<number> {
   let pkgName: string;
 
   if (local) {
-    // For local path, derive package name from the mount (basename of path)
-    pkgName = mount;
+    // For local path, prefer the package's declared name from its own
+    // package.json; fall back to the derived mount when absent.
+    pkgName = readLocalPackageName(specifier, projectDir) ?? mount;
   } else {
     pkgName = extractPackageName(specifier);
 
@@ -731,12 +770,20 @@ async function applyBundleInstall(opts: {
 
     if (bundleConfig.harness !== undefined && !replaceFlag) {
       process.stderr.write(
-        `Bundle already has a harness declared: ${bundleConfig.harness}. Run \`rill uninstall ${bundleConfig.harness}\` first, or use \`rill install ${pkgName} --replace\` to swap harnesses.\n`
+        `Bundle already has a harness declared: ${bundleConfig.harness}. Run \`rill uninstall --harness\` first, or use \`rill install ${pkgName} --replace\` to swap harnesses.\n`
       );
       return 1;
     }
 
-    await writeBundleHarness(bundleRoot, pkgName);
+    try {
+      await writeBundleHarness(bundleRoot, pkgName);
+    } catch (err) {
+      if (err instanceof BundleConfigError) {
+        process.stderr.write(`✗ ${err.message}\n`);
+        return 1;
+      }
+      throw err;
+    }
     process.stdout.write(
       `✓ Harness '${pkgName}' recorded in rill-bundle.json\n`
     );
@@ -754,6 +801,10 @@ async function applyBundleInstall(opts: {
       process.stderr.write(
         `✗ rill-config.json not found in target package directory: ${targetPackageDir}\n`
       );
+      return 1;
+    }
+    if (err instanceof ConfigParseError) {
+      process.stderr.write(`✗ ${err.message}\n`);
       return 1;
     }
     throw err;

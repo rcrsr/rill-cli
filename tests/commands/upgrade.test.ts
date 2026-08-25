@@ -453,6 +453,59 @@ describe('upgrade', () => {
   });
 
   // ============================================================
+  // W-1 / #65i: rollback-write failure is reported, not silently swallowed
+  // ============================================================
+
+  describe('rollback-write failure after a validation failure', () => {
+    it('exits 1 and reports the rollback failure instead of a false ✓ Rolled back', async () => {
+      bootstrapProject(tmpDir, {
+        datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
+      });
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+
+      mocks.spawn.mockImplementation(
+        makeUpgradeSpawnMock(prefix, '@rcrsr/rill-ext-datetime', '0.20.1')
+      );
+      mocks.loadProject.mockRejectedValue(
+        new Error('factory rejected: incompatible API')
+      );
+
+      const origWriteFile = fs.promises.writeFile.bind(fs.promises);
+      let writeCallCount = 0;
+      const writeSpy = vi
+        .spyOn(fs.promises, 'writeFile')
+        .mockImplementation(
+          async (...args: Parameters<typeof origWriteFile>) => {
+            writeCallCount++;
+            // First write = the edit itself; let it through. Second write =
+            // the rollback attempt; fail it to simulate the disk going
+            // read-only mid-rollback.
+            if (writeCallCount === 1) {
+              return origWriteFile(...args);
+            }
+            throw new Error('EACCES: rollback write denied');
+          }
+        );
+
+      const { run } = await import('../../src/commands/upgrade.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['datetime']);
+      } finally {
+        cap.restore();
+        writeSpy.mockRestore();
+      }
+
+      expect(exitCode).toBe(1);
+      const err = cap.stderr.join('');
+      expect(err).toContain('Config validation failed');
+      expect(err).toContain('✗ Rollback failed');
+      expect(err).not.toContain('✓ Rolled back rill-config.json');
+    });
+  });
+
+  // ============================================================
   // P2-3: Pinned mount no-op
   // ============================================================
 
@@ -532,6 +585,8 @@ describe('upgrade', () => {
         cap.restore();
       }
       expect(cap.stderr.join('')).toContain('--exact is deprecated');
+      expect(cap.stderr.join('')).toContain('removed in 0.21');
+      expect(cap.stderr.join('')).not.toContain('removed in 0.20');
     });
   });
 

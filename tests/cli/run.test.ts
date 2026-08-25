@@ -3,6 +3,8 @@
  * Tests parseCliArgs flag parsing and the loadProject-based main() flow.
  */
 
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { parseCliArgs } from '../../src/cli-run.js';
@@ -249,44 +251,24 @@ describe('parseCliArgs', () => {
   });
 
   describe('--help flag', () => {
-    it('exits 0 when --help is provided', () => {
-      vi.spyOn(process, 'exit').mockImplementation((_code) => {
+    it('returns a help sentinel for --help without calling process.exit', () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
         throw new Error('process.exit called');
       });
 
-      let stdout = '';
-      const origStdout = process.stdout.write.bind(process.stdout);
-      (process.stdout.write as unknown) = (chunk: string) => {
-        stdout += chunk;
-        return true;
-      };
-
-      try {
-        expect(() => parseCliArgs(['--help'])).toThrow('process.exit called');
-        expect(stdout).toContain('Usage:');
-      } finally {
-        (process.stdout.write as unknown) = origStdout;
-      }
+      const opts = parseCliArgs(['--help']);
+      expect(opts).toEqual({ help: true });
+      expect(exitSpy).not.toHaveBeenCalled();
     });
 
-    it('exits 0 when -h is provided', () => {
-      vi.spyOn(process, 'exit').mockImplementation((_code) => {
+    it('returns a help sentinel for -h without calling process.exit', () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
         throw new Error('process.exit called');
       });
 
-      let stdout = '';
-      const origStdout = process.stdout.write.bind(process.stdout);
-      (process.stdout.write as unknown) = (chunk: string) => {
-        stdout += chunk;
-        return true;
-      };
-
-      try {
-        expect(() => parseCliArgs(['-h'])).toThrow('process.exit called');
-        expect(stdout).toContain('Usage:');
-      } finally {
-        (process.stdout.write as unknown) = origStdout;
-      }
+      const opts = parseCliArgs(['-h']);
+      expect(opts).toEqual({ help: true });
+      expect(exitSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -789,6 +771,150 @@ describe('main() loadProject flow', () => {
         cwd: string;
       };
       expect(callArg?.configFlag).toBeUndefined();
+    });
+  });
+
+  describe('--help in main() (in-process, no exit)', () => {
+    it('returns 0 and writes USAGE to stdout without calling process.exit', async () => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_c) => {
+        throw new Error('process.exit called');
+      });
+
+      await runMain(['--help']);
+
+      expect(exitCode).toBe(0);
+      expect(stdoutChunks.join('')).toContain('Usage: rill run');
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('--explain flag', () => {
+    it('returns 1 when explainError finds no documentation for an unknown code', async () => {
+      await runMain(['--explain', 'UNKNOWN']);
+
+      expect(exitCode).toBe(1);
+      expect(stderrChunks.join('')).toContain('Invalid error ID: UNKNOWN');
+    });
+  });
+
+  describe('bundle mode unsupported flags (= form)', () => {
+    it('rejects --format=json in bundle mode with exit 1', async () => {
+      const bundleDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'rill-run-bundle-')
+      );
+      fs.writeFileSync(
+        path.join(bundleDir, 'rill-bundle.json'),
+        JSON.stringify({ packages: [] }) + '\n'
+      );
+
+      try {
+        await runMain([bundleDir, '--format=json']);
+
+        expect(exitCode).toBe(1);
+        expect(stderrChunks.join('')).toContain('--format');
+      } finally {
+        fs.rmSync(bundleDir, { recursive: true });
+      }
+    });
+  });
+
+  describe('handler-mode exit code via determineExitCode', () => {
+    function makeHandlerProject() {
+      return {
+        config: { main: 'script.rill:myHandler' },
+        extTree: {},
+        disposes: [],
+        resolverConfig: { resolvers: {}, configurations: { resolvers: {} } },
+        hostOptions: {},
+        extensionBindings: '[:]',
+        contextBindings: '',
+      };
+    }
+
+    beforeEach(() => {
+      mocks.readFileSync.mockReturnValue('# script source');
+      mocks.parse.mockReturnValue({ type: 'Script', body: [] });
+      mocks.execute.mockResolvedValue(undefined);
+      mocks.isScriptCallable.mockReturnValue(true);
+      mocks.isStream.mockReturnValue(false);
+
+      const variables = new Map<string, unknown>();
+      const fakeHandler = { __type: 'ScriptCallable' };
+      variables.set('myHandler', fakeHandler);
+      mocks.createRuntimeContext.mockReturnValue({
+        variables,
+        get pipeValue() {
+          return undefined;
+        },
+        set pipeValue(_v: unknown) {},
+      });
+
+      mocks.parseMainField.mockImplementation((main: string) => {
+        const idx = main.indexOf(':');
+        return {
+          filePath: main.slice(0, idx),
+          handlerName: main.slice(idx + 1),
+        };
+      });
+      mocks.introspectHandler.mockReturnValue({
+        description: undefined,
+        params: [],
+      });
+      mocks.marshalCliArgs.mockReturnValue({});
+    });
+
+    it('uses the tuple [1, "x"] as a non-zero exit code via determineExitCode, not the old always-0 truthy check', async () => {
+      mocks.loadProject.mockResolvedValue(makeHandlerProject());
+      mocks.invokeCallable.mockResolvedValue({
+        __rill_tuple: true,
+        entries: [1, 'x'],
+      });
+
+      await runMain([]);
+
+      expect(exitCode).not.toBe(0);
+      expect(exitCode).toBe(1);
+      expect(stdoutChunks.join('')).toContain('x');
+    });
+
+    it('exits 1 when the handler result is an invalid (guard-recovered) value', async () => {
+      mocks.loadProject.mockResolvedValue(makeHandlerProject());
+
+      // Build a real guard-recovered Invalid RillValue (carrying the
+      // Symbol-keyed status sidecar isInvalid checks for) via the actual
+      // parser/runtime, not a mock — a plain `false` never carries the
+      // sidecar and would only re-exercise the falsy-truthy exit-code
+      // path, not Invalid handling.
+      const rill =
+        await vi.importActual<typeof import('@rcrsr/rill')>('@rcrsr/rill');
+      const invalidAst = rill.parse(
+        'guard { "not a number" -> number } => $inv'
+      );
+      const invalidCtx = rill.createRuntimeContext({});
+      await rill.execute(invalidAst, invalidCtx);
+      const invalidValue = invalidCtx.variables.get('inv');
+      expect(rill.isInvalid(invalidValue)).toBe(true);
+
+      mocks.invokeCallable.mockResolvedValue(invalidValue);
+
+      await runMain([]);
+
+      expect(exitCode).not.toBe(0);
+      expect(exitCode).toBe(1);
+    });
+
+    it('disposes project.disposes exactly once when the handler throws', async () => {
+      const dispose = vi.fn().mockResolvedValue(undefined);
+      mocks.loadProject.mockResolvedValue({
+        ...makeHandlerProject(),
+        disposes: [dispose],
+      });
+      mocks.invokeCallable.mockRejectedValue(new Error('handler exploded'));
+
+      await runMain([]);
+
+      expect(exitCode).toBe(1);
+      expect(dispose).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -137,7 +137,7 @@ describe('rill-check CLI', () => {
 
       proc.on('close', (code) => {
         resolve({
-          exitCode: code ?? 0,
+          exitCode: code ?? 1,
           stdout,
           stderr,
         });
@@ -768,7 +768,7 @@ $data2 -> log
             stderr += d.toString();
           });
           proc.on('close', (code) => {
-            resolve({ exitCode: code ?? 0, stdout, stderr });
+            resolve({ exitCode: code ?? 1, stdout, stderr });
           });
         });
       }
@@ -1136,9 +1136,13 @@ $data2 -> log
     // code stays 0, and the diagnostic still prints (the change is not silent).
     describe('--fix interaction with --min-severity', () => {
       it('applies a below-threshold fix and still exits 0 under --min-severity error', async () => {
+        // UNNECESSARY_ASSERTION (info, fixable) is applied and removed by
+        // --fix. THROWAWAY_CAPTURE (info, fix: null) on `$dead` has no fix
+        // payload, so it survives the fix pass and is what's left to print
+        // once residual diagnostics are recomputed from the fixed source.
         const script = await writeFile(
           'fix-below-threshold.rill',
-          '42:number\n'
+          '42:number\n"foo" => $dead\n"bar" -> log\n'
         );
 
         const result = await execCheck([
@@ -1148,14 +1152,63 @@ $data2 -> log
           script,
         ]);
 
-        // Info-level diagnostic is below the error threshold, so exit is 0.
+        // Info-level diagnostics are below the error threshold, so exit is 0.
         expect(result.exitCode).toBe(0);
         // The fix is applied and written despite being below the threshold.
-        expect(fssync.readFileSync(script, 'utf-8')).toBe('42\n');
+        expect(fssync.readFileSync(script, 'utf-8')).not.toContain(':number');
         expect(result.stderr).toContain('Applied 1 fix');
-        // The change is not silent: the diagnostic still prints.
+        // The change is not silent: the residual diagnostic still prints.
         expect(result.stdout).toContain('info:');
-        expect(result.stdout).toContain('UNNECESSARY_ASSERTION');
+        expect(result.stdout).toContain('THROWAWAY_CAPTURE');
+        expect(result.stdout).not.toContain('UNNECESSARY_ASSERTION');
+      });
+    });
+
+    // Regression: after --fix rewrites the file, the exit code and printed
+    // diagnostics must reflect the *fixed* source, not the pre-fix list
+    // captured before applyFixes ran.
+    describe('--fix recomputes residual diagnostics from the fixed source', () => {
+      it('all-fixable + --fix exits 0 and reports "No issues found"', async () => {
+        // UNNECESSARY_ASSERTION (info) has a fix that removes the
+        // redundant `:number` entirely, leaving nothing else to report.
+        const script = await writeFile('fix-all-clean.rill', '1:number\n');
+
+        const result = await execCheck([
+          '--fix',
+          '--min-severity',
+          'info',
+          script,
+        ]);
+
+        expect(fssync.readFileSync(script, 'utf-8')).toBe('1\n');
+        expect(result.stderr).toContain('Applied 1 fix');
+        expect(result.stdout).toContain('No issues found');
+        expect(result.stdout).not.toContain('UNNECESSARY_ASSERTION');
+        expect(result.exitCode).toBe(0);
+      });
+
+      it('mixed fixable + unfixable: --fix exits 1 and reports only the residual unfixable diagnostic', async () => {
+        // UNNECESSARY_ASSERTION (info, fixable) is removed by --fix;
+        // THROWAWAY_CAPTURE (info, fix: null) on `$dead` survives the fix
+        // pass because it has no fix payload to apply.
+        const script = await writeFile(
+          'fix-mixed.rill',
+          '1:number\n"foo" => $dead\n"bar" -> log\n'
+        );
+
+        const result = await execCheck([
+          '--fix',
+          '--min-severity',
+          'info',
+          script,
+        ]);
+
+        const fixedSource = fssync.readFileSync(script, 'utf-8');
+        expect(fixedSource).not.toContain(':number');
+        expect(result.stderr).toContain('Applied 1 fix');
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).toContain('THROWAWAY_CAPTURE');
+        expect(result.stdout).not.toContain('UNNECESSARY_ASSERTION');
       });
     });
 
@@ -1480,12 +1533,13 @@ $raw -> log
         'utf-8'
       );
       const runRulesCalls = cliCheckSource.match(/\brunRules\(/g) ?? [];
-      // Exactly one call site: the diagnostics passed to applySeverityOverlay
-      // inside checkFile. A "relocate the old engine behind a new name"
-      // implementation would either add a second call site or, more likely,
-      // dispatch rules itself via a `.validate(` loop instead of calling the
-      // service at all.
-      expect(runRulesCalls).toHaveLength(1);
+      // Exactly two call sites, both inside checkFile: the initial
+      // diagnostics passed to applySeverityOverlay, and the post-fix
+      // recompute that reruns runRules against the fixed source once
+      // --fix has written it. Both still delegate to the service; a
+      // "relocate the old engine behind a new name" implementation would
+      // instead dispatch rules itself via a `.validate(` loop.
+      expect(runRulesCalls).toHaveLength(2);
       expect(cliCheckSource).not.toMatch(/\.validate\(/);
     });
 
@@ -1968,5 +2022,110 @@ $raw -> log
         .sort();
       expect(uncovered).toEqual([]);
     });
+  });
+
+  // ============================================================
+  // --types --format json: LARGE tsc OUTPUT
+  //
+  // Regression for the exit -> close switch in runTypeCheck: `exit` can
+  // fire before a piped stdout stream has finished draining, which risks
+  // resolving (and the process moving on) before all of tsc's diagnostics
+  // have reached our stderr. `close` fires only once stdio is fully
+  // flushed, so a large diagnostic volume must arrive complete.
+  // ============================================================
+
+  describe('--types --format json with a large tsc diagnostic volume', () => {
+    it('captures every tsc diagnostic and keeps the lint JSON envelope parseable', async () => {
+      const typesDir = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'rill-check-types-large-')
+      );
+      try {
+        // Reuse this repository's installed TypeScript compiler by linking
+        // its whole node_modules/ into the isolated project directory, so
+        // runTypeCheck's own resolution (cwd/node_modules/.bin/tsc) finds
+        // the binary and the binary in turn resolves its own package (the
+        // tsc launcher requires typescript/bin/tsc via a path relative to
+        // node_modules/, not to __dirname, so a bare .bin/tsc symlink is
+        // not enough).
+        await fs.symlink(
+          path.join(process.cwd(), 'node_modules'),
+          path.join(typesDir, 'node_modules')
+        );
+
+        await fs.writeFile(
+          path.join(typesDir, 'tsconfig.json'),
+          JSON.stringify({
+            compilerOptions: {
+              target: 'ES2020',
+              module: 'ES2020',
+              moduleResolution: 'bundler',
+              strict: true,
+              noEmit: true,
+            },
+            include: ['errors.ts'],
+          }),
+          'utf-8'
+        );
+
+        // One TS2322 diagnostic per line, produced in a single file so
+        // the compiler stays fast while the diagnostic count stays large.
+        const errorCount = 150;
+        const lines: string[] = [];
+        for (let i = 0; i < errorCount; i++) {
+          lines.push(`const value${i}: number = "not a number ${i}";`);
+        }
+        await fs.writeFile(
+          path.join(typesDir, 'errors.ts'),
+          lines.join('\n') + '\n',
+          'utf-8'
+        );
+
+        const result = await new Promise<{
+          exitCode: number;
+          stdout: string;
+          stderr: string;
+        }>((resolve) => {
+          const cliPath = path.join(process.cwd(), 'dist', 'cli.js');
+          const env = { ...process.env };
+          delete env['VITEST'];
+          delete env['VITEST_WORKER_ID'];
+          delete env['NODE_ENV'];
+          const proc = spawn(
+            'node',
+            [cliPath, 'check', '--types', '--format', 'json'],
+            { cwd: typesDir, env }
+          );
+          let stdout = '';
+          let stderr = '';
+          proc.stdout.on('data', (d) => {
+            stdout += d.toString();
+          });
+          proc.stderr.on('data', (d) => {
+            stderr += d.toString();
+          });
+          proc.on('close', (code) => {
+            resolve({ exitCode: code ?? 1, stdout, stderr });
+          });
+        });
+
+        // The lint pass's own JSON envelope (no *.rill files here) must
+        // remain a single, complete, parseable document even while a large
+        // volume of tsc output is concurrently piped to stderr.
+        const parsed = JSON.parse(result.stdout) as {
+          files: unknown[];
+          summary: { files: number };
+        };
+        expect(parsed.files).toEqual([]);
+        expect(parsed.summary.files).toBe(0);
+
+        // Every one of the errorCount diagnostics must have reached
+        // stderr; a truncated pipe would report fewer than errorCount.
+        const matches = result.stderr.match(/error TS2322/g) ?? [];
+        expect(matches).toHaveLength(errorCount);
+        expect(result.exitCode).not.toBe(0);
+      } finally {
+        await fs.rm(typesDir, { recursive: true, force: true });
+      }
+    }, 30000);
   });
 });

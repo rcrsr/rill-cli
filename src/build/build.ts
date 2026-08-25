@@ -1,5 +1,12 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { mkdir, rm, writeFile, copyFile } from 'node:fs/promises';
+import {
+  mkdir,
+  rm,
+  writeFile,
+  copyFile,
+  readdir,
+  readFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -164,6 +171,159 @@ export function findOffendingDynamicRequires(bundled: string): string[] {
   if (offending.size === 0) return [];
   if (REQUIRE_WIRING.test(bundled)) return [];
   return [...offending].sort();
+}
+
+// ============================================================
+// FLAT OUTPUT DIR OWNERSHIP GUARD
+// ============================================================
+
+/**
+ * Marker file written into a `--flat` output directory on a successful
+ * build, recording the top-level entries this build wrote. A later build
+ * targeting the same directory reads it to distinguish "previously built by
+ * this tool" (safe to clean up and overwrite) from "someone else's
+ * directory" (refuse to touch).
+ */
+const BUILD_MARKER_FILENAME = '.rill-build.json';
+
+interface BuildMarker {
+  readonly owned: readonly string[];
+}
+
+/**
+ * True when `entry` is a single path segment safe to join under a build
+ * output dir and remove — no path separators, no `..` traversal, and not
+ * empty. Guards `removeEntries` against a corrupted or tampered marker file
+ * (e.g. `owned: ['../../something']`) reaching outside the dir it owns.
+ */
+function isSafeMarkerEntry(entry: string): boolean {
+  return (
+    entry.length > 0 &&
+    entry !== '.' &&
+    entry !== '..' &&
+    !entry.includes('/') &&
+    !entry.includes('\\')
+  );
+}
+
+/**
+ * Read and validate the build-ownership marker in `dir`. Returns undefined
+ * when the marker is absent or malformed — callers treat that as
+ * "not build-owned".
+ */
+async function readBuildMarker(dir: string): Promise<BuildMarker | undefined> {
+  try {
+    const raw = await readFile(path.join(dir, BUILD_MARKER_FILENAME), 'utf-8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as Record<string, unknown>)['owned']) &&
+      (parsed as Record<string, unknown>)['owned'] &&
+      (parsed as { owned: unknown[] }).owned.every(
+        (e) => typeof e === 'string' && isSafeMarkerEntry(e)
+      )
+    ) {
+      return { owned: (parsed as { owned: string[] }).owned };
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Remove a fixed list of top-level entries (files or directories) from
+ * `dir`, tolerating entries that no longer exist. Never touches anything
+ * else in `dir`, so it never wipes content it doesn't own.
+ */
+async function removeEntries(
+  dir: string,
+  entries: readonly string[]
+): Promise<void> {
+  await Promise.all(
+    entries.map((entry) =>
+      rm(path.join(dir, entry), { recursive: true, force: true }).catch(
+        () => undefined
+      )
+    )
+  );
+}
+
+/**
+ * Prepare a `--flat` build's output directory without ever `rm -rf`-ing the
+ * whole `--output` directory. Creates it if missing. If it already exists
+ * and is non-empty, requires a build-ownership marker from a previous build
+ * — refusing to clobber a directory that was not produced by this tool —
+ * and, when owned, removes only the artifacts that previous build recorded.
+ */
+async function ensureFlatOutputDir(dir: string): Promise<void> {
+  try {
+    await mkdir(dir, { recursive: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new BuildError(
+      `Cannot write to output directory ${dir}: ${msg}`,
+      'bundling'
+    );
+  }
+
+  const entries = await readdir(dir);
+  if (entries.length === 0) {
+    return;
+  }
+
+  const marker = await readBuildMarker(dir);
+  if (marker === undefined) {
+    throw new BuildError(
+      `Refusing to overwrite non-empty --output dir ${dir}; pass an empty or previously-built directory`,
+      'bundling'
+    );
+  }
+
+  await removeEntries(dir, marker.owned);
+  await rm(path.join(dir, BUILD_MARKER_FILENAME), { force: true }).catch(
+    () => undefined
+  );
+}
+
+/**
+ * On a failed `--flat` build, clean up only the artifacts this attempt
+ * wrote — never anything that was already sitting in the directory before
+ * this attempt started (`preExistingEntries`, captured right after
+ * `ensureFlatOutputDir` and before any new file was written).
+ */
+async function cleanupFlatOutputDirAfterFailure(
+  dir: string,
+  preExistingEntries: ReadonlySet<string>
+): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return;
+  }
+  await removeEntries(
+    dir,
+    entries.filter((e) => !preExistingEntries.has(e))
+  );
+}
+
+/**
+ * Record the top-level entries a successful `--flat` build wrote, so a
+ * later build targeting the same directory can recognize it as build-owned
+ * and safely clean it up.
+ */
+async function writeBuildMarker(dir: string): Promise<void> {
+  const entries = await readdir(dir);
+  const marker: BuildMarker = {
+    owned: entries.filter((e) => e !== BUILD_MARKER_FILENAME),
+  };
+  await writeFile(
+    path.join(dir, BUILD_MARKER_FILENAME),
+    JSON.stringify(marker, null, 2),
+    'utf-8'
+  );
 }
 
 /**
@@ -689,15 +849,27 @@ export async function buildPackage(
   const packageOutDir = flat
     ? absOutputDir
     : path.join(absOutputDir, packageName);
-  try {
-    await rm(packageOutDir, { recursive: true, force: true });
-    await mkdir(packageOutDir, { recursive: true });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new BuildError(
-      `Cannot write to output directory ${packageOutDir}: ${msg}`,
-      'bundling'
-    );
+  // In --flat mode, entries already present right after ensureFlatOutputDir
+  // (e.g. content dropped into an already build-owned dir between builds)
+  // are never this attempt's own — failure cleanup must leave them alone.
+  let flatPreExistingEntries: ReadonlySet<string> = new Set();
+  if (flat) {
+    // --flat writes directly into the caller-supplied --output dir: never
+    // rm -rf it wholesale. Only clean up entries a previous build of this
+    // tool recorded as its own (see ensureFlatOutputDir).
+    await ensureFlatOutputDir(packageOutDir);
+    flatPreExistingEntries = new Set(await readdir(packageOutDir));
+  } else {
+    try {
+      await rm(packageOutDir, { recursive: true, force: true });
+      await mkdir(packageOutDir, { recursive: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BuildError(
+        `Cannot write to output directory ${packageOutDir}: ${msg}`,
+        'bundling'
+      );
+    }
   }
 
   // Step: Build package files (copy .rill, compile extensions, write initial rill-config.json)
@@ -743,9 +915,18 @@ export async function buildPackage(
     ) {
       // Validation skipped: will be validated at runtime by the harness
     } else {
-      await rm(packageOutDir, { recursive: true, force: true }).catch(
-        () => undefined
-      );
+      if (flat) {
+        // Same ownership guard as ensureFlatOutputDir: clean up only this
+        // attempt's own artifacts, never the whole --output dir.
+        await cleanupFlatOutputDirAfterFailure(
+          packageOutDir,
+          flatPreExistingEntries
+        );
+      } else {
+        await rm(packageOutDir, { recursive: true, force: true }).catch(
+          () => undefined
+        );
+      }
       const msg = err instanceof Error ? err.message : String(err);
       throw new BuildError(`Bundle validation failed: ${msg}`, 'validation');
     }
@@ -904,6 +1085,12 @@ export async function buildPackage(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new BuildError(`Cannot write handler.js: ${msg}`, 'bundling');
+  }
+
+  if (flat) {
+    // Record this build's artifacts so a later build targeting the same
+    // --output dir can recognize it as build-owned and safely overwrite it.
+    await writeBuildMarker(packageOutDir);
   }
 
   return {

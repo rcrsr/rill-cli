@@ -965,19 +965,103 @@ describe('buildPackage --flat option', () => {
     expect(existsSync(path.join(result.outputPath, 'main.rill'))).toBe(true);
   });
 
-  it('cleans outputDir itself (not a subdir) before writing when flat: true', async () => {
+  it('refuses to build into a non-empty, non-build-owned --output dir and leaves it untouched [--flat]', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    // Write a stale file into outputDir; flat build must wipe it
-    const staleFile = path.join(outputDir, 'stale.txt');
-    await import('node:fs/promises').then(({ writeFile }) =>
-      writeFile(staleFile, 'old', 'utf-8')
+    // Write a file into outputDir that this tool never produced.
+    const unrelatedFile = path.join(outputDir, 'unrelated.txt');
+    await writeFile(unrelatedFile, 'not mine', 'utf-8');
+
+    await expect(
+      buildPackage(projectDir, { outputDir, flat: true })
+    ).rejects.toSatisfy(
+      (err: unknown) =>
+        err instanceof BuildError &&
+        err.phase === 'bundling' &&
+        err.message.includes('Refusing to overwrite non-empty --output dir')
     );
 
+    // The unrelated file must survive — the dir was never wiped.
+    expect(existsSync(unrelatedFile)).toBe(true);
+    const content = await readFile(unrelatedFile, 'utf-8');
+    expect(content).toBe('not mine');
+  });
+
+  it('refuses to build into a dir whose marker owns an entry outside the dir [--flat]', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    // Seed a corrupted/tampered marker claiming ownership of a path outside
+    // outputDir. A prior build never writes an entry like this — this
+    // simulates tampering, not a real build artifact.
+    await writeFile(path.join(outputDir, 'unrelated.txt'), 'not mine', 'utf-8');
+    await writeFile(
+      path.join(outputDir, '.rill-build.json'),
+      JSON.stringify({ owned: ['../../something'] }),
+      'utf-8'
+    );
+
+    await expect(
+      buildPackage(projectDir, { outputDir, flat: true })
+    ).rejects.toSatisfy(
+      (err: unknown) =>
+        err instanceof BuildError &&
+        err.phase === 'bundling' &&
+        err.message.includes('Refusing to overwrite non-empty --output dir')
+    );
+
+    // Nothing outside outputDir was touched, and the unrelated file survives.
+    expect(existsSync(path.join(outputDir, 'unrelated.txt'))).toBe(true);
+  });
+
+  it('succeeds building into an empty --output dir [--flat]', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    const result = await buildPackage(projectDir, { outputDir, flat: true });
+
+    expect(existsSync(path.join(result.outputPath, 'rill-config.json'))).toBe(
+      true
+    );
+  });
+
+  it('succeeds building a second time into a directory this tool already owns [--flat]', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    await buildPackage(projectDir, { outputDir, flat: true });
+    // Second build into the same, now build-owned, directory must succeed.
+    const result = await buildPackage(projectDir, { outputDir, flat: true });
+
+    expect(existsSync(path.join(result.outputPath, 'rill-config.json'))).toBe(
+      true
+    );
+  });
+
+  it('leaves an unrelated file untouched when validation fails on a build-owned dir [--flat]', async () => {
+    const { projectDir, outputDir } = await makeProjectFixture();
+
+    // Seed a prior successful flat build so outputDir is build-owned.
     await buildPackage(projectDir, { outputDir, flat: true });
 
-    // Stale file must be gone — outputDir was cleaned before build
-    expect(existsSync(staleFile)).toBe(false);
+    // Drop an unrelated file into the now build-owned directory — this must
+    // survive even though the directory is recognized as build-owned.
+    const unrelatedFile = path.join(outputDir, 'unrelated.txt');
+    await writeFile(unrelatedFile, 'not mine', 'utf-8');
+
+    // Force the dry-run loadProject() call to reject with a generic error
+    // (not ConfigEnvError/ExtensionLoadError), which buildPackage treats as
+    // an unrecoverable validation failure rather than a runtime-deferred one.
+    mocks.loadProject.mockRejectedValueOnce(
+      new Error('simulated dry-run failure')
+    );
+
+    await expect(
+      buildPackage(projectDir, { outputDir, flat: true })
+    ).rejects.toSatisfy(
+      (err: unknown) => err instanceof BuildError && err.phase === 'validation'
+    );
+
+    expect(existsSync(unrelatedFile)).toBe(true);
+    const content = await readFile(unrelatedFile, 'utf-8');
+    expect(content).toBe('not mine');
   });
 
   it('flat: false (default) nests output under package-name subdir', async () => {

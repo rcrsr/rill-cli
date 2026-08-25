@@ -588,4 +588,111 @@ describe('uninstall', () => {
       });
     });
   });
+
+  // ============================================================
+  // W-1 / #62: local-dir package name round-trip
+  // ============================================================
+
+  describe('local-dir mount uninstall derives the npm package name from package.json', () => {
+    it('uninstalls by the declared package.json name, not the mount name', async () => {
+      const localExtDir = path.join(tmpDir, 'my-ext');
+      fs.mkdirSync(localExtDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(localExtDir, 'package.json'),
+        JSON.stringify({ name: 'actual-pkg-name', version: '1.0.0' }),
+        'utf8'
+      );
+
+      bootstrapProject(tmpDir, { myext: './my-ext' });
+      const prefix = path.join(tmpDir, '.rill', 'npm');
+      writeInstalledPkg(prefix, 'actual-pkg-name', '1.0.0');
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+      const { run } = await import('../../src/commands/uninstall.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['myext']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(0);
+
+      const uninstallCall = mocks.spawn.mock.calls.find(
+        (call) => (call[1] as string[])[0] === 'uninstall'
+      );
+      expect(uninstallCall).toBeDefined();
+      expect(uninstallCall?.[1]).toEqual([
+        'uninstall',
+        'actual-pkg-name',
+        '--prefix',
+        prefix,
+      ]);
+    });
+  });
+
+  // ============================================================
+  // W-1 / #65h: install's harness-conflict hint points at `rill uninstall --harness`
+  // ============================================================
+
+  describe('install harness-conflict hint round-trips through `rill uninstall --harness`', () => {
+    it('the hint names the --harness flag, and running it removes the declared harness', async () => {
+      const existingHarness = 'existing-harness-pkg-u2';
+      bootstrapBundle(tmpDir, {
+        harness: existingHarness,
+        packages: [{ mount: 'app', project: 'packages/app' }],
+      });
+      const bundlePrefix = path.join(tmpDir, '.rill', 'npm');
+      writeInstalledPkg(bundlePrefix, existingHarness, '1.0.0');
+
+      mocks.spawn.mockImplementation((_cmd: string, args: string[]) => {
+        const stdout = new EventEmitter();
+        const child = Object.assign(new EventEmitter(), { stdout });
+        process.nextTick(() => {
+          if (args[0] === 'view') {
+            stdout.emit(
+              'data',
+              Buffer.from(JSON.stringify({ role: 'harness' }))
+            );
+          } else {
+            writeInstalledPkg(bundlePrefix, 'new-harness-pkg-u2', '1.0.0');
+          }
+          child.emit('close', 0);
+        });
+        return child;
+      });
+
+      const { run: installRun } = await import('../../src/commands/install.js');
+      const installCap = captureOutput();
+      let installExitCode: number;
+      try {
+        installExitCode = await installRun(['new-harness-pkg-u2']);
+      } finally {
+        installCap.restore();
+      }
+
+      expect(installExitCode).toBe(1);
+      expect(installCap.stderr.join('')).toContain('rill uninstall --harness');
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+      const { run: uninstallRun } =
+        await import('../../src/commands/uninstall.js');
+      const uninstallCap = captureOutput();
+      let uninstallExitCode: number;
+      try {
+        uninstallExitCode = await uninstallRun(['--harness']);
+      } finally {
+        uninstallCap.restore();
+      }
+
+      expect(uninstallExitCode).toBe(0);
+      const bundleConfig = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, 'rill-bundle.json'), 'utf8')
+      ) as { harness?: string };
+      expect(bundleConfig).not.toHaveProperty('harness');
+    });
+  });
 });

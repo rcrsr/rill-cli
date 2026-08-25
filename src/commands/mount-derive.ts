@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -94,4 +95,31 @@ export function deriveMount(specifier: string, asOverride?: string): string {
   }
 
   return specifier;
+}
+
+/**
+ * Reads the `name` field from a local package's package.json.
+ *
+ * Resolves `<resolve(projectDir, specifier)>/package.json` and returns its
+ * `name` field, or `undefined` when the file is missing, unreadable, invalid
+ * JSON, or has no string `name` field. Callers fall back to the derived mount
+ * name in that case.
+ */
+export function readLocalPackageName(
+  specifier: string,
+  projectDir: string
+): string | undefined {
+  const pkgJsonPath = path.join(
+    path.resolve(projectDir, specifier),
+    'package.json'
+  );
+  let pkgJson: Record<string, unknown>;
+  try {
+    const text = fs.readFileSync(pkgJsonPath, 'utf8');
+    pkgJson = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  const name = pkgJson['name'];
+  return typeof name === 'string' && name !== '' ? name : undefined;
 }

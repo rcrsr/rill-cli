@@ -15,8 +15,10 @@ import {
   execute,
   createRuntimeContext,
   invokeCallable,
+  isInvalid,
   isScriptCallable,
   isStream,
+  toNative,
   VERSION,
   type RuntimeOptions,
   type RillStream,
@@ -33,7 +35,11 @@ import {
   ConfigError,
   type HandlerParam,
 } from '@rcrsr/rill-config';
-import { detectHelpVersionFlag } from './cli-shared.js';
+import {
+  detectHelpVersionFlag,
+  determineExitCode,
+  formatStatus,
+} from './cli-shared.js';
 import { detectBundleAtCwd } from './bundle/config.js';
 import { runBundleServe } from './commands/bundle-run.js';
 import { resolvePrefix } from './commands/prefix.js';
@@ -123,11 +129,10 @@ function extractCreateBindings(argv: string[]): {
 
 export function parseCliArgs(
   argv: string[] = process.argv.slice(2)
-): RunCliOptions & { rootDir?: string | undefined } {
+): (RunCliOptions & { rootDir?: string | undefined }) | { help: true } {
   const helpVersionFlag = detectHelpVersionFlag(argv);
   if (helpVersionFlag !== null && helpVersionFlag.mode === 'help') {
-    process.stdout.write(USAGE + '\n');
-    process.exit(0);
+    return { help: true };
   }
 
   const { filteredArgv, createBindings } = extractCreateBindings(argv);
@@ -261,13 +266,21 @@ export async function main(argv: string[]): Promise<number> {
 
   const opts = parseCliArgs(argv);
 
+  if ('help' in opts) {
+    process.stdout.write(USAGE + '\n');
+    return 0;
+  }
+
   if (opts.explain !== undefined) {
     const doc = explainError(opts.explain);
-    if (doc !== null) {
-      process.stdout.write(doc + '\n');
-    } else {
-      process.stdout.write(`${opts.explain}: No documentation available.\n`);
+    if (doc === null) {
+      process.stderr.write(`Invalid error ID: ${opts.explain}\n`);
+      process.stderr.write(
+        'Error ID must be in format RILL-{L|P|R|C}{3-digit}, e.g., RILL-R009\n'
+      );
+      return 1;
     }
+    process.stdout.write(doc + '\n');
     return 0;
   }
 
@@ -278,16 +291,21 @@ export async function main(argv: string[]): Promise<number> {
   // Bundle-mode detection: if rill-bundle.json exists at rootDir, delegate.
   if (detectBundleAtCwd(rootDir)) {
     // Bundle mode does not (yet) support the single-package flags below;
-    // reject explicitly rather than silently ignoring them.
+    // reject explicitly rather than silently ignoring them. Matches both
+    // the standalone form (`--format json`) and the `=`-joined form
+    // (`--format=json`).
+    const hasFlag = (flag: string): boolean =>
+      argv.some((a) => a === flag || a.startsWith(flag + '='));
+
     const unsupportedFlags = [
       hasExplicitConfig ? '--config' : null,
-      argv.includes('--format') ? '--format' : null,
-      argv.includes('--verbose') ? '--verbose' : null,
-      argv.includes('--max-stack-depth') ? '--max-stack-depth' : null,
-      argv.includes('--trace') ? '--trace' : null,
-      argv.includes('--no-trace') ? '--no-trace' : null,
-      argv.includes('--show-recovered') ? '--show-recovered' : null,
-      argv.includes('--atom-only') ? '--atom-only' : null,
+      hasFlag('--format') ? '--format' : null,
+      hasFlag('--verbose') ? '--verbose' : null,
+      hasFlag('--max-stack-depth') ? '--max-stack-depth' : null,
+      hasFlag('--trace') ? '--trace' : null,
+      hasFlag('--no-trace') ? '--no-trace' : null,
+      hasFlag('--show-recovered') ? '--show-recovered' : null,
+      hasFlag('--atom-only') ? '--atom-only' : null,
       opts.createBindings !== undefined ? '--create-bindings' : null,
     ].filter((flag): flag is string => flag !== null);
 
@@ -377,98 +395,143 @@ export async function main(argv: string[]): Promise<number> {
   const mainField = project.config.main;
   if (mainField !== undefined && mainField.includes(':')) {
     const { filePath, handlerName } = parseMainField(mainField);
-
     const absolutePath = resolve(rootDir, filePath);
-    let source: string;
+
+    // Single enclosing try/finally disposes project.disposes exactly once,
+    // covering every early-return path below (read/parse/execute/handler
+    // lookup/arg marshal/invocation), not just the final invocation.
     try {
-      source = readFileSync(absolutePath, 'utf-8');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      process.stderr.write(message + '\n');
-      return 1;
-    }
-
-    const formatErr = (err: unknown): string =>
-      formatHandlerError(err, source, absolutePath, opts);
-
-    let ast: ReturnType<typeof parse>;
-    try {
-      ast = parse(source);
-    } catch (err) {
-      process.stderr.write(formatErr(err) + '\n');
-      return 1;
-    }
-
-    const runtimeOptions: RuntimeOptions = {
-      ...project.resolverConfig,
-      parseSource: parse,
-      callbacks: {
-        onLog: (msg: string) => {
-          process.stdout.write(msg + '\n');
-        },
-      },
-      maxCallStackDepth: opts.maxStackDepth,
-    };
-
-    const ctx = createRuntimeContext(runtimeOptions);
-
-    try {
-      await execute(ast, ctx);
-    } catch (err) {
-      process.stderr.write(formatErr(err) + '\n');
-      return 1;
-    }
-
-    const handlerValue =
-      handlerName !== undefined ? ctx.variables.get(handlerName) : undefined;
-
-    if (handlerValue === undefined || !isScriptCallable(handlerValue)) {
-      process.stderr.write(
-        `Handler not found: $${handlerName ?? '(none)'} is not a closure\n`
-      );
-      return 1;
-    }
-
-    const introspection = introspectHandler(handlerValue);
-    const rawHandlerArgs = extractHandlerArgs(argv, introspection.params);
-
-    let handlerArgs: Record<string, unknown>;
-    try {
-      handlerArgs = marshalCliArgs(rawHandlerArgs, introspection.params);
-    } catch (err) {
-      if (err instanceof ConfigError) {
-        process.stderr.write(err.message + '\n');
+      let source: string;
+      try {
+        source = readFileSync(absolutePath, 'utf-8');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(message + '\n');
         return 1;
       }
-      throw err;
-    }
 
-    ctx.pipeValue = handlerArgs as unknown as import('@rcrsr/rill').RillValue;
+      const formatErr = (err: unknown): string =>
+        formatHandlerError(err, source, absolutePath, opts);
 
-    // Map handler args to positional args in param order so marshalArgs
-    // can bind them to the closure's declared parameters.
-    // Omitted optional params stay undefined so closure defaults hydrate.
-    // pipeValue is kept for zero-param closures that access $ directly.
-    const positionalArgs = introspection.params.map(
-      (p) =>
-        (Object.prototype.hasOwnProperty.call(handlerArgs, p.name)
-          ? handlerArgs[p.name]
-          : undefined) as unknown as import('@rcrsr/rill').RillValue
-    );
-
-    let handlerResult: import('@rcrsr/rill').RillValue;
-    let streamed = false;
-    try {
-      handlerResult = await invokeCallable(handlerValue, positionalArgs, ctx);
-      if (isStream(handlerResult)) {
-        streamed = true;
-        const writer = createStreamWriter(opts.format);
-        await drainStream(handlerResult as RillStream, ctx, writer.onChunk);
-        await writer.finalize();
+      let ast: ReturnType<typeof parse>;
+      try {
+        ast = parse(source);
+      } catch (err) {
+        process.stderr.write(formatErr(err) + '\n');
+        return 1;
       }
-    } catch (err) {
-      process.stderr.write(formatErr(err) + '\n');
-      return 1;
+
+      const runtimeOptions: RuntimeOptions = {
+        ...project.resolverConfig,
+        parseSource: parse,
+        callbacks: {
+          onLog: (msg: string) => {
+            process.stdout.write(msg + '\n');
+          },
+        },
+        maxCallStackDepth: opts.maxStackDepth,
+      };
+
+      const ctx = createRuntimeContext(runtimeOptions);
+
+      try {
+        await execute(ast, ctx);
+      } catch (err) {
+        process.stderr.write(formatErr(err) + '\n');
+        return 1;
+      }
+
+      const handlerValue =
+        handlerName !== undefined ? ctx.variables.get(handlerName) : undefined;
+
+      if (handlerValue === undefined || !isScriptCallable(handlerValue)) {
+        process.stderr.write(
+          `Handler not found: $${handlerName ?? '(none)'} is not a closure\n`
+        );
+        return 1;
+      }
+
+      const introspection = introspectHandler(handlerValue);
+      const rawHandlerArgs = extractHandlerArgs(argv, introspection.params);
+
+      let handlerArgs: Record<string, unknown>;
+      try {
+        handlerArgs = marshalCliArgs(rawHandlerArgs, introspection.params);
+      } catch (err) {
+        if (err instanceof ConfigError) {
+          process.stderr.write(err.message + '\n');
+          return 1;
+        }
+        throw err;
+      }
+
+      ctx.pipeValue = handlerArgs as unknown as import('@rcrsr/rill').RillValue;
+
+      // Map handler args to positional args in param order so marshalArgs
+      // can bind them to the closure's declared parameters.
+      // Omitted optional params stay undefined so closure defaults hydrate.
+      // pipeValue is kept for zero-param closures that access $ directly.
+      const positionalArgs = introspection.params.map(
+        (p) =>
+          (Object.prototype.hasOwnProperty.call(handlerArgs, p.name)
+            ? handlerArgs[p.name]
+            : undefined) as unknown as import('@rcrsr/rill').RillValue
+      );
+
+      let handlerResult: import('@rcrsr/rill').RillValue;
+      let streamed = false;
+      try {
+        handlerResult = await invokeCallable(handlerValue, positionalArgs, ctx);
+        if (isStream(handlerResult)) {
+          streamed = true;
+          const writer = createStreamWriter(opts.format);
+          await drainStream(handlerResult as RillStream, ctx, writer.onChunk);
+          await writer.finalize();
+        }
+      } catch (err) {
+        process.stderr.write(formatErr(err) + '\n');
+        return 1;
+      }
+
+      if (streamed) {
+        return 0;
+      }
+
+      // Guard-recovered Invalid returned (not thrown) from the handler:
+      // exit 1, render the status sidecar, and never fall through to
+      // determineExitCode, which only sees the plain native value and
+      // would silently drop the Invalid marker (e.g. a truthy string or
+      // dict payload reads as success). Mirrors cli-eval.ts and
+      // run/runner.ts's mapResultToRunResult.
+      if (isInvalid(handlerResult)) {
+        const formatted = formatStatus(
+          handlerResult,
+          {
+            format: opts.format === 'compact' ? 'human' : opts.format,
+            trace: opts.trace,
+            atomOnly: opts.atomOnly,
+          },
+          source,
+          absolutePath
+        );
+        process.stderr.write(formatted + '\n');
+        return 1;
+      }
+
+      const nativeResult = toNative(handlerResult);
+      const { code, message } = determineExitCode(nativeResult.value);
+
+      if (message !== undefined) {
+        process.stdout.write(message + '\n');
+      } else if (
+        handlerResult !== false &&
+        handlerResult !== '' &&
+        handlerResult !== undefined
+      ) {
+        const output = formatOutput(handlerResult, opts.format);
+        process.stdout.write(output + '\n');
+      }
+      return code;
     } finally {
       for (const dispose of project.disposes) {
         try {
@@ -478,19 +541,6 @@ export async function main(argv: string[]): Promise<number> {
         }
       }
     }
-
-    if (
-      !streamed &&
-      handlerResult !== false &&
-      handlerResult !== '' &&
-      handlerResult !== undefined
-    ) {
-      const output = formatOutput(handlerResult, opts.format);
-      process.stdout.write(output + '\n');
-    }
-    return !streamed && (handlerResult === false || handlerResult === '')
-      ? 1
-      : 0;
   }
 
   // Module mode: main field in config is required
@@ -507,6 +557,7 @@ export async function main(argv: string[]): Promise<number> {
   const runOpts: RunCliOptions = {
     ...opts,
     scriptPath,
+    resolvedConfigPath: configPath,
   };
 
   const runResult = await runScript(runOpts, project.config, project.extTree, [

@@ -86,10 +86,17 @@ describe('runScript', () => {
       expect(result.output).toBeUndefined();
     });
 
-    it('returns exit code from two-element tuple result', async () => {
-      const result = await runTempScript('tuple[42, "custom error"]');
-      expect(result.exitCode).toBe(42);
+    it('returns exit code from two-element tuple result when code is 0 or 1', async () => {
+      const result = await runTempScript('tuple[1, "custom error"]');
+      expect(result.exitCode).toBe(1);
       expect(result.output).toBe('custom error');
+    });
+
+    it('falls through to default output when tuple code is not 0 or 1', async () => {
+      const result = await runTempScript('tuple[42, "custom error"]');
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain('42');
+      expect(result.output).toContain('custom error');
     });
 
     it('returns exit 0 from two-element tuple result with code 0', async () => {
@@ -191,6 +198,40 @@ describe('runScript', () => {
         makeConfig()
       );
       expect(result.exitCode).toBe(1);
+    });
+
+    it('resolves a relative module alias against resolvedConfigPath, not cwd-resolved opts.config', async () => {
+      // opts.config stays the default relative './rill-config.json', which
+      // would resolve against process.cwd() (repo root during tests) and
+      // never find `utils/`. resolvedConfigPath points at a config nested
+      // in its own temp directory, simulating rill-run invoked from a
+      // different cwd than the config file lives in. Module resolution
+      // must use dirname(resolvedConfigPath), matching #58.
+      const configDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'rill-runner-nested-')
+      );
+      const moduleDir = path.join(configDir, 'utils');
+      fs.mkdirSync(moduleDir);
+      fs.writeFileSync(
+        path.join(moduleDir, 'helpers.rill'),
+        '"hello from helpers"',
+        'utf-8'
+      );
+      try {
+        const config = makeConfig({ modules: { utils: 'utils' } });
+        const result = await runTempScript(
+          'use<module:utils.helpers> => $h\n$h',
+          {
+            config: './rill-config.json',
+            resolvedConfigPath: path.join(configDir, 'rill-config.json'),
+          },
+          config
+        );
+        expect(result.exitCode).toBe(0);
+        expect(result.output).toBe('hello from helpers');
+      } finally {
+        fs.rmSync(configDir, { recursive: true });
+      }
     });
   });
 

@@ -60,9 +60,59 @@ function resolveMount(
 // DISPATCH BY MOUNT
 // ============================================================
 
+/** Introspected handler param, as returned by the handler module's describe(). */
+interface HandlerParamDescriptor {
+  readonly name: string;
+}
+
+/** Shape describe() returns: null when introspection was unavailable. */
+interface HandlerDescription {
+  readonly params?: readonly HandlerParamDescriptor[];
+}
+
+/** The handler lifecycle contract emitted by build.ts's generateHandlerSource. */
+interface HandlerModule {
+  readonly describe?: () => HandlerDescription | null;
+  readonly init: (context?: Record<string, unknown>) => Promise<void>;
+  readonly execute: (
+    request?: { params?: Record<string, unknown> },
+    context?: Record<string, unknown>
+  ) => Promise<{ result?: unknown; streamed?: boolean }>;
+  readonly dispose: () => Promise<void>;
+}
+
 /**
- * Routes a mount string to the compiled handler module, invokes its
- * default export with the provided args, and returns the numeric exit code.
+ * Map a positional args array onto a request.params dict, using the
+ * handler's introspected param names in declaration order. Mirrors the
+ * dict → positional mapping build.ts's execute() applies in the other
+ * direction (build.ts:1099-1105). Only attempted when the caller passes
+ * args; otherwise params stays empty, matching generateRunSource's
+ * `execute({ params: {} }, ...)` call.
+ */
+function buildRequestParams(
+  args: readonly string[],
+  describeFn: HandlerModule['describe']
+): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  if (args.length === 0 || typeof describeFn !== 'function') {
+    return params;
+  }
+  const desc = describeFn();
+  if (desc === null || desc === undefined || !Array.isArray(desc.params)) {
+    return params;
+  }
+  desc.params.forEach((p, i) => {
+    if (i < args.length) {
+      params[p.name] = args[i];
+    }
+  });
+  return params;
+}
+
+/**
+ * Routes a mount string to the compiled handler module, drives its
+ * init/execute/dispose lifecycle with the provided args, and returns the
+ * numeric exit code.
  *
  * On unknown mount, writes the standard error message to stderr and returns 1.
  * On missing handler file, throws BuildError with phase 'harness'.
@@ -94,19 +144,35 @@ async function dispatchByMount(
   await assertHandlerFile(handlerPath);
 
   const handlerUrl = pathToFileURL(handlerPath).href;
-  const mod = (await import(handlerUrl)) as {
-    default?: (args: string[]) => Promise<number> | number;
-  };
+  const mod = (await import(handlerUrl)) as Partial<HandlerModule>;
 
-  if (typeof mod.default !== 'function') {
+  if (
+    typeof mod.init !== 'function' ||
+    typeof mod.execute !== 'function' ||
+    typeof mod.dispose !== 'function'
+  ) {
     throw new BuildError(
-      `handler module at ${handlerPath} does not export a default function`,
+      `handler module at ${handlerPath} does not export the init/execute/dispose lifecycle`,
       'harness'
     );
   }
 
-  const result = await mod.default(args);
-  return typeof result === 'number' ? result : 0;
+  await mod.init({});
+  try {
+    const params = buildRequestParams(args, mod.describe);
+    const { result, streamed } = await mod.execute({ params });
+    if (
+      streamed !== true &&
+      result !== undefined &&
+      result !== '' &&
+      result !== false
+    ) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    }
+    return result === false || result === '' ? 1 : 0;
+  } finally {
+    await mod.dispose();
+  }
 }
 
 // ============================================================
@@ -127,19 +193,21 @@ async function postBuild(ctx: PostBuildContext): Promise<void> {
 
   logger.info('[builtin harness] emitting main.js');
 
-  // Build static import lines and handler registry.
+  // Build static import lines and handler registry — each package's
+  // handler.js exports the named lifecycle (describe/init/execute/dispose),
+  // never a default export (mirrors build.ts's generateHandlerSource).
   const importLines = packages
-    .map(
-      (pkg) =>
-        `import handler_${toSafeIdentifier(pkg.packageName)} from ${JSON.stringify(`./${pkg.packageName}/handler.js`)};`
-    )
+    .map((pkg) => {
+      const id = toSafeIdentifier(pkg.packageName);
+      return `import { describe as describe_${id}, init as init_${id}, execute as execute_${id}, dispose as dispose_${id} } from ${JSON.stringify(`./${pkg.packageName}/handler.js`)};`;
+    })
     .join('\n');
 
   const registryEntries = packages
-    .map(
-      (pkg) =>
-        `  ${JSON.stringify(pkg.mount)}: handler_${toSafeIdentifier(pkg.packageName)},`
-    )
+    .map((pkg) => {
+      const id = toSafeIdentifier(pkg.packageName);
+      return `  ${JSON.stringify(pkg.mount)}: { describe: describe_${id}, init: init_${id}, execute: execute_${id}, dispose: dispose_${id} },`;
+    })
     .join('\n');
 
   // Determine the fallback mount for when no argv mount is provided.
@@ -160,16 +228,33 @@ async function postBuild(ctx: PostBuildContext): Promise<void> {
     `};`,
     ``,
     `const mount = process.argv[2] ?? ${JSON.stringify(defaultMount)};`,
-    `const handler = registry[mount];`,
+    `const entry = registry[mount];`,
     ``,
-    `if (handler === undefined) {`,
+    `if (entry === undefined) {`,
     `  process.stderr.write(${unknownMountMessage('mount')} + '\\n');`,
     `  process.exit(1);`,
     `}`,
     ``,
     `const args = process.argv.slice(3);`,
-    `const exitCode = await handler(args);`,
-    `process.exit(typeof exitCode === 'number' ? exitCode : 0);`,
+    `await entry.init({});`,
+    `let exitCode = 0;`,
+    `try {`,
+    `  const params = {};`,
+    `  if (args.length > 0 && typeof entry.describe === 'function') {`,
+    `    const desc = entry.describe();`,
+    `    if (desc !== null && Array.isArray(desc.params)) {`,
+    `      desc.params.forEach((p, i) => { if (i < args.length) params[p.name] = args[i]; });`,
+    `    }`,
+    `  }`,
+    `  const result = await entry.execute({ params });`,
+    `  if (result.streamed !== true && result.result !== undefined && result.result !== '' && result.result !== false) {`,
+    `    process.stdout.write(JSON.stringify(result.result, null, 2) + '\\n');`,
+    `  }`,
+    `  exitCode = result.result === false || result.result === '' ? 1 : 0;`,
+    `} finally {`,
+    `  await entry.dispose();`,
+    `}`,
+    `process.exit(exitCode);`,
   ].join('\n');
 
   const mainFile = path.join(outputDir, 'main.js');

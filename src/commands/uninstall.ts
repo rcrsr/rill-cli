@@ -13,7 +13,13 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadProject } from '@rcrsr/rill-config';
 import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
-import { readConfigSnapshot, hasMount, applyMountEdit } from './config-edit.js';
+import {
+  readConfigSnapshot,
+  hasMount,
+  applyMountEdit,
+  ConfigNotFoundError,
+  ConfigParseError,
+} from './config-edit.js';
 import { npmUninstall, NpmNotFoundError } from './npm-runner.js';
 import {
   isLocalPath,
@@ -71,8 +77,10 @@ Options:
  *
  * - Registry specifier (e.g. "@rcrsr/rill-ext-datetime@^0.19.0"): strip the
  *   trailing version qualifier (last '@' not at position 0).
- * - Local-path specifier (starts with './', '../', or '/'): npm symlinks under
- *   node_modules/<mount>, so the package name IS the mount name.
+ * - Local-path specifier (starts with './', '../', or '/'): prefer the
+ *   linked package's own `package.json` `name` field
+ *   (`readLocalPackageName`), falling back to the mount name when it cannot
+ *   be read.
  */
 function deriveNpmPackageName(
   specifier: string,
@@ -214,7 +222,23 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // ---- Step 2: Read config snapshot + mount existence check ----
-  const snapshot = await readConfigSnapshot(targetDir);
+  let snapshot: Awaited<ReturnType<typeof readConfigSnapshot>>;
+  try {
+    snapshot = await readConfigSnapshot(targetDir);
+  } catch (err) {
+    if (err instanceof ConfigNotFoundError) {
+      process.stderr.write('✗ rill-config.json not found\n');
+      process.stderr.write(
+        "  Run 'rill init' first to initialize the project\n"
+      );
+      return 1;
+    }
+    if (err instanceof ConfigParseError) {
+      process.stderr.write(`✗ ${err.message}\n`);
+      return 1;
+    }
+    throw err;
+  }
 
   // Mount not in config -> the not-installed message, verbatim, exit 1; NO edit, NO npm
   if (!hasMount(snapshot, mount)) {

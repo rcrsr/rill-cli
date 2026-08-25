@@ -464,6 +464,7 @@ export async function writeBundleHarness(
   if (harnessName === null) {
     delete obj['harness'];
   } else {
+    validateHarnessSpecifier(harnessName);
     obj['harness'] = harnessName;
   }
 

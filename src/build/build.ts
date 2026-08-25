@@ -312,12 +312,20 @@ async function cleanupFlatOutputDirAfterFailure(
 /**
  * Record the top-level entries a successful `--flat` build wrote, so a
  * later build targeting the same directory can recognize it as build-owned
- * and safely clean it up.
+ * and safely clean it up. Excludes `preExistingEntries` (foreign files that
+ * were already in the directory before this build started, per
+ * `ensureFlatOutputDir`) so ownership is never over-claimed onto files this
+ * build did not write.
  */
-async function writeBuildMarker(dir: string): Promise<void> {
+async function writeBuildMarker(
+  dir: string,
+  preExistingEntries: ReadonlySet<string>
+): Promise<void> {
   const entries = await readdir(dir);
   const marker: BuildMarker = {
-    owned: entries.filter((e) => e !== BUILD_MARKER_FILENAME),
+    owned: entries.filter(
+      (e) => e !== BUILD_MARKER_FILENAME && !preExistingEntries.has(e)
+    ),
   };
   await writeFile(
     path.join(dir, BUILD_MARKER_FILENAME),
@@ -1090,7 +1098,7 @@ export async function buildPackage(
   if (flat) {
     // Record this build's artifacts so a later build targeting the same
     // --output dir can recognize it as build-owned and safely overwrite it.
-    await writeBuildMarker(packageOutDir);
+    await writeBuildMarker(packageOutDir, flatPreExistingEntries);
   }
 
   return {

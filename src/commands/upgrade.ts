@@ -15,7 +15,13 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
 import { extractPackageName, isLocalPath } from './mount-derive.js';
-import { readConfigSnapshot, applyMountEdit, hasMount } from './config-edit.js';
+import {
+  readConfigSnapshot,
+  applyMountEdit,
+  hasMount,
+  ConfigNotFoundError,
+  ConfigParseError,
+} from './config-edit.js';
 import type { RollbackAnnotatedError } from './config-edit.js';
 import { npmInstall, NpmNotFoundError } from './npm-runner.js';
 import {
@@ -237,7 +243,23 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // ---- Step 2: Read config snapshot + mount existence check ----
-  const snapshot = await readConfigSnapshot(targetDir);
+  let snapshot: Awaited<ReturnType<typeof readConfigSnapshot>>;
+  try {
+    snapshot = await readConfigSnapshot(targetDir);
+  } catch (err) {
+    if (err instanceof ConfigNotFoundError) {
+      process.stderr.write('✗ rill-config.json not found\n');
+      process.stderr.write(
+        "  Run 'rill init' first to initialize the project\n"
+      );
+      return 1;
+    }
+    if (err instanceof ConfigParseError) {
+      process.stderr.write(`✗ ${err.message}\n`);
+      return 1;
+    }
+    throw err;
+  }
 
   // Mount not in config -> the not-installed message, verbatim, exit 1
   if (!hasMount(snapshot, mount)) {
@@ -366,7 +388,7 @@ export async function run(argv: string[]): Promise<number> {
     const rollback = err as RollbackAnnotatedError;
     if (rollback.rolledBack === true) {
       process.stderr.write('✓ Rolled back rill-config.json\n');
-    } else {
+    } else if (rollback.rolledBack === false) {
       const rollbackMsg =
         rollback.rollbackCause instanceof Error
           ? rollback.rollbackCause.message
@@ -376,6 +398,8 @@ export async function run(argv: string[]): Promise<number> {
         '  rill-config.json may be left modified; inspect and repair it manually\n'
       );
     }
+    // rolledBack === undefined: the failure occurred before any rollback was
+    // attempted (e.g. a write failure), so there is nothing to report here.
     // [ASSUMPTION] Guidance line adapted from install's for upgrade context.
     // Install says "Check the extension or use --as to pick a different mount path".
     // Upgrade equivalent directs user to check the upgrade target or use --range.

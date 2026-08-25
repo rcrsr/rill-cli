@@ -112,6 +112,18 @@ function writeEsmPackageJson(dir: string): void {
   );
 }
 
+/**
+ * Symlink `node_modules/@rcrsr/rill` in `dir` to this repo's installed copy,
+ * so a spawned `main.js` (which imports `toNative` from `@rcrsr/rill`) can
+ * resolve it even though `dir` is outside the repo's node_modules tree.
+ */
+function linkRillPackage(dir: string): void {
+  const scopeDir = path.join(dir, 'node_modules', '@rcrsr');
+  fs.mkdirSync(scopeDir, { recursive: true });
+  const target = path.resolve(process.cwd(), 'node_modules/@rcrsr/rill');
+  fs.symlinkSync(target, path.join(scopeDir, 'rill'), 'dir');
+}
+
 function makeServeContext(
   packages: readonly CompiledPackage[],
   opts: {
@@ -393,6 +405,7 @@ describe('emitted main.js dispatch', () => {
   beforeEach(() => {
     tmpDir = makeTmpDir();
     writeEsmPackageJson(tmpDir);
+    linkRillPackage(tmpDir);
   });
 
   afterEach(() => {

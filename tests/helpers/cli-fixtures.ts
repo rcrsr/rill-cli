@@ -1,12 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import crypto from 'node:crypto';
 
 export function makeTmpDir(): string {
-  const dir = path.join(os.tmpdir(), crypto.randomUUID());
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'rill-'));
 }
 
 export function captureOutput(): {

@@ -5,7 +5,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { scaffoldPackageDir } from './package-init.js';
+import { scaffoldPackageDir, scaffoldRillNpmPrefix } from './package-init.js';
+import { atomicWriteFile } from '../fs-atomic.js';
 
 // ============================================================
 // CONSTANTS
@@ -51,35 +52,16 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
-  // Ensure .rill/npm/ exists
-  const rillNpmDir = path.join(cwd, '.rill', 'npm');
+  // Ensure .rill/npm/ exists, with its package.json and .gitignore.
+  // install/list's assertBootstrapped and harness resolution both anchor
+  // createRequire on the package.json this scaffolds.
+  const rillDir = path.join(cwd, '.rill');
   try {
-    fs.mkdirSync(rillNpmDir, { recursive: true });
+    scaffoldRillNpmPrefix(rillDir);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Cannot create .rill/npm/: ${message}\n`);
     return 1;
-  }
-
-  // Write .rill/npm/package.json — install/list assertBootstrapped and
-  // harness resolution both anchor createRequire on this file.
-  const rillNpmPkgJsonPath = path.join(rillNpmDir, 'package.json');
-  if (!fs.existsSync(rillNpmPkgJsonPath)) {
-    fs.writeFileSync(
-      rillNpmPkgJsonPath,
-      '{"name":"rill-extensions","private":true}\n',
-      'utf8'
-    );
-  }
-
-  // Write .rill/npm/.gitignore if not already present
-  const rillNpmGitignorePath = path.join(rillNpmDir, '.gitignore');
-  if (!fs.existsSync(rillNpmGitignorePath)) {
-    fs.writeFileSync(
-      rillNpmGitignorePath,
-      'node_modules/\npackage-lock.json\n',
-      'utf8'
-    );
   }
 
   // Ensure packages/ exists
@@ -96,9 +78,10 @@ export async function run(argv: string[]): Promise<number> {
   // readBundleConfig's requirement of at least one packages[] entry, and is
   // immediately usable with bundle-run/build.
   const starterPackageDir = path.join(packagesDir, STARTER_PACKAGE_MOUNT);
-  scaffoldPackageDir(starterPackageDir, STARTER_PACKAGE_MOUNT);
+  await scaffoldPackageDir(starterPackageDir, STARTER_PACKAGE_MOUNT);
 
-  // Write rill-bundle.json
+  // Write rill-bundle.json — durable bundle config, written atomically so a
+  // failed write never truncates a pre-existing file in place.
   const bundleConfig = {
     name,
     version: '0.0.0',
@@ -111,7 +94,7 @@ export async function run(argv: string[]): Promise<number> {
   };
   const bundleConfigContent = JSON.stringify(bundleConfig, null, 2) + '\n';
   try {
-    fs.writeFileSync(bundleConfigPath, bundleConfigContent, 'utf8');
+    await atomicWriteFile(bundleConfigPath, bundleConfigContent, 'utf8');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Cannot write rill-bundle.json: ${message}\n`);

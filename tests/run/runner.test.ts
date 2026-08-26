@@ -11,6 +11,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { RuntimeError } from '@rcrsr/rill';
 import type { RillValue } from '@rcrsr/rill';
+import { makeTmpDir } from '../helpers/cli-fixtures.js';
 
 let _executeErrorOverride: Error | null = null;
 
@@ -28,7 +29,6 @@ vi.mock('@rcrsr/rill', async (importActual) => {
 function makeOpts(overrides: Partial<RunCliOptions> = {}): RunCliOptions {
   return {
     scriptPath: '/tmp/test.rill',
-    scriptArgs: [],
     config: './rill-config.json',
     format: 'human',
     verbose: false,
@@ -48,7 +48,8 @@ async function runTempScript(
   extTree: Record<string, RillValue> = {},
   disposes: Array<() => void | Promise<void>> = []
 ) {
-  const scriptPath = path.join(os.tmpdir(), `rill-test-${Date.now()}.rill`);
+  const tmpDir = makeTmpDir();
+  const scriptPath = path.join(tmpDir, 'test.rill');
   fs.writeFileSync(scriptPath, source, 'utf-8');
   try {
     return await runScript(
@@ -58,7 +59,7 @@ async function runTempScript(
       disposes
     );
   } finally {
-    fs.unlinkSync(scriptPath);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
@@ -292,14 +293,6 @@ describe('runScript', () => {
       const result = await runTempScript('[a: 1, b: 2]', { format: 'human' });
       expect(result.exitCode).toBe(0);
       expect(result.output).toBeDefined();
-    });
-  });
-
-  describe('pipe value from CLI args', () => {
-    it('sets pipeValue when scriptArgs are provided', async () => {
-      const result = await runTempScript('$', { scriptArgs: ['hello'] });
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toBe('hello');
     });
   });
 

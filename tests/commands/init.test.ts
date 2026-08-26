@@ -230,16 +230,18 @@ describe('init', () => {
     it('exits 1 and writes error to stderr when writeFileSync throws on rill-config.json', async () => {
       const { run } = await import('../../src/commands/init.js');
 
-      const realWriteFileSync = fs.writeFileSync.bind(fs);
-      vi.spyOn(fs, 'writeFileSync').mockImplementation(
-        (
-          filePath: fs.PathOrFileDescriptor,
-          data: unknown,
-          options?: unknown
-        ) => {
+      // rill-config.json is now written atomically: scaffoldSinglePackage
+      // writes to a temp file (`.rill-config.json.<pid>.<hash>.tmp`, still
+      // containing the 'rill-config.json' substring) via
+      // `fs.promises.writeFile`, then renames it into place. Intercept that
+      // async call instead of the sync `writeFileSync` it used to call
+      // directly.
+      const realWriteFile = fs.promises.writeFile.bind(fs.promises);
+      vi.spyOn(fs.promises, 'writeFile').mockImplementation(
+        async (filePath, data, options) => {
           if (
             typeof filePath === 'string' &&
-            filePath.endsWith('rill-config.json')
+            filePath.includes('rill-config.json')
           ) {
             const err = Object.assign(new Error('Permission denied'), {
               code: 'EACCES',
@@ -247,13 +249,11 @@ describe('init', () => {
             throw err;
           }
           // Delegate all other writes to the real implementation
-          (
-            realWriteFileSync as (
-              p: fs.PathOrFileDescriptor,
-              d: unknown,
-              o?: unknown
-            ) => void
-          )(filePath, data, options);
+          return realWriteFile(
+            filePath as Parameters<typeof realWriteFile>[0],
+            data as Parameters<typeof realWriteFile>[1],
+            options as Parameters<typeof realWriteFile>[2]
+          );
         }
       );
 

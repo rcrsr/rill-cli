@@ -188,7 +188,7 @@ describe('cli-shared', () => {
       });
     });
 
-    describe('ENOENT errors [AC-4]', () => {
+    describe('ENOENT errors', () => {
       it('formats as "File not found: {path}"', () => {
         const err = Object.assign(new Error(), {
           code: 'ENOENT',
@@ -321,7 +321,7 @@ describe('cli-shared', () => {
   });
 
   describe('detectHelpVersionFlag', () => {
-    describe('Help flag detection [AC-4]', () => {
+    describe('Help flag detection', () => {
       it('detects --help flag [IR-3]', () => {
         expect(detectHelpVersionFlag(['--help'])).toEqual({ mode: 'help' });
       });
@@ -356,7 +356,7 @@ describe('cli-shared', () => {
       });
     });
 
-    describe('Version flag detection [AC-4]', () => {
+    describe('Version flag detection', () => {
       it('detects --version flag [IR-3]', () => {
         expect(detectHelpVersionFlag(['--version'])).toEqual({
           mode: 'version',

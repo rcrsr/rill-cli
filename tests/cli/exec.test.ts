@@ -106,7 +106,7 @@ describe('rill-exec', () => {
         });
       });
 
-      // AC-15: Unknown --format value throws error
+      // Unknown --format value throws error
       it('throws error for invalid --format value', () => {
         expect(() => parseArgs(['--format', 'xml', 'script.rill'])).toThrow(
           'Invalid --format value: xml. Must be one of: human, json, compact'
@@ -195,7 +195,7 @@ describe('rill-exec', () => {
         );
       });
 
-      // AC-16: Malformed --explain errorId throws error
+      // Malformed --explain errorId throws error
       it('parses --explain with malformed error ID (handled by explainError)', () => {
         // parseArgs accepts any string after --explain
         // Validation happens in explainError function

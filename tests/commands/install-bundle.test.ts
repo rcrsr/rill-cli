@@ -643,7 +643,7 @@ describe('install (bundle-aware)', () => {
   });
 
   // ============================================================
-  // T6 / AC-E2/EC-8 (bundle-mode): mount collision at target package
+  // T6 / EC-8 (bundle-mode): mount collision at target package
   // ============================================================
 
   describe('extension install with --for against an already-mounted target', () => {

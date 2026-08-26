@@ -3,14 +3,14 @@
  * Format enriched errors for human-readable, JSON, or compact output
  */
 
-import type { SourceSpan, CallFrame } from '@rcrsr/rill';
+import type { SourceSpan } from '@rcrsr/rill';
 import type { EnrichedError, HaltView } from './cli-error-enrichment.js';
 
 // ============================================================
 // PUBLIC TYPES
 // ============================================================
 
-export type { CallFrame, EnrichedError };
+export type { EnrichedError };
 
 type TraceMode = 'auto' | 'always' | 'never';
 
@@ -29,8 +29,6 @@ type TraceMode = 'auto' | 'always' | 'never';
 export interface FormatOptions {
   readonly format: 'human' | 'json' | 'compact';
   readonly verbose: boolean;
-  readonly includeCallStack: boolean;
-  readonly maxCallStackDepth: number;
   readonly trace?: TraceMode | undefined;
   readonly showRecovered?: boolean | undefined;
   readonly atomOnly?: boolean | undefined;
@@ -183,27 +181,6 @@ function formatErrorHuman(
     lines.push(`   = see: ${error.helpUrl}`);
   }
 
-  // Call stack
-  if (
-    options.includeCallStack &&
-    error.callStack &&
-    error.callStack.length > 0
-  ) {
-    lines.push('');
-    lines.push('Call stack:');
-    const depth = Math.min(error.callStack.length, options.maxCallStackDepth);
-    for (let i = 0; i < depth; i++) {
-      const frame = error.callStack[i]!;
-      const location = `${frame.location.start.line}:${frame.location.start.column}`;
-      const name = frame.functionName ?? '<anonymous>';
-      const context = frame.context ? ` (${frame.context})` : '';
-      lines.push(`  ${i + 1}. ${name}${context} at ${location}`);
-    }
-    if (error.callStack.length > depth) {
-      lines.push(`  ... ${error.callStack.length - depth} more frames`);
-    }
-  }
-
   return lines.join('\n');
 }
 
@@ -233,14 +210,6 @@ function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
     source: string;
     code: string;
     suggestions?: string[];
-    callStack?: Array<{
-      location: {
-        start: { line: number; character: number };
-        end: { line: number; character: number };
-      };
-      functionName?: string | undefined;
-      context?: string | undefined;
-    }>;
     helpUrl?: string;
     atom?: string | null;
     provider?: string | null;
@@ -274,42 +243,6 @@ function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
 
   if (error.suggestions && error.suggestions.length > 0) {
     diagnostic.suggestions = error.suggestions;
-  }
-
-  if (
-    options.includeCallStack &&
-    error.callStack &&
-    error.callStack.length > 0
-  ) {
-    const depth = Math.min(error.callStack.length, options.maxCallStackDepth);
-    diagnostic.callStack = error.callStack.slice(0, depth).map((frame) => {
-      const callFrame: {
-        location: {
-          start: { line: number; character: number };
-          end: { line: number; character: number };
-        };
-        functionName?: string | undefined;
-        context?: string | undefined;
-      } = {
-        location: {
-          start: {
-            line: frame.location.start.line - 1,
-            character: frame.location.start.column - 1,
-          },
-          end: {
-            line: frame.location.end.line - 1,
-            character: frame.location.end.column - 1,
-          },
-        },
-      };
-      if (frame.functionName !== undefined) {
-        callFrame.functionName = frame.functionName;
-      }
-      if (frame.context !== undefined) {
-        callFrame.context = frame.context;
-      }
-      return callFrame;
-    });
   }
 
   if (options.verbose && error.helpUrl) {

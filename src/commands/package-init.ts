@@ -6,18 +6,18 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeFile } from 'node:fs/promises';
 import {
   findBundleRoot,
   readRawBundleJson,
   BundleConfigError,
 } from '../bundle/config.js';
+import { atomicWriteFile } from '../fs-atomic.js';
 
 // ============================================================
 // CONSTANTS
 // ============================================================
 
-const TSCONFIG_RILL_CONTENT =
+export const TSCONFIG_RILL_CONTENT =
   JSON.stringify(
     {
       compilerOptions: {
@@ -34,6 +34,45 @@ const TSCONFIG_RILL_CONTENT =
 // ============================================================
 
 /**
+ * Scaffold `<rillDir>/npm/`: the directory, its `package.json` (the anchor
+ * `install`/`list`'s `assertBootstrapped` and harness resolution both
+ * `createRequire` against), and its `.gitignore`.
+ *
+ * Shared by the single-package scaffold below, `rill bootstrap`, and
+ * `rill init bundle` (which scaffolds this prefix at the bundle root, not
+ * inside a package). When `reset` is true, both files are rewritten even if
+ * already present; otherwise each is written only when missing.
+ *
+ * These are throwaway scaffold files, not durable project config, so a
+ * plain `writeFileSync` is fine — no atomic-write requirement here.
+ */
+export function scaffoldRillNpmPrefix(
+  rillDir: string,
+  options?: { reset?: boolean }
+): void {
+  const npmDir = path.join(rillDir, 'npm');
+  fs.mkdirSync(npmDir, { recursive: true });
+
+  const npmPkgJson = path.join(npmDir, 'package.json');
+  if (options?.reset === true || !fs.existsSync(npmPkgJson)) {
+    fs.writeFileSync(
+      npmPkgJson,
+      '{"name":"rill-extensions","private":true}\n',
+      'utf8'
+    );
+  }
+
+  const npmGitignore = path.join(npmDir, '.gitignore');
+  if (options?.reset === true || !fs.existsSync(npmGitignore)) {
+    fs.writeFileSync(
+      npmGitignore,
+      'node_modules/\npackage-lock.json\n',
+      'utf8'
+    );
+  }
+}
+
+/**
  * Scaffold the standard single-package layout inside targetDir.
  * Mirrors the structure that `rill bootstrap` creates, with the addition
  * of a src/index.ts placeholder.
@@ -41,10 +80,10 @@ const TSCONFIG_RILL_CONTENT =
  * Exported so `rill init bundle` can scaffold a starter package without
  * duplicating this layout.
  */
-export function scaffoldPackageDir(
+export async function scaffoldPackageDir(
   targetDir: string,
   packageName: string
-): void {
+): Promise<void> {
   // .rill/
   const rillDir = path.join(targetDir, '.rill');
   fs.mkdirSync(rillDir, { recursive: true });
@@ -60,28 +99,7 @@ export function scaffoldPackageDir(
   }
 
   // .rill/npm/
-  const npmDir = path.join(rillDir, 'npm');
-  fs.mkdirSync(npmDir, { recursive: true });
-
-  // .rill/npm/package.json
-  const npmPkgJson = path.join(npmDir, 'package.json');
-  if (!fs.existsSync(npmPkgJson)) {
-    fs.writeFileSync(
-      npmPkgJson,
-      '{"name":"rill-extensions","private":true}\n',
-      'utf8'
-    );
-  }
-
-  // .rill/npm/.gitignore
-  const npmGitignore = path.join(npmDir, '.gitignore');
-  if (!fs.existsSync(npmGitignore)) {
-    fs.writeFileSync(
-      npmGitignore,
-      'node_modules/\npackage-lock.json\n',
-      'utf8'
-    );
-  }
+  scaffoldRillNpmPrefix(rillDir);
 
   // .rill/tsconfig.rill.json
   const tsconfigRill = path.join(rillDir, 'tsconfig.rill.json');
@@ -89,7 +107,7 @@ export function scaffoldPackageDir(
     fs.writeFileSync(tsconfigRill, TSCONFIG_RILL_CONTENT, 'utf8');
   }
 
-  // rill-config.json
+  // rill-config.json — durable project config, written atomically.
   const configPath = path.join(targetDir, 'rill-config.json');
   if (!fs.existsSync(configPath)) {
     const configContent =
@@ -102,7 +120,7 @@ export function scaffoldPackageDir(
         null,
         2
       ) + '\n';
-    fs.writeFileSync(configPath, configContent, 'utf8');
+    await atomicWriteFile(configPath, configContent, 'utf8');
   }
 
   // .gitignore — append .rill/ idempotently
@@ -158,7 +176,7 @@ async function appendPackageToBundle(
   const serialized =
     JSON.stringify(obj, null, 2) + (trailingNewline ? '\n' : '');
 
-  await writeFile(filePath, serialized, 'utf8');
+  await atomicWriteFile(filePath, serialized, 'utf8');
 }
 
 // ============================================================
@@ -238,7 +256,7 @@ export async function run(argv: string[]): Promise<number> {
       return 1;
     }
 
-    scaffoldPackageDir(targetDir, name);
+    await scaffoldPackageDir(targetDir, name);
 
     // Append entry to bundle config
     try {
@@ -271,7 +289,7 @@ export async function run(argv: string[]): Promise<number> {
       return 1;
     }
 
-    scaffoldPackageDir(targetDir, name);
+    await scaffoldPackageDir(targetDir, name);
 
     process.stdout.write(`created package ${name} in ${targetDir}\n`);
   }

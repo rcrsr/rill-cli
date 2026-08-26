@@ -1,9 +1,9 @@
 /**
  * Severity Overlay Tests
  * Verifies per-rule severity precedence: a `severityMap` entry overrides the
- * emitted severity by code, a `warn`-state rule remaps to `warning` absent a
- * map entry, a map entry wins over `warn`-state remapping, and the overlay
- * is pure (does not mutate input, preserves order and non-severity fields).
+ * emitted severity by code, an absent map entry leaves the emitted severity
+ * unchanged, and the overlay is pure (does not mutate input, preserves order
+ * and non-severity fields).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -126,8 +126,7 @@ describe('applySeverityOverlay severity table', () => {
 
         const overlaid = applySeverityOverlay(
           emitted,
-          resolved?.severityMap ?? {},
-          resolved?.config.rules ?? {}
+          resolved?.severityMap ?? {}
         );
 
         expect(overlaid.find((d) => d.code === TABLE_CODE)?.severity).toBe(
@@ -167,11 +166,9 @@ describe('applySeverityOverlay severity table', () => {
         // overlay (fed an empty array, as it is in production for this
         // case) trivially returns an empty array too, independent of what
         // the map entry would have said.
-        const overlaid = applySeverityOverlay(
-          diagnostics,
-          { NAMING_SNAKE_CASE: mapSeverity },
-          rules
-        );
+        const overlaid = applySeverityOverlay(diagnostics, {
+          NAMING_SNAKE_CASE: mapSeverity,
+        });
         expect(overlaid).toHaveLength(0);
       }
     );
@@ -179,44 +176,20 @@ describe('applySeverityOverlay severity table', () => {
 });
 
 // ============================================================
-// WARN-STATE REMAP (NO MAP ENTRY)
+// NO MAP ENTRY: PASSTHROUGH
 // ============================================================
 
-describe('applySeverityOverlay warn-state remap', () => {
-  it('remaps emitted severity to warning when the rule state is warn and no map entry exists', () => {
+describe('applySeverityOverlay passthrough', () => {
+  it('leaves the emitted severity unchanged when the code has no severityMap entry', () => {
     const diagnostics = [createDiagnostic('SOME_RULE', 'error')];
-    const result = applySeverityOverlay(diagnostics, {}, { SOME_RULE: 'warn' });
-
-    expect(result[0]?.severity).toBe('warning');
-  });
-
-  it('leaves the emitted severity unchanged when the rule state is on and no map entry exists', () => {
-    const diagnostics = [createDiagnostic('SOME_RULE', 'error')];
-    const result = applySeverityOverlay(diagnostics, {}, { SOME_RULE: 'on' });
+    const result = applySeverityOverlay(diagnostics, {});
 
     expect(result[0]?.severity).toBe('error');
   });
 
-  it('leaves the emitted severity unchanged when the code has no ruleStates entry at all', () => {
+  it('leaves the emitted severity unchanged when the map is empty', () => {
     const diagnostics = [createDiagnostic('SOME_RULE', 'info')];
-    const result = applySeverityOverlay(diagnostics, {}, {});
-
-    expect(result[0]?.severity).toBe('info');
-  });
-});
-
-// ============================================================
-// MAP OVERRIDE WINS OVER WARN-STATE REMAP
-// ============================================================
-
-describe('applySeverityOverlay precedence: map override over warn-state remap', () => {
-  it('applies the severityMap entry instead of the warn-state warning remap', () => {
-    const diagnostics = [createDiagnostic('SOME_RULE', 'error')];
-    const result = applySeverityOverlay(
-      diagnostics,
-      { SOME_RULE: 'info' },
-      { SOME_RULE: 'warn' }
-    );
+    const result = applySeverityOverlay(diagnostics, {});
 
     expect(result[0]?.severity).toBe('info');
   });
@@ -258,37 +231,29 @@ describe('applySeverityOverlay purity', () => {
     ];
     const snapshot = diagnostics.map((d) => ({ ...d }));
 
-    applySeverityOverlay(
-      diagnostics,
-      { RULE_A: 'warning' },
-      { RULE_B: 'warn' }
-    );
+    applySeverityOverlay(diagnostics, { RULE_A: 'warning' });
 
     expect(diagnostics).toEqual(snapshot);
   });
 
   it('returns a new array distinct from the input', () => {
     const diagnostics = [createDiagnostic('RULE_A', 'error')];
-    const result = applySeverityOverlay(diagnostics, {}, {});
+    const result = applySeverityOverlay(diagnostics, {});
 
     expect(result).not.toBe(diagnostics);
   });
 
-  it('preserves diagnostic order across mixed map, warn, and passthrough codes', () => {
+  it('preserves diagnostic order across mixed map and passthrough codes', () => {
     const diagnostics = [
       createDiagnostic('RULE_A', 'error'),
       createDiagnostic('RULE_B', 'error'),
       createDiagnostic('RULE_C', 'error'),
     ];
 
-    const result = applySeverityOverlay(
-      diagnostics,
-      { RULE_A: 'info' },
-      { RULE_B: 'warn' }
-    );
+    const result = applySeverityOverlay(diagnostics, { RULE_A: 'info' });
 
     expect(result.map((d) => d.code)).toEqual(['RULE_A', 'RULE_B', 'RULE_C']);
-    expect(result.map((d) => d.severity)).toEqual(['info', 'warning', 'error']);
+    expect(result.map((d) => d.severity)).toEqual(['info', 'error', 'error']);
   });
 
   it('preserves all non-severity fields on each diagnostic', () => {
@@ -303,7 +268,7 @@ describe('applySeverityOverlay purity', () => {
     };
     const diagnostics = [createDiagnostic('RULE_A', 'error', { fix })];
 
-    const result = applySeverityOverlay(diagnostics, { RULE_A: 'warning' }, {});
+    const result = applySeverityOverlay(diagnostics, { RULE_A: 'warning' });
 
     expect(result[0]).toEqual({
       ...diagnostics[0],
@@ -311,9 +276,9 @@ describe('applySeverityOverlay purity', () => {
     });
   });
 
-  it('returns an equivalent-but-unchanged diagnostic when no map entry or warn state applies', () => {
+  it('returns an equivalent-but-unchanged diagnostic when no map entry applies', () => {
     const diagnostic = createDiagnostic('RULE_A', 'error');
-    const result = applySeverityOverlay([diagnostic], {}, { RULE_A: 'on' });
+    const result = applySeverityOverlay([diagnostic], {});
 
     expect(result[0]).toEqual(diagnostic);
   });
@@ -346,9 +311,9 @@ describe('production path: warn-state remap without a severity override', () => 
   // load-bearing assertion is the sparse-severityMap check: a dense map (the
   // pre-fix behavior) forces an override entry for every code and stomps the
   // service's `warning` back to the rule's `error` default. runRules already
-  // resolves warn-state severity itself, so the overlay's warn branch is a
-  // no-op here and this test is not coverage for that branch in isolation.
-  it('remaps a warn-state rule to warning severity when the config sets no explicit severity override', () => {
+  // resolves warn-state severity itself, so the overlay is a passthrough
+  // here.
+  it('preserves the runRules warn-state severity when the config sets no explicit severity override', () => {
     writeFileSync(
       join(TEST_DIR, '.rill-check.json'),
       JSON.stringify({ rules: { NAMING_SNAKE_CASE: 'warn' } }, null, 2),
@@ -376,8 +341,7 @@ describe('production path: warn-state remap without a severity override', () => 
 
     const overlaid = applySeverityOverlay(
       emitted,
-      resolvedConfig?.severityMap ?? {},
-      resolvedConfig?.config.rules ?? {}
+      resolvedConfig?.severityMap ?? {}
     );
     const overlaidDiagnostic = overlaid.find(
       (d) => d.code === 'NAMING_SNAKE_CASE'

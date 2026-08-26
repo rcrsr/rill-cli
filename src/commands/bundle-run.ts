@@ -65,7 +65,7 @@ export async function runBundleServe(
 
   // Step 4: Allocate handler registries
   const shutdownHandlers: Array<() => Promise<void> | void> = [];
-  const sourceChangeHandlers: Array<(event: unknown) => void> = [];
+  let warnedSourceChangeUnsupported = false;
 
   // Step 5: Build ServeContext
   const ctx: ServeContext = {
@@ -93,8 +93,13 @@ export async function runBundleServe(
       }
       return [...packagesArray];
     },
-    onSourceChange: (handler: () => void | Promise<void>): void => {
-      sourceChangeHandlers.push(handler as (event: unknown) => void);
+    onSourceChange: (): void => {
+      if (!warnedSourceChangeUnsupported) {
+        warnedSourceChangeUnsupported = true;
+        logger.warn(
+          'onSourceChange is not implemented: no filesystem watcher is running, so the registered handler will never be called'
+        );
+      }
     },
     onShutdown: (handler: () => void | Promise<void>): void => {
       shutdownHandlers.push(handler);

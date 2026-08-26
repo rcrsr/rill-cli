@@ -18,11 +18,11 @@
  *    which previously emitted bare "runtime halt" regardless of flags.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runScript } from '../../src/run/runner.js';
 import type { RunCliOptions } from '../../src/run/types.js';
@@ -43,7 +43,6 @@ const HALT_SCRIPT = [
 function makeOpts(overrides: Partial<RunCliOptions>): RunCliOptions {
   return {
     scriptPath: '/tmp/test.rill',
-    scriptArgs: [],
     config: './rill-config.json',
     format: 'human',
     verbose: false,
@@ -82,20 +81,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const RILL_RUN_BINARY = path.join(PROJECT_ROOT, 'dist', 'cli.js');
 const FIXTURES = path.join(PROJECT_ROOT, 'tests', 'fixtures', 'run');
-
-// Ensure dist/cli-run.js exists before handler-mode tests spawn it.
-// `pnpm test` does not run build first, so a clean checkout would
-// otherwise fail with ENOENT. tsbuildinfo can claim the project is
-// up-to-date even when emitted JS is missing (manual deletion, dirty
-// dist, etc.), so use --force to guarantee re-emission. Builds once.
-beforeAll(() => {
-  if (!fs.existsSync(RILL_RUN_BINARY)) {
-    execSync('pnpm exec tsc --build --force', {
-      cwd: PROJECT_ROOT,
-      stdio: 'inherit',
-    });
-  }
-}, 60_000);
 
 function spawnRillRun(
   fixtureDir: string,

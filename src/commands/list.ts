@@ -12,7 +12,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { resolvePrefix } from './prefix.js';
-import { readConfigSnapshot, ConfigNotFoundError } from './config-edit.js';
+import {
+  readConfigSnapshot,
+  readInstalledPackageVersion,
+  ConfigNotFoundError,
+} from './config-edit.js';
 import {
   extractPackageName,
   isLocalPath,
@@ -69,19 +73,7 @@ interface MountRow {
  * Returns the version string on success, 'unknown' on any failure.
  */
 function readInstalledVersion(prefix: string, pkgName: string): string {
-  const pkgJsonPath = path.join(
-    prefix,
-    'node_modules',
-    pkgName,
-    'package.json'
-  );
-  try {
-    const text = fs.readFileSync(pkgJsonPath, 'utf8');
-    const parsed = JSON.parse(text) as { version?: string };
-    return typeof parsed.version === 'string' ? parsed.version : 'unknown';
-  } catch {
-    return 'unknown';
-  }
+  return readInstalledPackageVersion(prefix, pkgName) ?? 'unknown';
 }
 
 /**

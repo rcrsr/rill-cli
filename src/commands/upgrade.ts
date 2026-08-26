@@ -10,20 +10,21 @@
  * - applyMountEdit rolls back on validation failure
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
 import { extractPackageName, isLocalPath } from './mount-derive.js';
 import {
   readConfigSnapshot,
   applyMountEdit,
   hasMount,
+  assertBootstrappedOrReport,
+  reportNpmNotFound,
+  readInstalledPackageVersion,
   ConfigNotFoundError,
   ConfigParseError,
 } from './config-edit.js';
 import type { RollbackAnnotatedError } from './config-edit.js';
-import { npmInstall, NpmNotFoundError } from './npm-runner.js';
+import { npmInstall } from './npm-runner.js';
 import {
   resolveExtensionTarget,
   resolveHarnessTarget,
@@ -133,18 +134,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     const { target } = resolvedHarness;
 
-    try {
-      assertBootstrapped(target.bundleRoot);
-    } catch (err) {
-      if (err instanceof BootstrapMissingError) {
-        process.stderr.write('✗ .rill/npm/ not found\n');
-        process.stderr.write(
-          "  Run 'rill init' first to initialize the project\n"
-        );
-        return 1;
-      }
-      throw err;
-    }
+    if (!assertBootstrappedOrReport(target.bundleRoot)) return 1;
 
     const installedPkgJsonPath = path.join(
       target.prefix,
@@ -155,14 +145,10 @@ export async function run(argv: string[]): Promise<number> {
 
     // The harness may not be physically installed yet; treat unreadable as
     // undefined rather than hard-failing before the install attempt.
-    let currentVersion: string | undefined;
-    try {
-      const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
-      const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
-      currentVersion = pkgJson.version;
-    } catch {
-      currentVersion = undefined;
-    }
+    const currentVersion = readInstalledPackageVersion(
+      target.prefix,
+      target.harnessName
+    );
 
     const installSpec =
       rangeArg !== undefined
@@ -178,25 +164,18 @@ export async function run(argv: string[]): Promise<number> {
         prefix: target.prefix,
       });
     } catch (err) {
-      if (err instanceof NpmNotFoundError) {
-        process.stderr.write(
-          'npm not found on PATH; install Node.js with npm\n'
-        );
-        return 1;
-      }
-      throw err;
+      return reportNpmNotFound(err);
     }
 
     if (npmResult.exitCode !== 0) {
       return npmResult.exitCode;
     }
 
-    let newVersion: string;
-    try {
-      const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
-      const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
-      newVersion = pkgJson.version ?? '';
-    } catch {
+    const newVersion = readInstalledPackageVersion(
+      target.prefix,
+      target.harnessName
+    );
+    if (newVersion === undefined) {
       process.stderr.write(
         `✗ Failed to read installed package.json at ${installedPkgJsonPath}\n`
       );
@@ -229,18 +208,7 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Step 1: assertBootstrapped ----
   // .rill/npm/ missing -> the bootstrap-missing message, verbatim, exit 1
-  try {
-    assertBootstrapped(targetDir);
-  } catch (err) {
-    if (err instanceof BootstrapMissingError) {
-      process.stderr.write('✗ .rill/npm/ not found\n');
-      process.stderr.write(
-        "  Run 'rill init' first to initialize the project\n"
-      );
-      return 1;
-    }
-    throw err;
-  }
+  if (!assertBootstrappedOrReport(targetDir)) return 1;
 
   // ---- Step 2: Read config snapshot + mount existence check ----
   let snapshot: Awaited<ReturnType<typeof readConfigSnapshot>>;
@@ -319,12 +287,8 @@ export async function run(argv: string[]): Promise<number> {
   try {
     npmResult = await npmInstall({ spec: installSpec, prefix });
   } catch (err) {
-    if (err instanceof NpmNotFoundError) {
-      // npm absent from PATH is a user-fixable setup problem, not a crash.
-      process.stderr.write('npm not found on PATH; install Node.js with npm\n');
-      return 1;
-    }
-    throw err;
+    // npm absent from PATH is a user-fixable setup problem, not a crash.
+    return reportNpmNotFound(err);
   }
 
   // npm non-zero exit -> propagate; npm already streamed stderr; no rollback line
@@ -339,12 +303,8 @@ export async function run(argv: string[]): Promise<number> {
     pkgName,
     'package.json'
   );
-  let newVersion: string;
-  try {
-    const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
-    const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
-    newVersion = pkgJson.version ?? '';
-  } catch {
+  const newVersion = readInstalledPackageVersion(prefix, pkgName);
+  if (newVersion === undefined) {
     process.stderr.write(
       `✗ Failed to read installed package.json at ${installedPkgJsonPath}\n`
     );

@@ -1,22 +1,11 @@
 /**
  * Rill CLI Tests: rill-check command
  *
- * Test Coverage Matrix (maps test cases to specification requirements):
- * AC-S1: Validate file with diagnostics
- * AC-S2: Apply fixes with --fix
- * AC-S3: JSON output format
- * AC-S4: Verbose mode output
- * AC-S5: --version flag
- * AC-S6: --help flag
- * AC-S7: Config override
- * AC-E1: File not found (exit 2)
- * AC-E2: Parse error (exit 3)
- * AC-E3: Parse error + --fix message
- * AC-E4: Unknown flag error
- * AC-E5: Invalid config error
- * AC-B1: Empty file (no diagnostics)
- * AC-B2: Parse-only errors
- * AC-B5: (removed - 10K line perf test unnecessary for draft language)
+ * Coverage: validating a file and reporting diagnostics, applying fixes
+ * with --fix, JSON output format, verbose mode output, --version and
+ * --help flags, config override, file-not-found and parse-error exit
+ * codes, parse error plus --fix messaging, unknown flag and invalid
+ * config errors, and empty-file / parse-only edge cases.
  */
 
 import { describe, expect, it, beforeAll, afterAll, afterEach } from 'vitest';
@@ -49,14 +38,15 @@ describe('rill-check CLI', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  // Clean up config file after each test to prevent pollution between tests
+  // Clean out every entry in the shared temp dir after each test so leftover
+  // fixture files and config cannot bleed into the next test's assertions.
   afterEach(async () => {
-    const configPath = path.join(tempDir, '.rill-check.json');
-    try {
-      await fs.unlink(configPath);
-    } catch {
-      // Ignore if file doesn't exist
-    }
+    const entries = await fs.readdir(tempDir);
+    await Promise.all(
+      entries.map((entry) =>
+        fs.rm(path.join(tempDir, entry), { recursive: true, force: true })
+      )
+    );
   });
 
   /**
@@ -80,8 +70,7 @@ describe('rill-check CLI', () => {
     const severityMap = resolved?.severityMap ?? {};
     return applySeverityOverlay(
       runRules(parseResult, source, config),
-      severityMap,
-      config.rules
+      severityMap
     );
   }
 
@@ -163,12 +152,12 @@ describe('rill-check CLI', () => {
       });
     });
 
-    it('parses --help flag [AC-S6]', () => {
+    it('parses --help flag', () => {
       expect(parseCheckArgs(['--help'])).toEqual({ mode: 'help' });
       expect(parseCheckArgs(['-h'])).toEqual({ mode: 'help' });
     });
 
-    it('parses --fix flag [AC-S2]', () => {
+    it('parses --fix flag', () => {
       const parsed = parseCheckArgs(['test.rill', '--fix']);
       expect(parsed.mode).toBe('check');
       if (parsed.mode === 'check') {
@@ -176,7 +165,7 @@ describe('rill-check CLI', () => {
       }
     });
 
-    it('parses --verbose flag [AC-S4]', () => {
+    it('parses --verbose flag', () => {
       const parsed = parseCheckArgs(['test.rill', '--verbose']);
       expect(parsed.mode).toBe('check');
       if (parsed.mode === 'check') {
@@ -184,7 +173,7 @@ describe('rill-check CLI', () => {
       }
     });
 
-    it('parses --format json [AC-S3]', () => {
+    it('parses --format json', () => {
       const parsed = parseCheckArgs(['test.rill', '--format', 'json']);
       expect(parsed.mode).toBe('check');
       if (parsed.mode === 'check') {
@@ -192,7 +181,7 @@ describe('rill-check CLI', () => {
       }
     });
 
-    it('throws on unknown flag [AC-E4]', () => {
+    it('throws on unknown flag', () => {
       expect(() => parseCheckArgs(['--unknown'])).toThrow(
         'Unknown option: --unknown'
       );
@@ -234,7 +223,7 @@ describe('rill-check CLI', () => {
       );
     });
 
-    it('formats JSON output [AC-S3]', () => {
+    it('formats JSON output', () => {
       const diagnostics: Diagnostic[] = [
         {
           location: { line: 5, column: 10, offset: 50 },
@@ -275,21 +264,21 @@ describe('rill-check CLI', () => {
   // ============================================================
 
   describe('success cases', () => {
-    it('validates file with no diagnostics [AC-B1]', async () => {
+    it('validates file with no diagnostics', async () => {
       const script = await writeFile('valid.rill', '"hello"');
       const diagnostics = validateFile(script);
 
       expect(diagnostics).toEqual([]);
     });
 
-    it('validates empty file [AC-B1]', async () => {
+    it('validates empty file', async () => {
       const script = await writeFile('empty.rill', '');
       const diagnostics = validateFile(script);
 
       expect(diagnostics).toEqual([]);
     });
 
-    it('outputs JSON format when no diagnostics [AC-S3]', async () => {
+    it('outputs JSON format when no diagnostics', async () => {
       const script = await writeFile('valid-json.rill', '"hello"');
       const diagnostics = validateFile(script);
 
@@ -307,7 +296,7 @@ describe('rill-check CLI', () => {
       });
     });
 
-    it('shows help message [AC-S6]', async () => {
+    it('shows help message', async () => {
       const result = await execCheck(['--help']);
 
       expect(result.exitCode).toBe(0);
@@ -324,7 +313,7 @@ describe('rill-check CLI', () => {
   // ============================================================
 
   describe('error cases', () => {
-    it('exits with code 2 for file not found [AC-E1]', async () => {
+    it('exits with code 2 for file not found', async () => {
       const result = await execCheck(['/nonexistent/file.rill']);
 
       expect(result.exitCode).toBe(2);
@@ -332,7 +321,7 @@ describe('rill-check CLI', () => {
       expect(result.stderr).toContain('[RILL-C001]');
     });
 
-    it('exits with code 2 for directory path [AC-E1]', async () => {
+    it('exits with code 2 for directory path', async () => {
       const result = await execCheck([tempDir]);
 
       expect(result.exitCode).toBe(2);
@@ -340,7 +329,7 @@ describe('rill-check CLI', () => {
       expect(result.stderr).toContain('[RILL-C002]');
     });
 
-    it('exits with code 3 for parse error [AC-E2]', async () => {
+    it('exits with code 3 for parse error', async () => {
       const script = await writeFile('parse-error.rill', '|x| x }');
       const result = await execCheck([script]);
 
@@ -350,7 +339,7 @@ describe('rill-check CLI', () => {
       expect(result.stdout).toContain('error:');
     });
 
-    it('reports parse error with location [AC-B2]', async () => {
+    it('reports parse error with location', async () => {
       const script = await writeFile('parse-location.rill', 'invalid {');
 
       expect(() => {
@@ -371,7 +360,7 @@ describe('rill-check CLI', () => {
       }
     });
 
-    it('reports cannot apply fixes on parse error [AC-E3]', async () => {
+    it('reports cannot apply fixes on parse error', async () => {
       const script = await writeFile('parse-fix.rill', '|x| x }');
 
       expect(() => {
@@ -392,11 +381,11 @@ describe('rill-check CLI', () => {
       expect(result.stdout).toContain('lex-error.rill');
     });
 
-    it('exits with code 1 for unknown flag [AC-E4]', async () => {
+    it('exits with code 1 for unknown flag', async () => {
       expect(() => parseCheckArgs(['--unknown'])).toThrow('Unknown option');
     });
 
-    it('exits with code 1 for invalid config [AC-E5]', async () => {
+    it('exits with code 1 for invalid config', async () => {
       await writeFile('valid.rill', '"hello"');
       await writeFile('.rill-check.json', '{ invalid json }');
 
@@ -420,7 +409,7 @@ describe('rill-check CLI', () => {
   // CONFIG OVERRIDE
   // ============================================================
 
-  describe('config override [AC-S7]', () => {
+  describe('config override', () => {
     it('loads config from working directory', async () => {
       // Write valid empty config
       await writeFile('.rill-check.json', JSON.stringify({ rules: {} }));
@@ -454,7 +443,7 @@ describe('rill-check CLI', () => {
   // FIX APPLICATION
   // ============================================================
 
-  describe('fix application [AC-S2]', () => {
+  describe('fix application', () => {
     it('applies fixes when --fix flag present', async () => {
       // Note: Since no validation rules exist yet, we can't test actual fix application
       // This test verifies the --fix flag is processed without error
@@ -479,7 +468,7 @@ describe('rill-check CLI', () => {
   // VERBOSE MODE
   // ============================================================
 
-  describe('verbose mode [AC-S4]', () => {
+  describe('verbose mode', () => {
     it('includes category in JSON output when verbose', () => {
       // Test the formatDiagnostics function directly with verbose flag
       const diagnostics: Diagnostic[] = [
@@ -527,7 +516,7 @@ describe('rill-check CLI', () => {
       expect(diagnostics).toEqual([]);
     });
 
-    it('outputs JSON when --format json specified [AC-S3]', async () => {
+    it('outputs JSON when --format json specified', async () => {
       const script = await writeFile('format-json.rill', '"hello"');
       const diagnostics = validateFile(script);
 
@@ -545,7 +534,7 @@ describe('rill-check CLI', () => {
   // ============================================================
 
   describe('boundary tests', () => {
-    it('fix idempotency: second run applies zero fixes [AC-B3]', async () => {
+    it('fix idempotency: second run applies zero fixes', async () => {
       // Captures are never referenced, so THROWAWAY_CAPTURE fires alongside
       // NAMING_SNAKE_CASE for each, but renaming an unreferenced capture has
       // no reference left to go stale. This keeps the fixture clear of the
@@ -612,7 +601,7 @@ $itemList -> .len
       expect(fixedSource).toContain('$itemList -> .len');
     });
 
-    it('1000-line validation completes in reasonable time [AC-B4]', async () => {
+    it('1000-line validation completes in reasonable time', async () => {
       // Generate 1000 lines of valid rill code. Piped (not captured) so no
       // capture is left unreferenced; a captured-but-unused $line_N would
       // trip THROWAWAY_CAPTURE and break the zero-diagnostics expectation
@@ -632,7 +621,7 @@ $itemList -> .len
       expect(duration).toBeLessThan(2000);
     });
 
-    it('all rules enabled by default [AC-B6]', async () => {
+    it('all rules enabled by default', async () => {
       const config = createDefaultConfig();
 
       // Verify every rule registered with the service is enabled by default.
@@ -651,7 +640,7 @@ $itemList -> .len
   // ============================================================
 
   describe('error handling', () => {
-    it('applies fixes for multiple violations [AC-E6]', async () => {
+    it('applies fixes for multiple violations', async () => {
       // Note: Fix collision handling (EC-5) is tested in tests/check/fixer.test.ts
       // This test verifies that non-colliding fixes are successfully applied.
       // $data1/$data2 are each referenced twice, non-adjacently, so neither
@@ -908,24 +897,6 @@ $data2 -> log
         expect(() => loadConfig(tempDir)).toThrow(
           /unknown rule code: UNKNOWN_RULE/i
         );
-      });
-    });
-
-    describe('EC-5: applyFixes - fix collision (tested via unit tests)', () => {
-      it('reference: collision detection in fixer.test.ts', () => {
-        // EC-5 is tested in tests/check/fixer.test.ts
-        // The applyFixes function skips overlapping fixes with reason
-        // See fixer.test.ts "collision detection [EC-5]" describe block
-        expect(true).toBe(true);
-      });
-    });
-
-    describe('EC-6: applyFixes - parse failure (tested via unit tests)', () => {
-      it('reference: parse verification in fixer.test.ts', () => {
-        // EC-6 is tested in tests/check/fixer.test.ts
-        // The applyFixes function throws when fix creates invalid syntax
-        // See fixer.test.ts "parse verification [EC-6]" describe block
-        expect(true).toBe(true);
       });
     });
   });

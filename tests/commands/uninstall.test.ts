@@ -1,6 +1,5 @@
 /**
  * Tests for src/commands/uninstall.ts
- * Covers AC-5, AC-B9, AC-P4
  * Phase 3.5 additions: EC-13, EC-15, EC-16.
  */
 
@@ -141,10 +140,10 @@ describe('uninstall', () => {
   });
 
   // ============================================================
-  // AC-5: mount installed, uninstall removes mount + package dir
+  // Mount installed: uninstall removes mount + package dir
   // ============================================================
 
-  describe('AC-5: uninstall removes mount from config and package directory', () => {
+  describe('uninstall removes mount from config and package directory', () => {
     it('removes mount from rill-config.json and exits 0', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -225,10 +224,10 @@ describe('uninstall', () => {
   });
 
   // ============================================================
-  // AC-B9: mount exists, package directory absent — success
+  // Mount exists, package directory absent — success
   // ============================================================
 
-  describe('AC-B9: mount exists but package directory absent', () => {
+  describe('mount exists but package directory absent', () => {
     it('removes mount from config and exits 0 when package directory is missing', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -257,10 +256,10 @@ describe('uninstall', () => {
   });
 
   // ============================================================
-  // AC-P4: timing < 5s
+  // Timing budget: uninstall completes quickly
   // ============================================================
 
-  describe('AC-P4: timing < 5s', () => {
+  describe('completes within timing budget', () => {
     it('completes uninstall in under 5000ms', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',

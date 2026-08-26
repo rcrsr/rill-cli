@@ -2,9 +2,9 @@
  * Rill CLI Tests: rill-eval command
  */
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ParseError, RuntimeError } from '@rcrsr/rill';
 import { evaluateExpression } from '../../src/cli-eval.js';
 
@@ -100,22 +100,19 @@ describe('rill-eval', () => {
     });
 
     it('preserves error details', async () => {
-      try {
-        await evaluateExpression('$missing');
-      } catch (err) {
-        expect(err).toBeInstanceOf(RuntimeError);
-        expect((err as RuntimeError).errorId).toBe('RILL-R005');
-        expect((err as RuntimeError).location?.line).toBe(1);
-      }
+      await expect(evaluateExpression('$missing')).rejects.toSatisfy(
+        (err: unknown) => {
+          expect(err).toBeInstanceOf(RuntimeError);
+          expect((err as RuntimeError).errorId).toBe('RILL-R005');
+          expect((err as RuntimeError).location?.line).toBe(1);
+          return true;
+        }
+      );
     });
   });
 });
 
 describe('rill-eval CLI flags', () => {
-  beforeAll(() => {
-    execSync('pnpm run build', { stdio: 'ignore' });
-  }, 30000);
-
   describe('--help flag', () => {
     it('exits 0 and prints usage for --help', () => {
       const result = run(['--help']);

@@ -7,9 +7,8 @@
  * configs with known extension mounts and handler-form mains.
  */
 
-import { describe, it, expect, beforeAll, vi, afterEach } from 'vitest';
-import { execSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -21,20 +20,6 @@ const DT_PROJECT = path.join(FIXTURES, 'dt-project');
 const DT_CONFIG = path.join(DT_PROJECT, 'rill-config.json');
 const HANDLER_PROJECT = path.join(FIXTURES, 'handler-project');
 const HANDLER_CONFIG = path.join(HANDLER_PROJECT, 'rill-config.json');
-
-// Ensure dist/cli.js exists before tests spawn it. `pnpm test`
-// does not run build first, so a clean checkout would otherwise fail
-// with ENOENT. tsbuildinfo can claim the project is up-to-date even
-// when emitted JS is missing (manual deletion, dirty dist), so use
-// --force to guarantee re-emission. Builds once, in-process.
-beforeAll(() => {
-  if (!existsSync(BINARY)) {
-    execSync('pnpm exec tsc --build --force', {
-      cwd: PROJECT_ROOT,
-      stdio: 'inherit',
-    });
-  }
-}, 60_000);
 
 function runDescribe(
   args: string[],

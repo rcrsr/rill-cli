@@ -216,16 +216,26 @@ describe('applyFixes', () => {
   });
 
   describe('parse verification [EC-6]', () => {
-    it('throws when fix creates invalid syntax', () => {
+    it('throws with the parse error location and cause when fix creates invalid syntax', () => {
       const source = '"hello"';
       const diagnostics = [
         // This creates invalid syntax (operator without operands)
         createDiagnostic('TEST_BAD', 1, 1, 0, 7, '1 + +'),
       ];
 
-      expect(() => applyFixes(source, diagnostics)).toThrow(
-        'Fix would create invalid syntax'
-      );
+      let caught: unknown;
+      try {
+        applyFixes(source, diagnostics);
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      const err = caught as Error;
+      expect(err.message).toContain('Fix would create invalid syntax');
+      // The underlying parse error location must not be swallowed.
+      expect(err.message).toMatch(/at \d+:\d+/);
+      expect(err.cause).toBeDefined();
     });
 
     it('throws when multiple fixes together create invalid syntax', () => {

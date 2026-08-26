@@ -14,7 +14,6 @@ import type { HaltView } from '../../src/cli-error-from-halt.js';
 const baseOpts: FormatOptions = {
   format: 'human',
   verbose: false,
-  includeCallStack: false,
   maxCallStackDepth: 10,
 };
 

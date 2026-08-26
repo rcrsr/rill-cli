@@ -2,7 +2,7 @@
  * Tests for parseCheckArgs function
  *
  * Test Coverage Matrix (maps TCs to specification requirements):
- * TC-1: --help flag returns help mode [AC-S6]
+ * TC-1: --help flag returns help mode
  * TC-3: Unknown flag throws error [EC-1]
  * TC-4: Missing file throws error [EC-2]
  * TC-5: --fix flag parsed correctly [IR-2]

@@ -1,40 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { spawn, execSync } from 'node:child_process';
+import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
-
-beforeAll(() => {
-  execSync('pnpm run build', { stdio: 'ignore' });
-}, 30000);
-
-const CLI_PATH = path.resolve(process.cwd(), 'dist/cli.js');
+import { spawnCli } from '../helpers/spawn-cli.js';
 
 function run(
   args: string[]
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const env = { ...process.env };
-    delete env['VITEST'];
-    delete env['VITEST_WORKER_ID'];
-    delete env['NODE_ENV'];
-
-    const proc = spawn('node', [CLI_PATH, 'build', ...args], { env });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code: number | null) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-  });
+  return Promise.resolve(spawnCli(['build', ...args]));
 }
 
 // ============================================================

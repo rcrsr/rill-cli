@@ -745,7 +745,6 @@ describe('writeBundleHarness', () => {
 
   it('throws BundleConfigError with code WRITE when the file cannot be written', async () => {
     const tmpDir = makeTmpDir();
-    const bundlePath = path.join(tmpDir, BUNDLE_FILE);
     try {
       writeBundleJson(tmpDir, {
         name: 'write-fail-bundle',
@@ -753,8 +752,12 @@ describe('writeBundleHarness', () => {
         packages: [{ mount: 'pkg', project: 'packages/pkg' }],
       });
 
-      // Make the file read-only so writeFile throws EACCES.
-      fs.chmodSync(bundlePath, 0o444);
+      // writeBundleHarness now writes atomically (temp file + rename), so a
+      // read-only *file* no longer blocks the write: rename replaces it
+      // regardless of the destination's permission bits. Make the
+      // *directory* read-only instead, so the temp-file write itself fails
+      // with EACCES.
+      fs.chmodSync(tmpDir, 0o555);
 
       await expect(
         writeBundleHarness(tmpDir, 'any-harness')
@@ -766,11 +769,7 @@ describe('writeBundleHarness', () => {
       ).rejects.toBeInstanceOf(BundleConfigError);
     } finally {
       // Restore write permission so rmSync can clean up.
-      try {
-        fs.chmodSync(bundlePath, 0o644);
-      } catch {
-        // ignore if file was never created
-      }
+      fs.chmodSync(tmpDir, 0o755);
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });

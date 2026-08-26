@@ -214,6 +214,11 @@ describe('applyMountEdit', () => {
       // File must be byte-for-byte equal to original rawText after rollback.
       const afterContent = fs.readFileSync(snapshot.path, 'utf8');
       expect(afterContent).toBe(originalRawText);
+
+      // The rollback goes through atomicWriteFile: no leftover .tmp file
+      // from either the edit write or the rollback write.
+      const residue = fs.readdirSync(tmpDir).filter((f) => f.endsWith('.tmp'));
+      expect(residue).toEqual([]);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

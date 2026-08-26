@@ -45,8 +45,9 @@ async function assertHandlerFile(handlerPath: string): Promise<void> {
 }
 
 /**
- * Resolve the effective mount from process.argv[2], falling back to
- * the bundle's defaultPackage or the first available package mount.
+ * Resolve the effective mount from the caller-supplied requested mount,
+ * falling back to the bundle's defaultPackage or the first available
+ * package mount.
  */
 function resolveMount(
   packages: readonly CompiledPackage[],
@@ -128,7 +129,7 @@ async function dispatchByMount(
 
   if (mount === undefined) {
     process.stderr.write(
-      `Unknown package: ${String(mount)}. Available: ${availableMounts.join(', ')}.\n`
+      `No package specified. Available: ${availableMounts.join(', ')}.\n`
     );
     return 1;
   }

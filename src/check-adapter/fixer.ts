@@ -3,7 +3,7 @@
  * Apply automatic fixes to source code with collision detection.
  */
 
-import { parse } from '@rcrsr/rill';
+import { parse, ParseError } from '@rcrsr/rill';
 import type { Diagnostic } from '@rcrsr/rill-language-service/rules';
 
 // ============================================================
@@ -98,8 +98,15 @@ export function applyFixes(
   // Verify modified source parses successfully
   try {
     parse(modified);
-  } catch {
-    throw new Error('Fix would create invalid syntax');
+  } catch (err) {
+    const location =
+      err instanceof ParseError && err.location
+        ? ` at ${err.location.line}:${err.location.column}`
+        : '';
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Fix would create invalid syntax${location}: ${detail}`, {
+      cause: err,
+    });
   }
 
   const applied = validFixes.length;

@@ -345,8 +345,6 @@ Examples:
         formatError(err, source, {
           format: formatOptions?.format ?? 'human',
           verbose: formatOptions?.verbose ?? false,
-          includeCallStack: true,
-          maxCallStackDepth: formatOptions?.maxStackDepth ?? 10,
         })
       );
     } else {
@@ -354,8 +352,6 @@ Examples:
         formatError(new Error(String(err)), source, {
           format: formatOptions?.format ?? 'human',
           verbose: formatOptions?.verbose ?? false,
-          includeCallStack: true,
-          maxCallStackDepth: formatOptions?.maxStackDepth ?? 10,
         })
       );
     }

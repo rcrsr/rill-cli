@@ -3,7 +3,7 @@
  * Functions for extracting source snippets and suggesting similar names
  */
 
-import type { SourceSpan, RillError, CallFrame } from '@rcrsr/rill';
+import type { SourceSpan, RillError } from '@rcrsr/rill';
 import { RuntimeError } from '@rcrsr/rill';
 import { viewFromRuntimeError, type HaltView } from './cli-error-from-halt.js';
 
@@ -32,7 +32,6 @@ export interface EnrichedError {
   readonly message: string;
   readonly span?: SourceSpan | undefined;
   readonly context?: Record<string, unknown> | undefined;
-  readonly callStack?: CallFrame[] | undefined;
   readonly sourceSnippet?: SourceSnippet | undefined;
   readonly suggestions?: string[] | undefined;
   readonly helpUrl?: string | undefined;
@@ -287,7 +286,6 @@ export function enrichError(
     message: error.message.replace(/ at \d+:\d+$/, ''), // Strip location suffix
     span,
     context: error.context,
-    callStack: undefined, // Call stack not part of base RillError
     sourceSnippet,
     suggestions,
     helpUrl: error.helpUrl,

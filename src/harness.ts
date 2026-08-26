@@ -65,8 +65,9 @@ export interface ServeContext extends HarnessContext {
   /**
    * Register a handler to run when a source file changes.
    * NOT YET IMPLEMENTED: no filesystem watcher currently invokes registered
-   * handlers. Registration is accepted so harnesses can call this method
-   * without error, but handlers are never triggered.
+   * handlers. Calling this method is accepted without error, but logs a
+   * one-time warning through the harness logger; the handler is discarded
+   * and never triggered.
    */
   readonly onSourceChange: (handler: () => void | Promise<void>) => void;
   readonly onShutdown: (handler: () => void | Promise<void>) => void;

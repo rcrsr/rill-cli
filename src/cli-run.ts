@@ -177,8 +177,6 @@ export function parseCliArgs(
     rootDir = tok;
     break;
   }
-  const scriptArgs: string[] = [];
-
   const rawFormat = values['format'];
   const format =
     rawFormat === 'json' || rawFormat === 'compact' ? rawFormat : 'human';
@@ -198,7 +196,6 @@ export function parseCliArgs(
 
   return {
     scriptPath: undefined,
-    scriptArgs,
     rootDir,
     config: (values['config'] as string | undefined) ?? './rill-config.json',
     format,

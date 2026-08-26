@@ -5,22 +5,15 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  TSCONFIG_RILL_CONTENT,
+  scaffoldRillNpmPrefix,
+} from './package-init.js';
+import { atomicWriteFile } from '../fs-atomic.js';
 
 // ============================================================
 // SHARED SCAFFOLD LOGIC
 // ============================================================
-
-const TSCONFIG_RILL_CONTENT =
-  JSON.stringify(
-    {
-      compilerOptions: {
-        baseUrl: './npm',
-        paths: { '*': ['node_modules/*'] },
-      },
-    },
-    null,
-    2
-  ) + '\n';
 
 /**
  * Scaffold a single-package rill project at cwd.
@@ -60,28 +53,19 @@ export async function scaffoldSinglePackage(
     }
   }
 
-  // Step 4: mkdir .rill/npm/ (recursive)
+  // Steps 4-6: mkdir .rill/npm/ (recursive) and write its package.json and
+  // .gitignore (only when missing or --reset).
+  const npmPkgJson = path.join(npmDir, 'package.json');
+  const willCreateNpmPkgJson = reset || !fs.existsSync(npmPkgJson);
   try {
-    fs.mkdirSync(npmDir, { recursive: true });
+    scaffoldRillNpmPrefix(rillDir, { reset });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`Cannot create .rill/npm/: ${message}\n`);
     return 1;
   }
-
-  // Step 5: write .rill/npm/package.json (only when missing or --reset)
-  const npmPkgJson = path.join(npmDir, 'package.json');
-  const npmPkgContent = '{"name":"rill-extensions","private":true}\n';
-  if (reset || !fs.existsSync(npmPkgJson)) {
-    fs.writeFileSync(npmPkgJson, npmPkgContent, 'utf8');
+  if (willCreateNpmPkgJson) {
     process.stdout.write('✓ Created .rill/npm/package.json\n');
-  }
-
-  // Step 6: write .rill/npm/.gitignore (only when missing or --reset)
-  const npmGitignore = path.join(npmDir, '.gitignore');
-  const npmGitignoreContent = 'node_modules/\npackage-lock.json\n';
-  if (reset || !fs.existsSync(npmGitignore)) {
-    fs.writeFileSync(npmGitignore, npmGitignoreContent, 'utf8');
   }
 
   // Step 7: write .rill/tsconfig.rill.json — path mapping for tsc and editors.
@@ -107,7 +91,9 @@ export async function scaffoldSinglePackage(
 
   try {
     if (force || reset || !fs.existsSync(configPath)) {
-      fs.writeFileSync(configPath, configContent, 'utf8');
+      // Durable project config, written atomically so a failed write never
+      // truncates a pre-existing rill-config.json in place.
+      await atomicWriteFile(configPath, configContent, 'utf8');
       process.stdout.write('✓ Created rill-config.json\n');
     }
   } catch (err) {

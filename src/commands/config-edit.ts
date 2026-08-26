@@ -3,24 +3,11 @@ import path from 'node:path';
 import type { RillConfigFile } from '@rcrsr/rill-config';
 import { ConfigNotFoundError, loadProject } from '@rcrsr/rill-config';
 import { CLI_VERSION } from '../cli-shared.js';
+import { atomicWriteFile } from '../fs-atomic.js';
+import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
+import { NpmNotFoundError } from './npm-runner.js';
 
 export { ConfigNotFoundError };
-
-// ---------------------------------------------------------------------------
-// Local interface that mirrors the companion @rcrsr/rill-config release which
-// adds the `prefix` parameter to loadProject. Cast through this until the
-// published types catch up.
-// ---------------------------------------------------------------------------
-interface LoadProjectWithPrefix {
-  (options: {
-    configPath: string;
-    rillVersion: string;
-    prefix?: string;
-    signal?: AbortSignal;
-  }): Promise<unknown>;
-}
-
-const loadProjectWithPrefix = loadProject as unknown as LoadProjectWithPrefix;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -150,9 +137,10 @@ export async function applyMountEdit(
   const serialized =
     JSON.stringify(updatedConfig, null, 2) + (trailingNewline ? '\n' : '');
 
-  // Write updated config to disk.
+  // Write updated config to disk. Atomic: a write failure never truncates
+  // the existing rill-config.json in place.
   try {
-    await fs.promises.writeFile(snapshot.path, serialized, 'utf8');
+    await atomicWriteFile(snapshot.path, serialized, 'utf8');
   } catch (err) {
     throw new ConfigWriteError(snapshot.path, err);
   }
@@ -161,7 +149,7 @@ export async function applyMountEdit(
   if (options?.skipValidation === true) return;
 
   try {
-    await loadProjectWithPrefix({
+    await loadProject({
       configPath: snapshot.path,
       rillVersion: CLI_VERSION,
       prefix,
@@ -170,9 +158,10 @@ export async function applyMountEdit(
     // Rollback: restore raw text byte-for-byte, then re-throw ORIGINAL error,
     // annotated with whether the rollback write itself succeeded. A rollback
     // write failure must NOT be swallowed: the caller needs to know that
-    // rill-config.json may be left in the modified (invalid) state.
+    // rill-config.json may be left in the modified (invalid) state. Atomic,
+    // like the write above: a failed rollback never truncates the file.
     try {
-      await fs.promises.writeFile(snapshot.path, snapshot.rawText, 'utf8');
+      await atomicWriteFile(snapshot.path, snapshot.rawText, 'utf8');
       markRollbackResult(validationErr, true);
     } catch (rollbackErr) {
       markRollbackResult(validationErr, false, rollbackErr);
@@ -219,4 +208,81 @@ export interface RollbackAnnotatedError {
  */
 export function hasMount(snapshot: ConfigSnapshot, mount: string): boolean {
   return snapshot.parsed.extensions?.mounts?.[mount] !== undefined;
+}
+
+// ---------------------------------------------------------------------------
+// assertBootstrappedOrReport
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared pre-flight gate for install/uninstall/upgrade: checks
+ * `.rill/npm/package.json` exists under `projectDir` and, when it does not,
+ * prints the verbatim bootstrap-missing message and returns `false`.
+ *
+ * Returns `true` when bootstrapped, so callers write
+ * `if (!assertBootstrappedOrReport(dir)) return 1;`.
+ */
+export function assertBootstrappedOrReport(projectDir: string): boolean {
+  try {
+    assertBootstrapped(projectDir);
+    return true;
+  } catch (err) {
+    if (err instanceof BootstrapMissingError) {
+      process.stderr.write('✗ .rill/npm/ not found\n');
+      process.stderr.write(
+        "  Run 'rill init' first to initialize the project\n"
+      );
+      return false;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// reportNpmNotFound
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared handler for the `NpmNotFoundError` catch clause repeated across
+ * install/uninstall/upgrade's npm subprocess calls: prints the verbatim
+ * "npm not found" message and returns the exit code 1. Rethrows any other
+ * error unchanged, so callers write `catch (err) { return reportNpmNotFound(err); }`.
+ */
+export function reportNpmNotFound(err: unknown): number {
+  if (err instanceof NpmNotFoundError) {
+    process.stderr.write('npm not found on PATH; install Node.js with npm\n');
+    return 1;
+  }
+  throw err;
+}
+
+// ---------------------------------------------------------------------------
+// readInstalledPackageVersion
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads the `version` field from `<prefix>/node_modules/<pkgName>/package.json`.
+ * Returns `undefined` when the file is missing, unreadable, invalid JSON, or
+ * has no non-empty string `version` field. Callers decide how to react to a
+ * missing version (treat as an error, or as "not yet installed").
+ */
+export function readInstalledPackageVersion(
+  prefix: string,
+  pkgName: string
+): string | undefined {
+  const pkgJsonPath = path.join(
+    prefix,
+    'node_modules',
+    pkgName,
+    'package.json'
+  );
+  try {
+    const text = fs.readFileSync(pkgJsonPath, 'utf8');
+    const parsed = JSON.parse(text) as { version?: string };
+    return typeof parsed.version === 'string' && parsed.version !== ''
+      ? parsed.version
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

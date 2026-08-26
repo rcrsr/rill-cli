@@ -1,7 +1,6 @@
 /**
  * Tests for src/commands/upgrade.ts
- * Covers AC-6, AC-B10, AC-P3
- * Phase 3.5 additions: EC-17, EC-18, AC-E4/EC-19, EC-20, EC-21.
+ * Phase 3.5 additions: EC-17, EC-18, EC-19, EC-20, EC-21.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -150,10 +149,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // AC-6: upgrade from ^0.19.0 to ^0.20.1
+  // Upgrade from ^0.19.0 to ^0.20.1
   // ============================================================
 
-  describe('AC-6: upgrade to newer version', () => {
+  describe('upgrade to newer version', () => {
     it('updates mount value to new caret version and exits 0', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -212,10 +211,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // AC-B10: already at latest
+  // Already at latest
   // ============================================================
 
-  describe('AC-B10: already at latest version', () => {
+  describe('already at latest version', () => {
     it('emits "Already at latest" and exits 0 without changing mount', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.20.1',
@@ -252,10 +251,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // AC-P3: config-edit + loadProject validation < 1s
+  // Timing budget: config-edit + loadProject validation
   // ============================================================
 
-  describe('AC-P3: timing < 1s', () => {
+  describe('completes config-edit and validation within timing budget', () => {
     it('config-edit + loadProject validation completes in under 1000ms', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -343,10 +342,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // AC-E4 / EC-19: Local-path mount refused
+  // EC-19: Local-path mount refused
   // ============================================================
 
-  describe('AC-E4/EC-19: local-path mount refused with UXT-EXT-10; no npm', () => {
+  describe('EC-19: local-path mount refused with UXT-EXT-10; no npm', () => {
     it('emits UXT-EXT-10 verbatim to stderr; no npm subprocess; exits 1', async () => {
       bootstrapProject(tmpDir, {
         'local-ext': './local-ext',

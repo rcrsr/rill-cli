@@ -176,14 +176,6 @@ describe('parseCliArgs', () => {
     it('explain is undefined when not provided', () => {
       expect(parseCliArgs([]).explain).toBeUndefined();
     });
-
-    it('collects additional positional args as scriptArgs', () => {
-      expect(parseCliArgs([]).scriptArgs).toEqual([]);
-    });
-
-    it('scriptArgs is empty when no extra positionals', () => {
-      expect(parseCliArgs([]).scriptArgs).toEqual([]);
-    });
   });
 
   describe('rootDir vs handler-param disambiguation (FRICTION-NOTES 2026-05-03)', () => {
@@ -392,8 +384,13 @@ describe('main() loadProject flow', () => {
       // main() returns the exit code rather than calling process.exit().
       // Assign to exitCode so existing assertions on exitCode still work.
       exitCode = code;
-    } catch {
-      // process.exit() throws in test environment when the spy fires
+    } catch (err) {
+      // The process.exit spy above throws to unwind the call stack instead
+      // of terminating the process. That is the only rejection this helper
+      // expects; anything else is a real failure and must not be swallowed.
+      if (!(err instanceof Error) || !err.message.startsWith('process.exit(')) {
+        throw err;
+      }
     }
   }
 

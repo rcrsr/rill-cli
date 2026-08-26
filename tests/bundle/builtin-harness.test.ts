@@ -346,6 +346,30 @@ describe('builtinHarness.serve dispatch', () => {
     expect(exitCode).toBe(0);
   });
 
+  it('writes "No package specified" (not "Unknown package: undefined") when no mount can be resolved', async () => {
+    // defaultPackage is typed as a guaranteed string on the resolved bundle
+    // config, but resolveMount() defensively accepts `string | undefined`;
+    // cast to exercise that defensive branch directly.
+    const bundle = {
+      ...MINIMAL_BUNDLE,
+      defaultPackage: undefined,
+    } as unknown as ResolvedRillBundleConfig;
+    const ctx = makeServeContext([], { bundle, requestedMount: undefined });
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    const exitCode = await builtinHarness.serve!(ctx);
+
+    expect(exitCode).toBe(1);
+    const written = stderrSpy.mock.calls.map((call) => String(call[0]));
+    expect(written.some((line) => line.includes('No package specified'))).toBe(
+      true
+    );
+    expect(written.some((line) => line.includes('undefined'))).toBe(false);
+    stderrSpy.mockRestore();
+  });
+
   it('forwards ctx.args to the dispatched handler, mapped to request.params via describe()', async () => {
     const pkgDir = path.join(tmpDir, 'alpha');
     fs.mkdirSync(pkgDir, { recursive: true });

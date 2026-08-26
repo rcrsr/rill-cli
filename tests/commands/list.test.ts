@@ -1,6 +1,5 @@
 /**
  * Tests for src/commands/list.ts
- * Covers AC-7, AC-8, AC-B1, AC-B2, AC-P5
  * Phase 3.5 additions: EC-22, EC-23, EC-25.
  */
 
@@ -62,10 +61,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // AC-7: human mode with 3 mounts
+  // Human mode with 3 mounts
   // ============================================================
 
-  describe('AC-7: human mode with 3 mounts', () => {
+  describe('human mode with 3 mounts', () => {
     it('outputs header + 3 rows + footer "3 extensions installed." and exits 0', async () => {
       const prefix = path.join(tmpDir, '.rill', 'npm');
       bootstrapProject(tmpDir, {
@@ -104,10 +103,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // AC-8: JSON mode with 3 mounts, 1 local
+  // JSON mode with 3 mounts, 1 local
   // ============================================================
 
-  describe('AC-8: JSON mode with mixed registry + local mounts', () => {
+  describe('JSON mode with mixed registry + local mounts', () => {
     it('outputs JSON array of 3; local row has version null and source "local"', async () => {
       const prefix = path.join(tmpDir, '.rill', 'npm');
       bootstrapProject(tmpDir, {
@@ -152,10 +151,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // AC-B1: empty mounts — human mode
+  // Empty mounts — human mode
   // ============================================================
 
-  describe('AC-B1: empty mounts, human mode', () => {
+  describe('empty mounts, human mode', () => {
     it('outputs header + "0 extensions installed." and exits 0', async () => {
       bootstrapProject(tmpDir, {});
 
@@ -177,10 +176,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // AC-B2: empty mounts — JSON mode
+  // Empty mounts — JSON mode
   // ============================================================
 
-  describe('AC-B2: empty mounts, JSON mode', () => {
+  describe('empty mounts, JSON mode', () => {
     it('outputs "[]\n" and exits 0', async () => {
       bootstrapProject(tmpDir, {});
 
@@ -199,10 +198,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // AC-P5: timing < 500ms
+  // Timing budget
   // ============================================================
 
-  describe('AC-P5: timing < 500ms', () => {
+  describe('completes within timing budget', () => {
     it('completes in under 500ms', async () => {
       const prefix = path.join(tmpDir, '.rill', 'npm');
       bootstrapProject(tmpDir, {

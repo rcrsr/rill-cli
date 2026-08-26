@@ -78,8 +78,6 @@ function formatRillErrorOutput(
   const formatOpts = {
     format: opts.format,
     verbose: opts.verbose,
-    includeCallStack: true,
-    maxCallStackDepth: opts.maxStackDepth,
     trace: opts.trace,
     showRecovered: opts.showRecovered,
     atomOnly: opts.atomOnly,
@@ -136,8 +134,6 @@ export function formatHandlerError(
         trace: opts.trace,
         showRecovered: opts.showRecovered,
         atomOnly: opts.atomOnly,
-        maxCallStackDepth: opts.maxStackDepth,
-        includeCallStack: true,
       },
       source,
       scriptPath
@@ -390,10 +386,6 @@ export async function runScript(
   };
 
   const ctx = createRuntimeContext(runtimeOptions);
-
-  if (opts.scriptArgs.length > 0) {
-    ctx.pipeValue = opts.scriptArgs.join(' ');
-  }
 
   const formatErr = (err: RillError): string =>
     formatRillErrorOutput(err, source, opts.scriptPath!, opts);

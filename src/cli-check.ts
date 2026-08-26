@@ -516,15 +516,6 @@ async function checkFile(
 ): Promise<number> {
   let source: string;
   try {
-    if (!fs.existsSync(file)) {
-      console.error(`Error [RILL-C001]: File not found: ${file}`);
-      return 2;
-    }
-    const stats = fs.statSync(file);
-    if (stats.isDirectory()) {
-      console.error(`Error [RILL-C002]: Path is a directory: ${file}`);
-      return 2;
-    }
     source = fs.readFileSync(file, 'utf-8');
   } catch (err) {
     if (
@@ -585,8 +576,7 @@ async function checkFile(
 
   let diagnostics = applySeverityOverlay(
     runRules(parseResult, source, options.config),
-    options.severityMap,
-    options.config.rules
+    options.severityMap
   );
 
   if (options.fix && diagnostics.length > 0) {
@@ -618,8 +608,7 @@ async function checkFile(
       if (reparseResult.errors.length === 0) {
         diagnostics = applySeverityOverlay(
           runRules(reparseResult, result.modified, options.config),
-          options.severityMap,
-          options.config.rules
+          options.severityMap
         );
       }
     }

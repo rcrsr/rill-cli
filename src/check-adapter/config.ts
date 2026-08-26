@@ -107,16 +107,16 @@ export function loadConfig(cwd: string): ResolvedCheckConfig | null {
     throw new Error('[RILL-C003]: config must be an object');
   }
 
-  const parsed = parsedData as ParsedRillCheckConfig | null | undefined;
+  const parsed = parsedData as ParsedRillCheckConfig;
 
   const rulesErrors = validateConfig({
-    rules: (parsed?.rules ?? {}) as Record<string, RuleState>,
+    rules: (parsed.rules ?? {}) as Record<string, RuleState>,
   });
   if (rulesErrors !== null) {
     throw new Error(`[RILL-C003]: ${formatValidationErrors(rulesErrors)}`);
   }
 
-  const severityBlock = parsed?.severity ?? {};
+  const severityBlock = parsed.severity ?? {};
 
   if (
     typeof severityBlock !== 'object' ||
@@ -148,9 +148,15 @@ export function loadConfig(cwd: string): ResolvedCheckConfig | null {
   const defaults = createDefaultConfig();
   const rules: Record<string, RuleState> = {
     ...defaults.rules,
-    ...(parsed?.rules as Record<string, RuleState> | undefined),
+    ...(parsed.rules as Record<string, RuleState> | undefined),
   };
 
+  // `checkerMode` is intentionally left unset: rill check runs the language
+  // service in its default checker mode. Per-code severity overrides already
+  // exist via the `severity` block above; a config key to change
+  // `checkerMode` is deferred until a user needs error-level enforcement of
+  // the strict-mode `use<>` rules, which live upstream in
+  // `@rcrsr/rill-language-service`.
   const config: CheckConfig = { rules };
 
   const severityMap: Record<string, DiagnosticSeverity> = {};

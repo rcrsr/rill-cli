@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { atomicWriteFile } from '../fs-atomic.js';
 
 // ============================================================
 // BUNDLE PACKAGE ENTRY
@@ -473,7 +474,7 @@ export async function writeBundleHarness(
     JSON.stringify(obj, null, 2) + (trailingNewline ? '\n' : '');
 
   try {
-    await writeFile(filePath, serialized, 'utf8');
+    await atomicWriteFile(filePath, serialized, 'utf8');
   } catch (err) {
     throw new BundleConfigError({
       code: 'WRITE',

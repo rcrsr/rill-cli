@@ -107,8 +107,6 @@ function buildFormatOptions(options?: Partial<FormatOptions>): FormatOptions {
   const result: FormatOptions = {
     format: options?.format ?? 'human',
     verbose: options?.verbose ?? false,
-    includeCallStack: options?.includeCallStack ?? false,
-    maxCallStackDepth: options?.maxCallStackDepth ?? 10,
     trace: options?.trace ?? 'auto',
     showRecovered: options?.showRecovered ?? false,
     atomOnly: options?.atomOnly ?? false,
@@ -277,9 +275,10 @@ export function detectHelpVersionFlag(
 }
 
 /**
- * Package version string (re-exported from version-data.ts)
+ * Package version strings.
  *
- * This replaces the previous async readVersion() function with a synchronous constant.
- * The version is now generated at build time by packages/core/scripts/generate-version.ts.
+ * `VERSION` is the `@rcrsr/rill` language runtime version, re-exported from
+ * that package. `CLI_VERSION` is this package's own version, read
+ * synchronously from `package.json` above.
  */
 export { VERSION, CLI_VERSION };

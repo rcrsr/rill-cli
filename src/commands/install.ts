@@ -15,11 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import {
-  assertBootstrapped,
-  BootstrapMissingError,
-  resolvePrefix,
-} from './prefix.js';
+import { resolvePrefix } from './prefix.js';
 import {
   deriveMount,
   extractPackageName,
@@ -31,11 +27,14 @@ import {
   readConfigSnapshot,
   applyMountEdit,
   hasMount,
+  assertBootstrappedOrReport,
+  reportNpmNotFound,
+  readInstalledPackageVersion,
   ConfigNotFoundError,
   ConfigParseError,
   ConfigWriteError,
 } from './config-edit.js';
-import { npmInstall, npmView, NpmNotFoundError } from './npm-runner.js';
+import { npmInstall, npmView } from './npm-runner.js';
 import { resolveTargetPackageDir } from './bundle-resolve.js';
 import {
   findBundleRoot,
@@ -229,21 +228,6 @@ function extractRillRole(
 }
 
 // ============================================================
-// BUNDLE TARGET RESOLUTION
-// ============================================================
-
-/**
- * Writes the verbatim bootstrap-missing error copy to stderr.
- *
- * Shared by the package-mode and bundle-mode (harness/extension) bootstrap
- * gates so the message stays byte-identical across all three call sites.
- */
-function writeBootstrapMissingError(): void {
-  process.stderr.write('✗ .rill/npm/ not found\n');
-  process.stderr.write("  Run 'rill init' first to initialize the project\n");
-}
-
-// ============================================================
 // RUN
 // ============================================================
 
@@ -370,15 +354,7 @@ export async function run(argv: string[]): Promise<number> {
   // against the bundle root for harnesses or the target package for
   // extensions.
   if (bundleRoot === null) {
-    try {
-      assertBootstrapped(projectDir);
-    } catch (err) {
-      if (err instanceof BootstrapMissingError) {
-        writeBootstrapMissingError();
-        return 1;
-      }
-      throw err;
-    }
+    if (!assertBootstrappedOrReport(projectDir)) return 1;
   }
 
   // ---- Step 2: Compute mount ----
@@ -466,12 +442,8 @@ export async function run(argv: string[]): Promise<number> {
   try {
     declaredRole = await probePackageRole(specifier, local, projectDir);
   } catch (err) {
-    if (err instanceof NpmNotFoundError) {
-      // npm absent means we cannot probe and cannot install; surface it before spawning.
-      process.stderr.write('npm not found on PATH; install Node.js with npm\n');
-      return 1;
-    }
-    throw err;
+    // npm absent means we cannot probe and cannot install; surface it before spawning.
+    return reportNpmNotFound(err);
   }
   if (declaredRole === 'not-a-rill-package') {
     process.stderr.write(
@@ -500,15 +472,7 @@ export async function run(argv: string[]): Promise<number> {
   if (bundleRoot !== null) {
     if (effectiveRole === 'harness') {
       effectivePrefix = path.join(bundleRoot, '.rill', 'npm');
-      try {
-        assertBootstrapped(bundleRoot);
-      } catch (err) {
-        if (err instanceof BootstrapMissingError) {
-          writeBootstrapMissingError();
-          return 1;
-        }
-        throw err;
-      }
+      if (!assertBootstrappedOrReport(bundleRoot)) return 1;
     } else {
       const resolved = await resolveTargetPackageDir({
         bundleRoot,
@@ -520,15 +484,7 @@ export async function run(argv: string[]): Promise<number> {
       }
       targetPackageDir = resolved.dir;
       effectivePrefix = resolvePrefix(targetPackageDir);
-      try {
-        assertBootstrapped(targetPackageDir);
-      } catch (err) {
-        if (err instanceof BootstrapMissingError) {
-          writeBootstrapMissingError();
-          return 1;
-        }
-        throw err;
-      }
+      if (!assertBootstrappedOrReport(targetPackageDir)) return 1;
     }
   }
 
@@ -553,12 +509,8 @@ export async function run(argv: string[]): Promise<number> {
   try {
     npmResult = await npmInstall({ spec: npmSpec, prefix: effectivePrefix });
   } catch (err) {
-    if (err instanceof NpmNotFoundError) {
-      // npm absent from PATH is a user-fixable setup problem, not a crash.
-      process.stderr.write('npm not found on PATH; install Node.js with npm\n');
-      return 1;
-    }
-    throw err;
+    // npm absent from PATH is a user-fixable setup problem, not a crash.
+    return reportNpmNotFound(err);
   }
 
   if (npmResult.exitCode !== 0) {
@@ -583,27 +535,18 @@ export async function run(argv: string[]): Promise<number> {
       pkgName,
       'package.json'
     );
-    try {
-      const pkgJsonText = fs.readFileSync(installedPkgJsonPath, 'utf8');
-      const pkgJson = JSON.parse(pkgJsonText) as { version?: string };
-      installedVersion = pkgJson.version;
-    } catch (err) {
-      // npm install succeeded but the installed package.json is unreadable or invalid.
-      // Refuse to record an unversioned mount when the rest of the workflow assumes
-      // versioned specifiers — surface the read failure instead of silently masking it.
-      const msg = err instanceof Error ? err.message : String(err);
+    // npm install succeeded but the installed package.json may be unreadable,
+    // invalid, or missing a version field. Refuse to record an unversioned
+    // mount when the rest of the workflow assumes versioned specifiers —
+    // surface the failure instead of silently masking it.
+    installedVersion = readInstalledPackageVersion(effectivePrefix, pkgName);
+
+    if (installedVersion === undefined) {
       process.stderr.write(
-        `✗ Failed to read installed package metadata at ${installedPkgJsonPath}: ${msg}\n`
+        `✗ Installed package.json at ${installedPkgJsonPath} is missing, unreadable, or has no version field\n`
       );
       process.stderr.write(
         '  npm install completed but the package may be corrupt. Re-run install or inspect .rill/npm/.\n'
-      );
-      return 1;
-    }
-
-    if (installedVersion === undefined || installedVersion === '') {
-      process.stderr.write(
-        `✗ Installed package.json at ${installedPkgJsonPath} has no version field\n`
       );
       return 1;
     }
@@ -619,16 +562,13 @@ export async function run(argv: string[]): Promise<number> {
     value = `${pkgName}@${rangeArg}`;
   } else if (pin) {
     // --pin / --exact: exact version, no caret
-    value =
-      installedVersion !== undefined
-        ? `${pkgName}@${installedVersion}`
-        : pkgName;
+    // Non-local branch: installedVersion is guaranteed set here (Step 6
+    // returns 1 above when it is undefined), so no fallback is reachable.
+    value = `${pkgName}@${installedVersion}`;
   } else {
     // Default: caret constraint
-    value =
-      installedVersion !== undefined
-        ? `${pkgName}@^${installedVersion}`
-        : pkgName;
+    // Non-local branch: installedVersion is guaranteed set here (see above).
+    value = `${pkgName}@^${installedVersion}`;
   }
 
   // ---- Step 8: Print install confirmation ----
@@ -640,8 +580,8 @@ export async function run(argv: string[]): Promise<number> {
   } else {
     // Registry path, first of two lines: emitted here, after the version is
     // resolved from package.json.
-    const versionSuffix =
-      installedVersion !== undefined ? `@${installedVersion}` : '';
+    // Non-local branch: installedVersion is guaranteed set here (see above).
+    const versionSuffix = `@${installedVersion}`;
     process.stdout.write(`ℹ Installing ${pkgName}${versionSuffix}...\n`);
     // Registry path, second of two lines.
     process.stdout.write(`✓ Installed to .rill/npm/node_modules/${pkgName}\n`);

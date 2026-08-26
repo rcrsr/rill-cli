@@ -258,7 +258,7 @@ describe('suggestSimilarNames', () => {
     });
   });
 
-  describe('AC-10: Undefined $valeu with $value in scope suggests correction', () => {
+  describe('undefined $valeu with $value in scope suggests correction', () => {
     it('suggests $value when $valeu is undefined (typo scenario)', () => {
       const target = 'valeu'; // Typo: missing 'e'
       const candidates = ['value', 'values', 'valid'];
@@ -271,7 +271,7 @@ describe('suggestSimilarNames', () => {
     });
   });
 
-  describe('AC-11: Dict key error shows Available keys', () => {
+  describe('dict key error shows Available keys', () => {
     it('provides list of available keys for dict key errors', () => {
       // This test demonstrates the pattern for dict key suggestions
       const attemptedKey = 'nam'; // Typo: should be 'name'
@@ -317,7 +317,7 @@ describe('suggestSimilarNames', () => {
   });
 });
 
-describe('AC-13/EC-3: Invalid UTF-8 source handling', () => {
+describe('EC-3: Invalid UTF-8 source handling', () => {
   it('handles invalid UTF-8 gracefully in extractSnippet', () => {
     // JavaScript strings are always valid Unicode/UTF-16
     // Invalid UTF-8 bytes become replacement characters (�) when decoded

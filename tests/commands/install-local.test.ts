@@ -1,6 +1,6 @@
 /**
  * Tests for src/commands/install.ts — local-path installs.
- * Covers AC-4 (local symlink + verbatim relative path, UXT-EXT-3 messages).
+ * Covers local symlink + verbatim relative path, UXT-EXT-3 messages.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -55,7 +55,7 @@ function makeLocalExt(parentDir: string, name: string): string {
 }
 
 // ============================================================
-// TESTS: AC-4 — local-path install
+// TESTS: local-path install
 // ============================================================
 
 describe('install (local path)', () => {
@@ -75,7 +75,7 @@ describe('install (local path)', () => {
     vi.resetAllMocks();
   });
 
-  describe('AC-4: local extension symlink + verbatim relative path', () => {
+  describe('local extension symlink + verbatim relative path', () => {
     it('records verbatim relative path in mounts and exits 0', async () => {
       bootstrapProject(tmpDir);
       makeLocalExt(tmpDir, 'local-ext');

@@ -1,15 +1,15 @@
 /**
- * AC-11 / NFR-EXT-7: loadProject succeeds on a valid bootstrapped fixture.
+ * NFR-EXT-7: loadProject succeeds on a valid bootstrapped fixture.
  * IR-19: loadExtensions with prefix resolves extensions from .rill/npm/node_modules/.
  *
  * Verifies that calling loadProject with prefix=<projectDir>/.rill/npm resolves
- * correctly for both empty-mounts (AC-11) and non-empty-mounts (IR-19) cases.
+ * correctly for both empty-mounts and non-empty-mounts (IR-19) cases.
  */
 
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdir, writeFile, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { loadProject } from '@rcrsr/rill-config';
 
@@ -32,8 +32,7 @@ afterEach(async () => {
 const _require = createRequire(import.meta.url);
 
 async function makeProjectDir(suffix: string): Promise<string> {
-  const dir = path.join(tmpdir(), `rill-loadproject-${suffix}-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
+  const dir = await mkdtemp(path.join(tmpdir(), `rill-loadproject-${suffix}-`));
   tmpDirs.push(dir);
   return dir;
 }
@@ -50,10 +49,10 @@ async function bootstrapRillNpm(projectDir: string): Promise<string> {
 }
 
 // ============================================================
-// AC-11: loadProject succeeds on valid bootstrapped fixture (empty mounts)
+// loadProject succeeds on valid bootstrapped fixture (empty mounts)
 // ============================================================
 
-describe('AC-11: loadProject succeeds on valid bootstrapped fixture (NFR-EXT-7)', () => {
+describe('loadProject succeeds on valid bootstrapped fixture (NFR-EXT-7)', () => {
   const VALID_RILL_CONFIG = JSON.stringify(
     {
       name: 'loadproject-test',

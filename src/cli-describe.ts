@@ -458,6 +458,27 @@ async function disposeAll(
 // ---------------------------------------------------------------------------
 
 /**
+ * Walk a rill-config.json text for `${env.NAME}` references, returning each
+ * distinct variable name once, in first-seen order.
+ *
+ * Accepts any POSIX-shell-valid env var name. Convention is uppercase, but
+ * Linux is case-sensitive and rill-config doesn't enforce upper-case.
+ */
+function findEnvVarRefs(configText: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const re = /\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(configText)) !== null) {
+    const name = match[1]!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
  * Walk a rill-config.json text for `${env.NAME}` references and stub any
  * unset env vars to literal "x" so factories construct with a placeholder
  * credential instead of throwing.
@@ -467,15 +488,7 @@ async function disposeAll(
  */
 function applyEnvStubs(configText: string): string[] {
   const stubbed: string[] = [];
-  const seen = new Set<string>();
-  // Accept any POSIX-shell-valid env var name. Convention is uppercase, but
-  // Linux is case-sensitive and rill-config doesn't enforce upper-case.
-  const re = /\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(configText)) !== null) {
-    const name = match[1]!;
-    if (seen.has(name)) continue;
-    seen.add(name);
+  for (const name of findEnvVarRefs(configText)) {
     if (process.env[name] === undefined || process.env[name] === '') {
       process.env[name] = 'x';
       stubbed.push(name);
@@ -517,10 +530,7 @@ async function runProject(args: ProjectArgs): Promise<number> {
       }
       if (configText !== '') {
         // Snapshot before stubbing so the finally block can restore.
-        const re = /\$\{env\.([A-Za-z_][A-Za-z0-9_]*)\}/g;
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(configText)) !== null) {
-          const name = m[1]!;
+        for (const name of findEnvVarRefs(configText)) {
           if (!(name in envSnapshot)) {
             envSnapshot[name] = process.env[name];
           }

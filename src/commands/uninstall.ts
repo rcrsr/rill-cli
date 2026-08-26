@@ -12,16 +12,18 @@
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadProject } from '@rcrsr/rill-config';
-import { assertBootstrapped, BootstrapMissingError } from './prefix.js';
 import {
   readConfigSnapshot,
   hasMount,
   applyMountEdit,
+  assertBootstrappedOrReport,
+  reportNpmNotFound,
   ConfigNotFoundError,
   ConfigParseError,
 } from './config-edit.js';
-import { npmUninstall, NpmNotFoundError } from './npm-runner.js';
+import { npmUninstall } from './npm-runner.js';
 import {
+  extractPackageName,
   isLocalPath,
   looksLikeLocalFilePath,
   readLocalPackageName,
@@ -32,22 +34,6 @@ import {
 } from './bundle-resolve.js';
 import { writeBundleHarness, BundleConfigError } from '../bundle/config.js';
 import { CLI_VERSION } from '../cli-shared.js';
-
-// ---------------------------------------------------------------------------
-// Local interface that mirrors the companion @rcrsr/rill-config release which
-// adds the `prefix` parameter to loadProject. Cast through this until the
-// published types catch up.
-// ---------------------------------------------------------------------------
-interface LoadProjectWithPrefix {
-  (options: {
-    configPath: string;
-    rillVersion: string;
-    prefix?: string;
-    signal?: AbortSignal;
-  }): Promise<unknown>;
-}
-
-const loadProjectWithPrefix = loadProject as unknown as LoadProjectWithPrefix;
 
 // ============================================================
 // HELP TEXT
@@ -76,7 +62,7 @@ Options:
  * Derive the npm package name from a config specifier.
  *
  * - Registry specifier (e.g. "@rcrsr/rill-ext-datetime@^0.19.0"): strip the
- *   trailing version qualifier (last '@' not at position 0).
+ *   trailing version qualifier via {@link extractPackageName}.
  * - Local-path specifier (starts with './', '../', or '/'): prefer the
  *   linked package's own `package.json` `name` field
  *   (`readLocalPackageName`), falling back to the mount name when it cannot
@@ -90,13 +76,7 @@ function deriveNpmPackageName(
   if (isLocalPath(specifier)) {
     return readLocalPackageName(specifier, projectDir) ?? mount;
   }
-
-  // Strip trailing version qualifier: find last '@' after position 0.
-  const atIndex = specifier.indexOf('@', 1);
-  if (atIndex === -1) {
-    return specifier;
-  }
-  return specifier.slice(0, atIndex);
+  return extractPackageName(specifier);
 }
 
 // ============================================================
@@ -142,18 +122,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     const { target } = resolvedHarness;
 
-    try {
-      assertBootstrapped(target.bundleRoot);
-    } catch (err) {
-      if (err instanceof BootstrapMissingError) {
-        process.stderr.write('✗ .rill/npm/ not found\n');
-        process.stderr.write(
-          "  Run 'rill init' first to initialize the project\n"
-        );
-        return 1;
-      }
-      throw err;
-    }
+    if (!assertBootstrappedOrReport(target.bundleRoot)) return 1;
 
     process.stdout.write(`ℹ Removing harness '${target.harnessName}'...\n`);
 
@@ -177,13 +146,7 @@ export async function run(argv: string[]): Promise<number> {
         return npmResult.exitCode;
       }
     } catch (err) {
-      if (err instanceof NpmNotFoundError) {
-        process.stderr.write(
-          'npm not found on PATH; install Node.js with npm\n'
-        );
-        return 1;
-      }
-      throw err;
+      return reportNpmNotFound(err);
     }
 
     process.stdout.write(
@@ -208,18 +171,7 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Step 1: assertBootstrapped ----
   // .rill/npm/ missing -> the bootstrap-missing message, verbatim, exit 1
-  try {
-    assertBootstrapped(targetDir);
-  } catch (err) {
-    if (err instanceof BootstrapMissingError) {
-      process.stderr.write('✗ .rill/npm/ not found\n');
-      process.stderr.write(
-        "  Run 'rill init' first to initialize the project\n"
-      );
-      return 1;
-    }
-    throw err;
-  }
+  if (!assertBootstrappedOrReport(targetDir)) return 1;
 
   // ---- Step 2: Read config snapshot + mount existence check ----
   let snapshot: Awaited<ReturnType<typeof readConfigSnapshot>>;
@@ -277,13 +229,7 @@ export async function run(argv: string[]): Promise<number> {
     try {
       npmResult = await npmUninstall({ spec: pkgName, prefix });
     } catch (err) {
-      if (err instanceof NpmNotFoundError) {
-        process.stderr.write(
-          'npm not found on PATH; install Node.js with npm\n'
-        );
-        return 1;
-      }
-      throw err;
+      return reportNpmNotFound(err);
     }
 
     // npm uninstall non-zero exit -> propagate exit code; npm already streamed stderr
@@ -302,7 +248,7 @@ export async function run(argv: string[]): Promise<number> {
   // on failure do NOT roll back config; emit error and return 1.
   const configPath = path.resolve(targetDir, 'rill-config.json');
   try {
-    await loadProjectWithPrefix({
+    await loadProject({
       configPath,
       rillVersion: CLI_VERSION,
       prefix,

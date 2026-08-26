@@ -22,7 +22,7 @@ CLI) and `./harness`. No `packages/` tree, no workspace.
 - `src/run/`, `src/build/`, `src/bundle/`, `src/check-adapter/`: execution,
   esbuild output, multi-package bundles, and the language-service adapter.
 - `src/harness.ts` and `src/harness/`: the published `RillHarness` interface and
-  the built-in HTTP harness.
+  the built-in CLI dispatch harness.
 - `tests/` mirrors `src/` under vitest. `conduct/` is private planning, `demo/`
   is runnable examples, `scripts/` is repository-local tooling.
 

@@ -18,7 +18,6 @@ import * as path from 'node:path';
 function makeOpts(scriptPath: string): RunCliOptions {
   return {
     scriptPath,
-    scriptArgs: [],
     config: './rill-config.json',
     format: 'human',
     verbose: false,

@@ -593,9 +593,10 @@ async function buildPackageFiles(
       version.includes('..') ||
       !/^[0-9A-Za-z._-]+$/.test(version)
     ) {
-      throw new Error(
+      throw new BuildError(
         `Invalid extension version "${version}" for "${mountSpecifier}". ` +
-          'Version must be a safe filename component.'
+          'Version must be a safe filename component.',
+        'bundling'
       );
     }
     // Disambiguate only when the final emitted filename would collide.
@@ -710,7 +711,7 @@ export async function buildPackage(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new BuildError(
-      `Failed to parse rill-config.json: ${msg}`,
+      `Failed to read rill-config.json: ${msg}`,
       'validation'
     );
   }
@@ -884,10 +885,6 @@ export async function buildPackage(
   const { writtenFiles, rewrittenMounts: extensionMountPaths } =
     await buildPackageFiles(packageInput, absProjectDir, packageOutDir);
 
-  // Collect files for checksum (package files only, rill-config.json excluded
-  // because we rewrite it with the build section after computing the checksum)
-  const allWrittenFiles = [...writtenFiles];
-
   // Dry-run validation — loadProject() on completed output
   const outputRillConfigPath = path.join(packageOutDir, 'rill-config.json');
   const rillVersion = readRillVersion();
@@ -940,9 +937,9 @@ export async function buildPackage(
     }
   }
 
-  // Compute checksum over all output files EXCEPT rill-config.json
-  const sortedFiles = [...allWrittenFiles].sort();
-  const checksum = computeChecksum(sortedFiles);
+  // Compute checksum over all output files EXCEPT rill-config.json.
+  // computeChecksum sorts internally, so no pre-sort is needed here.
+  const checksum = computeChecksum(writtenFiles);
 
   // Step: Rewrite rill-config.json with build metadata section
   const outputConfigWithBuild: Record<string, unknown> = {

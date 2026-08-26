@@ -143,7 +143,7 @@ describe('applyFixes', () => {
     });
   });
 
-  describe('collision detection [EC-5]', () => {
+  describe('collision detection', () => {
     it('skips overlapping fixes with reason', () => {
       const source = '"hello world"';
       const diagnostics = [
@@ -215,7 +215,7 @@ describe('applyFixes', () => {
     });
   });
 
-  describe('parse verification [EC-6]', () => {
+  describe('parse verification', () => {
     it('throws with the parse error location and cause when fix creates invalid syntax', () => {
       const source = '"hello"';
       const diagnostics = [

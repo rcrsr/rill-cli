@@ -641,7 +641,7 @@ $itemList -> .len
 
   describe('error handling', () => {
     it('applies fixes for multiple violations', async () => {
-      // Note: Fix collision handling (EC-5) is tested in tests/check/fixer.test.ts
+      // Note: Fix collision handling is tested in tests/check/fixer.test.ts
       // This test verifies that non-colliding fixes are successfully applied.
       // $data1/$data2 are each referenced twice, non-adjacently, so neither
       // trips THROWAWAY_CAPTURE; only the two dict-key NAMING_SNAKE_CASE
@@ -687,7 +687,7 @@ $data2 -> log
   // ============================================================
 
   describe('error contracts', () => {
-    describe('EC-1: parseCheckArgs - unknown flag', () => {
+    describe('parseCheckArgs - unknown flag', () => {
       it('throws error for unknown long flag', () => {
         expect(() => parseCheckArgs(['--unknown'])).toThrow(
           'Unknown option: --unknown'
@@ -711,7 +711,7 @@ $data2 -> log
       });
     });
 
-    describe('EC-2: parseCheckArgs - no-arg now scans (FRICTION-NOTES 2026-05-03)', () => {
+    describe('parseCheckArgs - no-arg now scans (FRICTION-NOTES 2026-05-03)', () => {
       it('returns scan mode when no arguments provided', () => {
         expect(parseCheckArgs([])).toMatchObject({ mode: 'scan' });
       });
@@ -853,7 +853,7 @@ $data2 -> log
       });
     });
 
-    describe('EC-3: loadConfig - invalid JSON', () => {
+    describe('loadConfig - invalid JSON', () => {
       it('throws error for malformed JSON', async () => {
         await writeFile('.rill-check.json', '{ invalid json }');
 
@@ -876,7 +876,7 @@ $data2 -> log
       });
     });
 
-    describe('EC-4: loadConfig - unknown rule', () => {
+    describe('loadConfig - unknown rule', () => {
       it('throws error for unknown rule in rules field', async () => {
         await writeFile(
           '.rill-check.json',

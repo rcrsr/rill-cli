@@ -1,6 +1,6 @@
 /**
  * Unit tests for npm-runner.ts: npmInstall and npmUninstall resolve with
- * non-zero exit codes and do NOT throw (EC-32).
+ * non-zero exit codes and do NOT throw.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -60,7 +60,7 @@ describe('npmInstall', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('resolves (does not throw) with exitCode 1 on non-zero exit (EC-32)', async () => {
+  it('resolves (does not throw) with exitCode 1 on non-zero exit', async () => {
     spawnMock.mockImplementation(spawnReturningExitCode(1));
 
     const { npmInstall } = await import('../../src/commands/npm-runner.js');
@@ -123,7 +123,7 @@ describe('npmUninstall', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('resolves (does not throw) with exitCode 1 on non-zero exit (EC-32)', async () => {
+  it('resolves (does not throw) with exitCode 1 on non-zero exit', async () => {
     spawnMock.mockImplementation(spawnReturningExitCode(1));
 
     const { npmUninstall } = await import('../../src/commands/npm-runner.js');

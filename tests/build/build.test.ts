@@ -636,7 +636,7 @@ export const extensionManifest = {
   });
 
   // ----------------------------------------------------------
-  // EC-15: Output not writable → BuildError phase 'bundling'
+  // Output not writable → BuildError phase 'bundling'
   // ----------------------------------------------------------
   it.skipIf(process.platform === 'win32')(
     'throws BuildError phase bundling when output dir is not writable',
@@ -1530,10 +1530,10 @@ describe('findOffendingDynamicRequires', () => {
 // ============================================================
 
 // ----------------------------------------------------------
-// EC-33: .rill/npm/package.json missing on rill build
+// .rill/npm/package.json missing on rill build
 // ----------------------------------------------------------
 
-describe('buildPackage EC-33: .rill/npm/package.json missing', () => {
+describe('buildPackage .rill/npm/package.json missing', () => {
   it('throws BuildError phase compilation with FR-EXT-9 message', async () => {
     const projectDir = await makeTmpDir();
     const outputDir = await makeTmpDir();

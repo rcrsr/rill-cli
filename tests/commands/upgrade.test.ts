@@ -1,6 +1,5 @@
 /**
  * Tests for src/commands/upgrade.ts
- * Phase 3.5 additions: EC-17, EC-18, EC-19, EC-20, EC-21.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -182,7 +181,7 @@ describe('upgrade', () => {
       );
     });
 
-    it('emits UXT-EXT-9 messages on stdout', async () => {
+    it('emits current, installed, updated, and verified messages on stdout', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
       });
@@ -279,11 +278,11 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // EC-17: .rill/npm/ missing
+  // .rill/npm/ missing
   // ============================================================
 
-  describe('EC-17: .rill/npm/ missing emits UXT-EXT-5 and exits 1', () => {
-    it('writes UXT-EXT-5 verbatim to stderr and exits 1; no npm subprocess', async () => {
+  describe('.rill/npm/ missing emits not-found error and exits 1', () => {
+    it('writes the not-found error verbatim to stderr and exits 1; no npm subprocess', async () => {
       // Only rill-config.json; no .rill/npm/ directory
       fs.writeFileSync(
         path.join(tmpDir, 'rill-config.json'),
@@ -315,10 +314,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // EC-18: Mount not in config
+  // Mount not in config
   // ============================================================
 
-  describe('EC-18: unknown mount exits 1 with "Mount not found" message', () => {
+  describe('Unknown mount exits 1 with "Mount not found" message', () => {
     it('writes mount-not-found message to stderr and exits 1', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -342,11 +341,11 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // EC-19: Local-path mount refused
+  // Local-path mount refused
   // ============================================================
 
-  describe('EC-19: local-path mount refused with UXT-EXT-10; no npm', () => {
-    it('emits UXT-EXT-10 verbatim to stderr; no npm subprocess; exits 1', async () => {
+  describe('Local-path mount refused with cannot-be-upgraded error; no npm', () => {
+    it('emits the cannot-be-upgraded error verbatim to stderr; no npm subprocess; exits 1', async () => {
       bootstrapProject(tmpDir, {
         'local-ext': './local-ext',
       });
@@ -371,10 +370,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // EC-20: npm install non-zero exit
+  // npm install non-zero exit
   // ============================================================
 
-  describe('EC-20: npm install non-zero exit propagates; no rollback line', () => {
+  describe('npm install non-zero exit propagates; no rollback line', () => {
     it('returns npm exit code; no rollback line in output', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -406,10 +405,10 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // EC-21: loadProject validation fails after upgrade
+  // loadProject validation fails after upgrade
   // ============================================================
 
-  describe('EC-21: loadProject validation fails after upgrade', () => {
+  describe('loadProject validation fails after upgrade', () => {
     it('exits 1; emits rollback message; rill-config.json reverted', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',

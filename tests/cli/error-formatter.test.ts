@@ -1,6 +1,6 @@
 /**
  * Tests for CLI Error Formatter
- * Covers: IR-5, IR-7, EC-5, EC-8, IC-2
+ * Covers: IR-5, IR-7, IC-2
  */
 
 import { describe, it, expect } from 'vitest';
@@ -254,7 +254,7 @@ describe('formatError', () => {
     });
   });
 
-  describe('EC-5: Unknown format throws TypeError', () => {
+  describe('Unknown format throws TypeError', () => {
     it('throws TypeError for unknown format', () => {
       const error: EnrichedError = {
         errorId: 'RILL-R001',
@@ -340,7 +340,7 @@ describe('renderCaretUnderline', () => {
     });
   });
 
-  describe('EC-8: Invalid span throws RangeError', () => {
+  describe('Invalid span throws RangeError', () => {
     it('throws when start line after end line', () => {
       const span: SourceSpan = {
         start: { line: 5, column: 0, offset: 50 },

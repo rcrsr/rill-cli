@@ -1,6 +1,6 @@
 /**
  * Tests for CLI Error Enrichment Functions
- * Covers: IR-4, IR-6, IR-8, EC-3, EC-4, EC-6, EC-7, EC-9, EC-10, IC-1
+ * Covers: IR-4, IR-6, IR-8, IC-1
  */
 
 import { describe, it, expect } from 'vitest';
@@ -119,7 +119,7 @@ describe('extractSnippet', () => {
     });
   });
 
-  describe('EC-6: Span outside source bounds throws RangeError', () => {
+  describe('Span outside source bounds throws RangeError', () => {
     it('throws when span line exceeds source', () => {
       const source = 'line1\nline2';
       const span: SourceSpan = {
@@ -147,7 +147,7 @@ describe('extractSnippet', () => {
     });
   });
 
-  describe('EC-7: Empty source returns empty snippet', () => {
+  describe('Empty source returns empty snippet', () => {
     it('returns empty snippet for empty source', () => {
       const source = '';
       const span: SourceSpan = {
@@ -242,7 +242,7 @@ describe('suggestSimilarNames', () => {
     });
   });
 
-  describe('EC-9: Empty target returns []', () => {
+  describe('Empty target returns []', () => {
     it('returns empty array for empty target', () => {
       const suggestions = suggestSimilarNames('', ['test', 'value']);
 
@@ -250,7 +250,7 @@ describe('suggestSimilarNames', () => {
     });
   });
 
-  describe('EC-10: Empty candidates returns []', () => {
+  describe('Empty candidates returns []', () => {
     it('returns empty array for empty candidates', () => {
       const suggestions = suggestSimilarNames('test', []);
 
@@ -317,7 +317,7 @@ describe('suggestSimilarNames', () => {
   });
 });
 
-describe('EC-3: Invalid UTF-8 source handling', () => {
+describe('Invalid UTF-8 source handling', () => {
   it('handles invalid UTF-8 gracefully in extractSnippet', () => {
     // JavaScript strings are always valid Unicode/UTF-16
     // Invalid UTF-8 bytes become replacement characters (�) when decoded
@@ -443,7 +443,7 @@ describe('enrichError', () => {
     });
   });
 
-  describe('EC-3: Invalid source encoding', () => {
+  describe('Invalid source encoding', () => {
     it('throws TypeError when source is not a string', () => {
       const location: SourceLocation = { line: 1, column: 0, offset: 0 };
       const error = new RuntimeError('RILL-R001', 'Test error', location);
@@ -481,7 +481,7 @@ describe('enrichError', () => {
     });
   });
 
-  describe('EC-4: Null error', () => {
+  describe('Null error', () => {
     it('throws TypeError when error is null', () => {
       const source = 'test source';
 

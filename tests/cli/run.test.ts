@@ -220,7 +220,7 @@ describe('parseCliArgs', () => {
     });
   });
 
-  describe('EC-1: missing script path (now handled in main via config)', () => {
+  describe('Missing script path (now handled in main via config)', () => {
     it('does not exit when no positional argument is provided', () => {
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code) => {
         throw new Error('process.exit called');

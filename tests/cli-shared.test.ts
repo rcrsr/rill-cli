@@ -380,8 +380,8 @@ describe('cli-shared', () => {
       });
     });
 
-    describe('No flag cases [EC-4, EC-5]', () => {
-      it('returns null for empty array [EC-4]', () => {
+    describe('No flag cases', () => {
+      it('returns null for empty array', () => {
         expect(detectHelpVersionFlag([])).toBeNull();
       });
 
@@ -390,7 +390,7 @@ describe('cli-shared', () => {
         expect(detectHelpVersionFlag(['file.rill', 'arg1', 'arg2'])).toBeNull();
       });
 
-      it('returns null for unknown flags [EC-5]', () => {
+      it('returns null for unknown flags', () => {
         expect(detectHelpVersionFlag(['--unknown'])).toBeNull();
         expect(detectHelpVersionFlag(['--verbose'])).toBeNull();
         expect(detectHelpVersionFlag(['-x'])).toBeNull();

@@ -54,7 +54,7 @@ describe('deriveMount', () => {
     });
   });
 
-  describe('EC-26: empty specifier without override throws', () => {
+  describe('empty specifier without override throws', () => {
     it('throws Error with exact message for empty specifier', () => {
       expect(() => deriveMount('')).toThrow('Cannot derive mount path from: ');
     });

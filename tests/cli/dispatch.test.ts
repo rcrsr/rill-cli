@@ -1,7 +1,6 @@
 /**
  * Tests for src/cli.ts — unified dispatcher.
- * Covers UXT-EXT-11 help output and dispatch overhead budget.
- * Phase 3.5 additions: EC-1/EC-2/EC-3.
+ * Covers help output and dispatch overhead budget.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -64,10 +63,10 @@ describe('cli dispatch', () => {
   });
 
   // ============================================================
-  // No-args → UXT-EXT-11 help
+  // No-args → help output
   // ============================================================
 
-  describe('no subcommand emits UXT-EXT-11 help and exits 0', () => {
+  describe('no subcommand emits the top-level help output and exits 0', () => {
     it('main([]) outputs help text and exits 0', async () => {
       const { main } = await import('../../src/cli.js');
       const cap = captureOutput();
@@ -80,7 +79,7 @@ describe('cli dispatch', () => {
 
       expect(exitCode).toBe(0);
       const out = cap.stdout.join('');
-      // Spot-check key strings from UXT-EXT-11 (printHelp output)
+      // Spot-check key strings from the printHelp output
       expect(out).toContain('Usage: rill <command>');
       expect(out).toContain('init');
       expect(out).toContain('install');
@@ -192,10 +191,10 @@ describe('cli dispatch', () => {
   });
 
   // ============================================================
-  // EC-1: unknown subcommand
+  // unknown subcommand
   // ============================================================
 
-  describe('EC-1: unknown subcommand exits 1 with error message', () => {
+  describe('Unknown subcommand exits 1 with error message', () => {
     it('main(["foo"]) writes stderr and exits 1', async () => {
       const { main } = await import('../../src/cli.js');
       const cap = captureOutput();
@@ -228,10 +227,10 @@ describe('cli dispatch', () => {
   });
 
   // ============================================================
-  // EC-2: --version / -v
+  // --version / -v
   // ============================================================
 
-  describe('EC-2: --version / -v exits 0 with CLI_VERSION on stdout', () => {
+  describe('--version / -v exits 0 with CLI_VERSION on stdout', () => {
     it('main(["--version"]) outputs CLI_VERSION and exits 0', async () => {
       const { main } = await import('../../src/cli.js');
       const cap = captureOutput();
@@ -263,10 +262,10 @@ describe('cli dispatch', () => {
   });
 
   // ============================================================
-  // EC-3: --help / -h / no args -> UXT-EXT-11
+  // --help / -h / no args -> help output
   // ============================================================
 
-  describe('EC-3: --help / -h / no args emit UXT-EXT-11 and exit 0', () => {
+  describe('--help / -h / no args emit the help output and exit 0', () => {
     it('main(["--help"]) emits key lines verbatim and exits 0', async () => {
       const { main } = await import('../../src/cli.js');
       const cap = captureOutput();
@@ -304,7 +303,7 @@ describe('cli dispatch', () => {
       expect(out).toContain("Run 'rill help <command>'");
     });
 
-    it('main([]) emits UXT-EXT-11 trailing instruction line and exits 0', async () => {
+    it('main([]) emits the help trailing instruction line and exits 0', async () => {
       const { main } = await import('../../src/cli.js');
       const cap = captureOutput();
       let exitCode: number;

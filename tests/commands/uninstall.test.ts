@@ -1,6 +1,5 @@
 /**
  * Tests for src/commands/uninstall.ts
- * Phase 3.5 additions: EC-13, EC-15, EC-16.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -184,7 +183,7 @@ describe('uninstall', () => {
       expect(config.extensions.mounts).not.toHaveProperty('datetime');
     });
 
-    it('emits UXT-EXT-7 messages on stdout', async () => {
+    it('emits removing, updated, uninstalled, and verified messages on stdout', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
       });
@@ -208,17 +207,17 @@ describe('uninstall', () => {
       }
 
       const out = cap.stdout.join('');
-      // UXT-EXT-7 line 1
+      // removing-mount line
       expect(out).toContain(
         "ℹ Removing mount 'datetime' (@rcrsr/rill-ext-datetime@^0.19.0)"
       );
-      // UXT-EXT-7 line 2
+      // config-updated line
       expect(out).toContain('✓ Updated rill-config.json');
-      // UXT-EXT-7 line 3
+      // uninstalled line
       expect(out).toContain(
         '✓ Uninstalled from .rill/npm/node_modules/@rcrsr/rill-ext-datetime'
       );
-      // UXT-EXT-7 line 4
+      // config-verified line
       expect(out).toContain('✓ Verified config loads cleanly');
     });
   });
@@ -280,11 +279,11 @@ describe('uninstall', () => {
   });
 
   // ============================================================
-  // EC-13: .rill/npm/ missing
+  // .rill/npm/ missing
   // ============================================================
 
-  describe('EC-13: .rill/npm/ missing emits UXT-EXT-5 and exits 1', () => {
-    it('writes UXT-EXT-5 verbatim to stderr and exits 1', async () => {
+  describe('.rill/npm/ missing emits not-found error and exits 1', () => {
+    it('writes the not-found error verbatim to stderr and exits 1', async () => {
       // Only rill-config.json; no .rill/npm/ directory
       fs.writeFileSync(
         path.join(tmpDir, 'rill-config.json'),
@@ -316,10 +315,10 @@ describe('uninstall', () => {
   });
 
   // ============================================================
-  // EC-15: npm uninstall non-zero exit
+  // npm uninstall non-zero exit
   // ============================================================
 
-  describe('EC-15: npm uninstall non-zero exit propagates exit code', () => {
+  describe('npm uninstall non-zero exit propagates exit code', () => {
     it('returns npm exit code when npm uninstall fails', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
@@ -383,10 +382,10 @@ describe('uninstall', () => {
   });
 
   // ============================================================
-  // EC-16: loadProject validation fails after uninstall
+  // loadProject validation fails after uninstall
   // ============================================================
 
-  describe('EC-16: loadProject validation fails after uninstall', () => {
+  describe('loadProject validation fails after uninstall', () => {
     it('exits 1; emits validation error; mount removal stays (config NOT rolled back)', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',

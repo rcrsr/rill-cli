@@ -32,7 +32,7 @@ describe('CLI LSP Diagnostic', () => {
       });
     });
 
-    // EC-11: Missing span returns diagnostic with null range
+    // Missing span returns diagnostic with null range
     it('converts RillError without location to diagnostic with null range', () => {
       const error = new RuntimeError(
         'RILL-R010',

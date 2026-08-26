@@ -1,6 +1,5 @@
 /**
  * Tests for src/commands/list.ts
- * Phase 3.5 additions: EC-22, EC-23, EC-25.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -223,10 +222,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // EC-22: rill-config.json missing
+  // rill-config.json missing
   // ============================================================
 
-  describe('EC-22: rill-config.json missing emits bootstrap hint and exits 1', () => {
+  describe('rill-config.json missing emits bootstrap hint and exits 1', () => {
     it('writes "Run rill init first" to stderr and exits 1', async () => {
       // No rill-config.json written — tmpDir is empty
       const { run } = await import('../../src/commands/list.js');
@@ -244,10 +243,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // EC-23: .rill/npm/ missing in --json mode
+  // .rill/npm/ missing in --json mode
   // ============================================================
 
-  describe('EC-23: .rill/npm/ missing in --json mode emits bootstrap hint and exits 1', () => {
+  describe('.rill/npm/ missing in --json mode emits bootstrap hint and exits 1', () => {
     it('writes "Run rill init first" to stderr and exits 1', async () => {
       // Write rill-config.json but no .rill/npm/package.json
       fs.writeFileSync(
@@ -277,10 +276,10 @@ describe('list', () => {
   });
 
   // ============================================================
-  // EC-25: Installed package.json unreadable
+  // Installed package.json unreadable
   // ============================================================
 
-  describe('EC-25: installed package.json unreadable', () => {
+  describe('installed package.json unreadable', () => {
     it('exits 0; version column shows "unknown"; no error thrown', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',

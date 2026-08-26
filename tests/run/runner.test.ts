@@ -130,7 +130,7 @@ describe('runScript', () => {
     });
   });
 
-  describe('Parse errors (EC-8)', () => {
+  describe('Parse errors', () => {
     it('returns exit 1 with error message on parse error', async () => {
       const result = await runTempScript('??? invalid syntax !!!');
       expect(result.exitCode).toBe(1);
@@ -150,7 +150,7 @@ describe('runScript', () => {
     });
   });
 
-  describe('Runtime errors (EC-9)', () => {
+  describe('Runtime errors', () => {
     it('returns exit 1 with RuntimeError shape on runtime error', async () => {
       const result = await runTempScript('$undefined_variable_xyz');
       expect(result.exitCode).toBe(1);

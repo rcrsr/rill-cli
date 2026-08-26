@@ -74,7 +74,7 @@ describe('assertBootstrapped', () => {
     });
   });
 
-  describe('EC-27: when .rill/npm/package.json is absent', () => {
+  describe('when .rill/npm/package.json is absent', () => {
     it('throws BootstrapMissingError', () => {
       expect(() => assertBootstrapped(tmpDir)).toThrow(BootstrapMissingError);
     });

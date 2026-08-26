@@ -1,7 +1,7 @@
 /**
  * Unit tests for config-edit.ts helpers:
- *   readConfigSnapshot (IR-12, EC-28)
- *   applyMountEdit     (IR-13, EC-29, EC-30)
+ *   readConfigSnapshot (IR-12)
+ *   applyMountEdit     (IR-13)
  *   hasMount           (IR-14)
  */
 
@@ -49,7 +49,7 @@ function writeConfig(dir: string, content: object): string {
 }
 
 // ============================================================
-// TESTS: readConfigSnapshot (IR-12, EC-28)
+// TESTS: readConfigSnapshot (IR-12)
 // ============================================================
 
 describe('readConfigSnapshot', () => {
@@ -57,7 +57,7 @@ describe('readConfigSnapshot', () => {
     vi.resetAllMocks();
   });
 
-  it('throws ConfigNotFoundError when rill-config.json is absent (EC-28 / IR-12)', async () => {
+  it('throws ConfigNotFoundError when rill-config.json is absent (IR-12)', async () => {
     const tmpDir = makeTmpDir();
     try {
       const { readConfigSnapshot, ConfigNotFoundError } =
@@ -124,7 +124,7 @@ describe('readConfigSnapshot', () => {
 });
 
 // ============================================================
-// TESTS: applyMountEdit (IR-13, EC-29, EC-30)
+// TESTS: applyMountEdit (IR-13)
 // ============================================================
 
 describe('applyMountEdit', () => {
@@ -184,7 +184,7 @@ describe('applyMountEdit', () => {
     }
   });
 
-  it('restores original rawText and re-throws MountValidationError on rollback (EC-29)', async () => {
+  it('restores original rawText and re-throws MountValidationError on rollback', async () => {
     const tmpDir = makeTmpDir();
     const configContent = {
       version: '1',
@@ -349,7 +349,7 @@ describe('applyMountEdit', () => {
     }
   });
 
-  it('throws ConfigWriteError when writeFile fails (EC-30)', async () => {
+  it('throws ConfigWriteError when writeFile fails', async () => {
     const tmpDir = makeTmpDir();
     const configContent = { version: '1', extensions: { mounts: {} } };
     writeConfig(tmpDir, configContent);

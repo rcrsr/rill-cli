@@ -57,7 +57,7 @@
     "@rcrsr/rill-config": "~0.20.0",
     "@rcrsr/rill-language-service": "~0.20.0",
     "dotenv": "^17.4.2",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.2"
   },
   "peerDependencies": {
     "@rcrsr/rill": "~0.20.0",
@@ -67,16 +67,16 @@
   "devDependencies": {
     "@rcrsr/rill": "~0.20.0",
     "@rcrsr/rill-config": "~0.20.0",
-    "@rcrsr/rill-dev": "^0.2.0",
+    "@rcrsr/rill-dev": "^0.2.2",
     "@rcrsr/rill-ext-datetime": "~0.20.0",
     "@rcrsr/rill-language-service": "~0.20.0",
-    "@types/node": "^26.1.2",
-    "knip": "^6.29.0",
+    "@types/node": "^26.2.0",
+    "knip": "^6.32.2",
     "lefthook": "^2.1.10",
-    "oxfmt": "^0.61.0",
-    "oxlint": "^1.76.0",
+    "oxfmt": "^0.65.0",
+    "oxlint": "^1.80.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "repository": {
     "type": "git",

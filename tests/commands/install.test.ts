@@ -917,60 +917,63 @@ describe('install', () => {
   // ============================================================
 
   describe('writeBundleHarness failure surfaces as a ✗-prefixed error, not a stack trace', () => {
-    it('exits 1 with a ✗-prefixed message and no raw stack trace when the write fails', async () => {
-      const localHarnessDir = path.join(tmpDir, 'local-harness');
-      fs.mkdirSync(localHarnessDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(localHarnessDir, 'package.json'),
-        JSON.stringify({
-          name: 'custom-harness-name',
-          version: '1.0.0',
-          rill: { role: 'harness' },
-        }),
-        'utf8'
-      );
-
-      fs.writeFileSync(
-        path.join(tmpDir, 'rill-bundle.json'),
-        JSON.stringify(
-          {
-            name: 'test-bundle',
+    it.skipIf(process.platform === 'win32')(
+      'exits 1 with a ✗-prefixed message and no raw stack trace when the write fails',
+      async () => {
+        const localHarnessDir = path.join(tmpDir, 'local-harness');
+        fs.mkdirSync(localHarnessDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(localHarnessDir, 'package.json'),
+          JSON.stringify({
+            name: 'custom-harness-name',
             version: '1.0.0',
-            packages: [{ mount: 'app', project: 'packages/app' }],
-          },
-          null,
-          2
-        ) + '\n',
-        'utf8'
-      );
-      bootstrapProject(tmpDir);
+            rill: { role: 'harness' },
+          }),
+          'utf8'
+        );
 
-      mocks.spawn.mockImplementation(makeSpawnMock(0));
+        fs.writeFileSync(
+          path.join(tmpDir, 'rill-bundle.json'),
+          JSON.stringify(
+            {
+              name: 'test-bundle',
+              version: '1.0.0',
+              packages: [{ mount: 'app', project: 'packages/app' }],
+            },
+            null,
+            2
+          ) + '\n',
+          'utf8'
+        );
+        bootstrapProject(tmpDir);
 
-      // Force the rill-bundle.json write inside writeBundleHarness to fail
-      // with EACCES. The write is now atomic (temp file + rename), so a
-      // read-only *file* no longer blocks it — rename replaces it regardless
-      // of the destination's permission bits. Make the *directory* read-only
-      // instead, so the temp-file write itself fails. readRawBundleJson (a
-      // read) still succeeds, so the collision pre-check passes and only the
-      // write itself fails.
-      fs.chmodSync(tmpDir, 0o555);
+        mocks.spawn.mockImplementation(makeSpawnMock(0));
 
-      const { run } = await import('../../src/commands/install.js');
-      const cap = captureOutput();
-      let exitCode: number;
-      try {
-        exitCode = await run(['./local-harness']);
-      } finally {
-        cap.restore();
-        fs.chmodSync(tmpDir, 0o755);
+        // Force the rill-bundle.json write inside writeBundleHarness to fail
+        // with EACCES. The write is now atomic (temp file + rename), so a
+        // read-only *file* no longer blocks it — rename replaces it regardless
+        // of the destination's permission bits. Make the *directory* read-only
+        // instead, so the temp-file write itself fails. readRawBundleJson (a
+        // read) still succeeds, so the collision pre-check passes and only the
+        // write itself fails.
+        fs.chmodSync(tmpDir, 0o555);
+
+        const { run } = await import('../../src/commands/install.js');
+        const cap = captureOutput();
+        let exitCode: number;
+        try {
+          exitCode = await run(['./local-harness']);
+        } finally {
+          cap.restore();
+          fs.chmodSync(tmpDir, 0o755);
+        }
+
+        expect(exitCode).toBe(1);
+        const stderr = cap.stderr.join('');
+        expect(stderr).toMatch(/^✗ /);
+        expect(stderr).not.toContain('at ');
       }
-
-      expect(exitCode).toBe(1);
-      const stderr = cap.stderr.join('');
-      expect(stderr).toMatch(/^✗ /);
-      expect(stderr).not.toContain('at ');
-    });
+    );
   });
 
   // ============================================================

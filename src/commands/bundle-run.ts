@@ -93,7 +93,7 @@ export async function runBundleServe(
       }
       return [...packagesArray];
     },
-    onSourceChange: (): void => {
+    onSourceChange: (_handler: () => void | Promise<void>): void => {
       if (!warnedSourceChangeUnsupported) {
         warnedSourceChangeUnsupported = true;
         logger.warn(

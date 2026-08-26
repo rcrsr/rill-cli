@@ -122,4 +122,61 @@ describe('atomicWriteFile', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'preserves the destination file mode across the atomic replace',
+    async () => {
+      const tmpDir = makeTmpDir();
+      try {
+        const filePath = path.join(tmpDir, 'rill-config.json');
+        fs.writeFileSync(filePath, '{"original":true}\n', 'utf8');
+        fs.chmodSync(filePath, 0o600);
+
+        await atomicWriteFile(filePath, '{"new":true}\n', 'utf8');
+
+        const mode = fs.statSync(filePath).mode & 0o777;
+        expect(mode).toBe(0o600);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it('fsyncs the temp file before renaming it over the target', async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const filePath = path.join(tmpDir, 'rill-config.json');
+      const calls: string[] = [];
+
+      const origOpen = fs.promises.open.bind(fs.promises);
+      const openSpy = vi
+        .spyOn(fs.promises, 'open')
+        .mockImplementation(async (...args: Parameters<typeof origOpen>) => {
+          const handle = await origOpen(...args);
+          const origSync = handle.sync.bind(handle);
+          vi.spyOn(handle, 'sync').mockImplementation(async () => {
+            calls.push('sync');
+            return origSync();
+          });
+          return handle;
+        });
+
+      const origRename = fs.promises.rename.bind(fs.promises);
+      const renameSpy = vi
+        .spyOn(fs.promises, 'rename')
+        .mockImplementation(async (...args: Parameters<typeof origRename>) => {
+          calls.push('rename');
+          return origRename(...args);
+        });
+
+      await atomicWriteFile(filePath, 'data', 'utf8');
+
+      expect(calls).toEqual(['sync', 'rename']);
+
+      openSpy.mockRestore();
+      renameSpy.mockRestore();
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -37,6 +37,29 @@ export async function atomicWriteFile(
 
   try {
     await fs.writeFile(tempPath, data, encoding);
+
+    // Fsync the temp file before rename so a crash between the write and the
+    // rename cannot leave the temp content unflushed to disk: rename alone
+    // only guarantees atomicity of the directory-entry swap, not durability
+    // of the bytes it points at.
+    const syncHandle = await fs.open(tempPath, 'r+');
+    try {
+      await syncHandle.sync();
+    } finally {
+      await syncHandle.close();
+    }
+
+    const destMode = await fs
+      .stat(filePath)
+      .then((s) => s.mode)
+      .catch((statErr: NodeJS.ErrnoException) => {
+        if (statErr.code === 'ENOENT') return undefined;
+        throw statErr;
+      });
+    if (destMode !== undefined) {
+      await fs.chmod(tempPath, destMode);
+    }
+
     await fs.rename(tempPath, filePath);
   } catch (err) {
     await fs.rm(tempPath, { force: true }).catch(() => undefined);

@@ -743,34 +743,37 @@ describe('writeBundleHarness', () => {
     }
   });
 
-  it('throws BundleConfigError with code WRITE when the file cannot be written', async () => {
-    const tmpDir = makeTmpDir();
-    try {
-      writeBundleJson(tmpDir, {
-        name: 'write-fail-bundle',
-        version: '1.0.0',
-        packages: [{ mount: 'pkg', project: 'packages/pkg' }],
-      });
+  it.skipIf(process.platform === 'win32')(
+    'throws BundleConfigError with code WRITE when the file cannot be written',
+    async () => {
+      const tmpDir = makeTmpDir();
+      try {
+        writeBundleJson(tmpDir, {
+          name: 'write-fail-bundle',
+          version: '1.0.0',
+          packages: [{ mount: 'pkg', project: 'packages/pkg' }],
+        });
 
-      // writeBundleHarness now writes atomically (temp file + rename), so a
-      // read-only *file* no longer blocks the write: rename replaces it
-      // regardless of the destination's permission bits. Make the
-      // *directory* read-only instead, so the temp-file write itself fails
-      // with EACCES.
-      fs.chmodSync(tmpDir, 0o555);
+        // writeBundleHarness now writes atomically (temp file + rename), so a
+        // read-only *file* no longer blocks the write: rename replaces it
+        // regardless of the destination's permission bits. Make the
+        // *directory* read-only instead, so the temp-file write itself fails
+        // with EACCES.
+        fs.chmodSync(tmpDir, 0o555);
 
-      await expect(
-        writeBundleHarness(tmpDir, 'any-harness')
-      ).rejects.toMatchObject({
-        code: 'WRITE',
-      });
-      await expect(
-        writeBundleHarness(tmpDir, 'any-harness')
-      ).rejects.toBeInstanceOf(BundleConfigError);
-    } finally {
-      // Restore write permission so rmSync can clean up.
-      fs.chmodSync(tmpDir, 0o755);
-      fs.rmSync(tmpDir, { recursive: true, force: true });
+        await expect(
+          writeBundleHarness(tmpDir, 'any-harness')
+        ).rejects.toMatchObject({
+          code: 'WRITE',
+        });
+        await expect(
+          writeBundleHarness(tmpDir, 'any-harness')
+        ).rejects.toBeInstanceOf(BundleConfigError);
+      } finally {
+        // Restore write permission so rmSync can clean up.
+        fs.chmodSync(tmpDir, 0o755);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     }
-  });
+  );
 });

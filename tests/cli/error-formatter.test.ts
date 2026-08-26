@@ -27,7 +27,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'human',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -65,7 +64,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'human',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -94,7 +92,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'human',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -113,7 +110,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'human',
         verbose: true,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -131,7 +127,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'human',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -155,7 +150,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'json',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -183,7 +177,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'json',
         verbose: true,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -207,7 +200,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'compact',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -226,7 +218,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'compact',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -245,7 +236,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'compact',
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       const result = formatError(error, options);
@@ -264,7 +254,6 @@ describe('formatError', () => {
       const options: FormatOptions = {
         format: 'xml' as 'human', // Force invalid format
         verbose: false,
-        maxCallStackDepth: 10,
       };
 
       expect(() => formatError(error, options)).toThrow(TypeError);
@@ -453,7 +442,6 @@ describe('IC-2: Type definitions present', () => {
     const options: FormatOptions = {
       format: 'human',
       verbose: false,
-      maxCallStackDepth: 10,
     };
 
     expect(options.format).toBe('human');

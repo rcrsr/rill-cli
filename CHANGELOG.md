@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-09
+
 ### Changed
 
 - **rill 0.21.0, pnpm 12, and a dependency sweep:** Bump `@rcrsr/rill`, `@rcrsr/rill-config`, `@rcrsr/rill-language-service`, and `@rcrsr/rill-ext-datetime` from `~0.20.0` to `~0.21.0` in the dependency, peer, and dev ranges. Pin `packageManager` to pnpm 12.3.4 and raise `engines.pnpm` to `>=12`; pnpm 12 records its own binary in the lockfile as a second YAML document. Upgrade `@rcrsr/rill-dev` 0.2.2 → 0.2.5, `vitest` 4.1.11 → 5.0.0, `knip` 6.32.2 → 6.35.0, `oxlint` 1.80.0 → 1.82.0, `oxfmt` 0.65.0 → 0.67.0, `lefthook` 2.1.10 → 2.1.12, and `@types/node` 26.2.0 → 26.5.0. rill-dev 0.2.5 adds two checks: `STD-SUP-8` (dependabot `open-pull-requests-limit: 0` on both ecosystems, upgrades are now by hand) and `STD-HOOK-5` (the pre-commit `oxfmt` command excludes `pnpm-lock.yaml`, which oxfmt already ignores, so a lockfile-only commit no longer halts the piped chain). Two tests track upstream behaviour: the check-rule parity inventory gains a `BARE_CALLABLE_BODY` fixture, and `^description` on a callable with no description now yields an empty string instead of an empty dict, which the runner maps to exit code 1. Tree-only standards run under 0.2.5: 65 checked, 65 passed, 14 not machine-checkable. Pin `github/codeql-action` `init`/`analyze` to v4.37.9, closing the last open dependabot PR. Adds `.github/release-sop.md`, the written release procedure `/conduct:cut-release` follows: root manifest only, lockstep `@rcrsr/*` ranges on a minor, bracketed changelog headings with the compare-link footer, `release/X.Y.Z` branch, `chore: release vX.Y.Z` commit, and no hand-made GitHub Release because `release.yml` cuts it from the tag. No CLI runtime changes. ([#78](https://github.com/rcrsr/rill-cli/pull/78))
@@ -272,7 +274,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial standalone release. Extracted `@rcrsr/rill-cli` from the [rill monorepo](https://github.com/rcrsr/rill). No functional changes from the monorepo version.
 
-[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/rcrsr/rill-cli/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/rcrsr/rill-cli/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/rcrsr/rill-cli/compare/v0.19.6...v0.20.0
 [0.19.6]: https://github.com/rcrsr/rill-cli/compare/v0.19.5...v0.19.6
 [0.19.5]: https://github.com/rcrsr/rill-cli/compare/v0.19.4...v0.19.5

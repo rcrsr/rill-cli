@@ -133,7 +133,7 @@ Expect review comments to cite specific lines and to include the command or grep
 
 ## Releases
 
-Maintainers publish `@rcrsr/rill-cli` by tagging a release commit on `main`. The release workflow refuses to publish when the tag disagrees with `package.json`, so the version bump and the tag land together.
+Maintainers publish `@rcrsr/rill-cli` by tagging a release commit on `main`. The release workflow refuses to publish when the tag disagrees with `package.json`, so the version bump and the tag land together. The full procedure is in [`.github/release-sop.md`](.github/release-sop.md).
 
 The `@rcrsr/*` dependencies are pinned in lockstep to the matching rill minor. Dependabot is configured not to bump them for that reason; the compatibility workflow tests against their latest publish daily instead.
 

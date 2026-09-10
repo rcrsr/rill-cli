@@ -12,6 +12,11 @@ pre-commit:
     oxfmt:
       priority: 1
       glob: '*.{ts,tsx,js,mjs,cjs,json,yaml,yml}'
+      # oxfmt ignores the lockfile via .oxfmtrc.json. A commit touching only
+      # the lockfile would otherwise hand it an all-ignored list, which exits
+      # non-zero and halts the piped chain. STD-HOOK-5.
+      exclude:
+        - pnpm-lock.yaml
       run: pnpm exec oxfmt {staged_files}
       stage_fixed: true
     oxlint:

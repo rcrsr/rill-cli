@@ -1577,17 +1577,18 @@ describe('buildPackage .rill/npm/package.json missing', () => {
   });
 });
 
-// buildPackage passes prefix = <projectDir>/.rill/npm to loadProject
+// The dry-run validation loads the built package the way the generated
+// handler's init() does: prefix is the package output directory, which is
+// where the rewritten ./extensions/*.js mount paths resolve from. A prefix
+// under the project's .rill/npm cannot find any compiled extension.
 describe('buildPackage loadProject prefix', () => {
-  it('passes prefix = <projectDir>/.rill/npm to loadProject', async () => {
+  it('passes prefix = <package output dir> to loadProject', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
 
-    await buildPackage(projectDir, { outputDir });
+    const result = await buildPackage(projectDir, { outputDir });
 
     expect(mocks.loadProject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prefix: path.join(path.resolve(projectDir), '.rill', 'npm'),
-      })
+      expect.objectContaining({ prefix: result.outputPath })
     );
   });
 });

@@ -1764,6 +1764,11 @@ $raw -> log
         expectCodes: ['GUARD_BARE'],
       },
       {
+        description: 'warns: bare identifier as collection-op body',
+        source: 'list[1, 2, 3] -> seq(log)\n',
+        expectCodes: ['BARE_CALLABLE_BODY'],
+      },
+      {
         description: 'errors: retry<limit: N> with N<=1',
         source: 'retry<limit: 1> { 1 }',
         expectCodes: ['RETRY_TRIVIAL'],

@@ -3,9 +3,9 @@
 # which is where these keys now live. See @rcrsr/rill-dev/REPO-STANDARDS.md §8
 # and §9.
 
-# Dependencies allowed to run install scripts. pnpm 11 no longer reads
+# Dependencies allowed to run install scripts. pnpm 11 stopped reading
 # `pnpm.onlyBuiltDependencies` from package.json, which is the major-to-major
-# move STD-PM-6 warns about; this is the location the pinned major expects.
+# move STD-PM-6 warns about; pnpm 12 keeps reading it from here.
 allowBuilds:
   esbuild: true
   lefthook: true
@@ -19,9 +19,9 @@ peerDependencyRules:
 
 # Minutes a version must have been on the registry before pnpm will install it,
 # which is the window in which a compromised release is normally yanked. Set
-# explicitly rather than inherited: pnpm 11 defaults this to 1440, pnpm 10
-# defaults it to off, so pinning the value keeps the policy the same across a
-# major bump. 1440 also matches the weekly dependabot cadence, where a longer
+# explicitly rather than inherited: pnpm 11 and 12 default this to 1440,
+# pnpm 10 defaults it to off, so pinning the value keeps the policy the same
+# across a major bump. 1440 also matches the weekly dependabot cadence, where a longer
 # window would just defer every bump by an extra cycle. STD-SUP-3.
 minimumReleaseAge: 1440
 

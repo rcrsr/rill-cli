@@ -53,9 +53,10 @@ pnpm fix:format && pnpm fix:lint
 - **Root scripts use the aggregator names**: `check:types` and `check:lint`, not
   `typecheck` and `lint` (STD-SCRIPT-8).
 - **Never bump the `@rcrsr/*` versions in a change.** They are pinned in
-  lockstep to the matching rill minor, which is why dependabot skips them.
-  `@rcrsr/rill-dev` is the exception: it carries no runtime code, versions on
-  its own `dev-v*` tags, and dependabot does propose it.
+  lockstep to the matching rill minor. `@rcrsr/rill-dev` is the exception: it
+  carries no runtime code and versions on its own `dev-v*` tags. Dependabot
+  version-update PRs are off for every ecosystem (STD-SUP-8); upgrades are
+  done by hand, security updates still file.
 - **Conventional Commits with an area scope**, e.g. `fix(bundle): ...`. Add the
   entry to `## [Unreleased]` in `CHANGELOG.md` with its PR link. `CONTRIBUTING.md`
   has the full bar for a pull request.
@@ -71,7 +72,7 @@ pnpm fix:format && pnpm fix:lint
 - **`link:`/`file:` specifiers never get committed.** They are a local
   convenience for a sibling checkout; `prepublishOnly` blocks a publish carrying
   them, but nothing blocks the commit.
-- **`pnpm-workspace.yaml` exists without a `packages:` key.** pnpm 11 reads it
+- **`pnpm-workspace.yaml` exists without a `packages:` key.** pnpm 12 reads it
   for the build allowlist and the supply-chain settings, which is the only
   reason it is there. It does not make this a workspace.
 
@@ -87,7 +88,7 @@ without a matching stated condition is a defect, not a decision.
 | ID | Condition met |
 |---|---|
 | STD-CHK-7, STD-SCRIPT-3, STD-SCRIPT-7, STD-DEP-4 | Publishes exactly one package from the root, with no second version to reconcile. |
-| STD-PM-7 | Declares no workspace packages. The standard words the condition as "no workspace file", which no pnpm-11 single-package repository can meet; raised upstream. |
+| STD-PM-7 | Declares no workspace packages. The standard words the condition as "no workspace file", which no pnpm-12 single-package repository can meet; raised upstream. |
 | STD-DEP-3 | No tool conflicts with the current compiler major. |
 
 ### Lint rule enablement

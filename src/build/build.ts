@@ -894,10 +894,16 @@ export async function buildPackage(
     const originalCwd = process.cwd();
     try {
       process.chdir(packageOutDir);
+      // Mirror the generated handler's init(): it loads with
+      // prefix = its own directory, and the output config only carries
+      // ./extensions/*.js paths, which the loader resolves against prefix.
+      // Pointing prefix at the project's .rill/npm made every compiled
+      // extension an entrypoint miss, which older loaders misreported as a
+      // transitive miss and this catch then skipped.
       const dryRunResult = await loadProject({
         configPath: outputRillConfigPath,
         rillVersion,
-        prefix: path.join(absProjectDir, '.rill/npm'),
+        prefix: packageOutDir,
       });
       for (const dispose of dryRunResult.disposes) {
         await dispose();

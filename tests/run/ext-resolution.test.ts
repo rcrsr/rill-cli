@@ -136,12 +136,17 @@ describe('ext-resolution', () => {
       expect(result.output).toBe('Greets a user by name');
     });
 
+    // compute declares no description. rill 0.21.0 answers a missing
+    // description with an empty string, and an empty-string script result
+    // maps to exit code 1 with no error rendered. The access itself must not
+    // raise.
     it('accesses ^description on compute without error', async () => {
       const result = await runTempScript(
         'use<ext:tools.compute> => $compute\n$compute.^description',
         makeExtTree()
       );
-      expect(result.exitCode).toBe(0);
+      expect(result.errorOutput).toBeUndefined();
+      expect(result.exitCode).toBe(1);
     });
   });
 

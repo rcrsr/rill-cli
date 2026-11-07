@@ -11,7 +11,7 @@ evaluation, or the check rules. Those live in `@rcrsr/rill`,
 `@rcrsr/rill-config`, and `@rcrsr/rill-language-service`, which arrive as pinned
 peer dependencies. A defect in language behaviour belongs upstream, not here.
 
-Single package published from the repository root, two entry points: `.` (the
+Single package published from the repository root, with entry points `.` (the
 CLI) and `./harness`. No `packages/` tree, no workspace.
 
 ## Layout
@@ -23,8 +23,8 @@ CLI) and `./harness`. No `packages/` tree, no workspace.
   esbuild output, multi-package bundles, and the language-service adapter.
 - `src/harness.ts` and `src/harness/`: the published `RillHarness` interface and
   the built-in CLI dispatch harness.
-- `tests/` mirrors `src/` under vitest. `conduct/` is private planning, `demo/`
-  is runnable examples, `scripts/` is repository-local tooling.
+- `tests/` mirrors `src/` under vitest. `demo/` is runnable examples, `scripts/`
+  is repository-local tooling.
 
 ## Commands
 
@@ -36,6 +36,8 @@ pnpm fix:format && pnpm fix:lint
 
 ## Rules
 
+<!-- rule-level: operational -->
+
 - **Do not patch `node_modules/@rcrsr/rill-dev`.** The standards checker, the
   standards index, and the custom lint rules ship as that devDependency. Nothing
   checks for drift any more, so a local edit is simply lost on the next install
@@ -43,11 +45,15 @@ pnpm fix:format && pnpm fix:lint
   [rcrsr/rill](https://github.com/rcrsr/rill) under `packages/dev/`, publish from
   a `dev-v*` tag, then bump the dependency here.
 - **New public API is exported from `src/cli.ts` or `src/harness.ts`.**
-  `exports` lists those two entry points and nothing else, so a deep path is
-  unreachable for consumers.
-- **No internal planning identifiers in `src/`.** `rill/no-spec-id-reference`
-  rejects `AC-*`, `EC-*`, `FR-*`, `UX*-*` and the rest: they point at `conduct/`
-  documents that are never published. Keep the fact, drop the reference.
+  `exports` lists only those entry points, so a deep path is unreachable for
+  consumers.
+- **Command handlers return an exit code and never call `process.exit()`.** This
+  covers `run` in `src/commands/*.ts` and `main` in `src/cli-*.ts`; only
+  `src/cli.ts` exits.
+- **Throw `Error`, `TypeError` or `RangeError` for invalid CLI input.** Narrow
+  upstream `ParseError`/`RuntimeError` with `instanceof`; never construct them.
+- **No internal planning identifiers in `src/`.** Keep the fact, drop the
+  reference.
 - **`pnpm check` is the gate.** It reaches every check. It must never delegate
   to `pnpm -r`, which excludes the root and would skip all of them.
 - **Root scripts use the aggregator names**: `check:types` and `check:lint`, not
@@ -62,6 +68,8 @@ pnpm fix:format && pnpm fix:lint
   has the full bar for a pull request.
 
 ## Gotchas
+
+<!-- rule-level: operational -->
 
 - **Tests are not typechecked.** `tsconfig.json` scopes `include` to `src/**/*`
   because it drives the emit, and `tsc --noEmit` honours it. Run `pnpm test`,
@@ -93,9 +101,11 @@ without a matching stated condition is a defect, not a decision.
 
 ### Lint rule enablement
 
-`rill/no-spec-id-reference` is **on**, scoped to `src/**/*.{ts,tsx}`: `conduct/`
-is a private planning directory whose identifiers are unresolvable to anyone
-reading the published package. `tests/` is out of scope because nothing there
+<!-- rule-level: operational -->
+
+`rill/no-spec-id-reference` is **on**, scoped to `src/**/*.{ts,tsx}`: planning
+identifiers point at private documents that are unresolvable to anyone reading
+the published package. `tests/` is out of scope because nothing there
 ships.
 
 `rill/no-duplicate-error-id` is **off**. It keys on `RuntimeError` construction,
@@ -105,6 +115,8 @@ recorded decision, not an oversight. Do not enable it to match an example
 config.
 
 ### CI checks the tree; a maintainer checks the host
+
+<!-- rule-level: operational -->
 
 CI runs `pnpm exec rill-check-standards` with **no `--remote` and no token**.
 
@@ -120,10 +132,10 @@ Host settings are checked by hand, from a maintainer's authenticated shell:
 pnpm exec rill-check-standards --remote
 ```
 
-Last run on 2026-08-01, under `@rcrsr/rill-dev` 0.1.0: `CONFORMANT  58 checked,
-58 passed, 23 not machine-checkable`, against 52/52/21 for the tree-only run.
-The tree-only run under 0.2.0 is 63/63/14; the host half is unchanged, so the
-`--remote` run is due a re-run only to restate its own count. Intent: squash-only
+Last run on 2026-08-01, under `@rcrsr/rill-dev` 0.1.0: `CONFORMANT`. The
+tree-only run under 0.2.0 also passes every machine-checkable element; the host
+half is unchanged, so the `--remote` run is due a re-run only to restate its own
+result. Intent: squash-only
 with linear history, branches deleted on merge, wiki off, admins included, and
 required contexts naming every matrix leg. Re-check the raw settings with:
 

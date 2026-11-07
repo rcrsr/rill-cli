@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **rill 0.23.0, rill-dev 0.3.0, and type-aware lint:** Bump `@rcrsr/rill`, `@rcrsr/rill-config`, `@rcrsr/rill-language-service`, and `@rcrsr/rill-ext-datetime` from `~0.21.0` to `~0.23.0` in the dependency, peer, and dev ranges; consumers need rill 0.23. Upgrade `@rcrsr/rill-dev` 0.2.5 → 0.3.0 and pin the shared tooling to its baseline: pnpm 12.3.4 → 12.18.0, `oxlint` 1.82.0 → 1.91.0, `oxfmt` 0.67.0 → 0.76.0, `knip` 6.35.0 → 6.44.1, `vitest` 5.0.0 → 5.1.0, `lefthook` 2.1.12 → 2.2.1, `@types/node` 26.5.0 → 26.6.6, and the new `oxlint-tsgolint` 7.0.2006. Bump `dotenv` 17.4.2 → 18.0.9; its one breaking change moves the injection message to stderr, which `config({ quiet: true })` already suppresses. rill-dev 0.3.0 adds `STD-LINT-10`, `STD-LINT-11`, and `STD-LINT-12`: `check:lint` and `fix:lint` run oxlint with `--type-aware`, `.oxlintrc.json` enables every baseline rule, and a new `tests/tsconfig.json` gives the type-aware backend a project for `tests/` without bringing tests under `check:types`. The violations the new rules report are fixed in `src/` and `tests/`. Tree-only standards run under 0.3.0: 68 checked, 68 passed, 14 not machine-checkable. No CLI runtime changes. ([#81](https://github.com/rcrsr/rill-cli/pull/81))
 
+- **Project conventions:** Documents the handler exit-code and error-type rules. Workflow sections are marked operational. ([#80](https://github.com/rcrsr/rill-cli/pull/80))
+
 ## [0.21.0] - 2026-09-09
 
 ### Changed

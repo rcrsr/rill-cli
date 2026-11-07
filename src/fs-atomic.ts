@@ -53,7 +53,7 @@ export async function atomicWriteFile(
       .stat(filePath)
       .then((s) => s.mode)
       .catch((statErr: NodeJS.ErrnoException) => {
-        if (statErr.code === 'ENOENT') return undefined;
+        if (statErr.code === 'ENOENT') return;
         throw statErr;
       });
     if (destMode !== undefined) {
@@ -62,7 +62,7 @@ export async function atomicWriteFile(
 
     await fs.rename(tempPath, filePath);
   } catch (err) {
-    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+    await fs.rm(tempPath, { force: true }).catch(() => {});
     throw err;
   }
 }

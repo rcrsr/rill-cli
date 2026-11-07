@@ -472,18 +472,16 @@ describe('upgrade', () => {
       let writeCallCount = 0;
       const writeSpy = vi
         .spyOn(fs.promises, 'writeFile')
-        .mockImplementation(
-          async (...args: Parameters<typeof origWriteFile>) => {
-            writeCallCount++;
-            // First write = the edit itself; let it through. Second write =
-            // the rollback attempt; fail it to simulate the disk going
-            // read-only mid-rollback.
-            if (writeCallCount === 1) {
-              return origWriteFile(...args);
-            }
-            throw new Error('EACCES: rollback write denied');
+        .mockImplementation((...args: Parameters<typeof origWriteFile>) => {
+          writeCallCount++;
+          // First write = the edit itself; let it through. Second write =
+          // the rollback attempt; fail it to simulate the disk going
+          // read-only mid-rollback.
+          if (writeCallCount === 1) {
+            return origWriteFile(...args);
           }
-        );
+          return Promise.reject(new Error('EACCES: rollback write denied'));
+        });
 
       const { run } = await import('../../src/commands/upgrade.js');
       const cap = captureOutput();

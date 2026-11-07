@@ -505,13 +505,13 @@ describe('install', () => {
       // Make fs.promises.writeFile throw to simulate disk failure
       const origWriteFile = fs.promises.writeFile;
       let writeCallCount = 0;
-      fs.promises.writeFile = (async (
+      fs.promises.writeFile = ((
         ...args: Parameters<typeof fs.promises.writeFile>
       ) => {
         writeCallCount++;
         // First write = config update; throw on it
         if (writeCallCount === 1) {
-          throw new Error('ENOSPC: no space left on device');
+          return Promise.reject(new Error('ENOSPC: no space left on device'));
         }
         return origWriteFile(...args);
       }) as typeof fs.promises.writeFile;

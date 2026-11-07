@@ -89,7 +89,11 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     const formatValue = argv[formatIndex + 1];
     if (formatValue === 'text' || formatValue === 'json') {
       format = formatValue;
-    } else if (!formatValue || formatValue.startsWith('-')) {
+    } else if (
+      formatValue === undefined ||
+      formatValue === '' ||
+      formatValue.startsWith('-')
+    ) {
       throw new Error('--format requires argument: text or json');
     } else {
       throw new Error(`Invalid format: ${formatValue}. Expected text or json`);
@@ -101,7 +105,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
   const minSeverityIndex = argv.indexOf('--min-severity');
   if (minSeverityIndex !== -1) {
     const value = argv[minSeverityIndex + 1];
-    if (!value || value.startsWith('-')) {
+    if (value === undefined || value === '' || value.startsWith('-')) {
       throw new Error(
         '--min-severity requires argument: error, warning, or info'
       );
@@ -127,7 +131,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg) continue;
+    if (arg === undefined || arg === '') continue;
 
     // Skip non-flag arguments
     if (!arg.startsWith('-')) {
@@ -152,7 +156,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
   let file: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg) continue;
+    if (arg === undefined || arg === '') continue;
 
     // Skip flags
     if (arg.startsWith('-')) {
@@ -168,7 +172,7 @@ export function parseCheckArgs(argv: string[]): ParsedCheckArgs {
     break;
   }
 
-  if (!file) {
+  if (file === undefined || file === '') {
     if (fix) {
       throw new Error('--fix requires a file argument');
     }
@@ -267,7 +271,7 @@ function buildFileJsonResult(
     // Add category if verbose mode
     if (verbose) {
       const category = categoryMap.get(d.code);
-      if (category) {
+      if (category !== undefined && category !== '') {
         error['category'] = category;
       }
     }
@@ -502,7 +506,7 @@ type FileJsonResult = {
  * pushed there instead of being written to stdout. Scan mode uses this so it
  * can emit a single combined document instead of multiple back-to-back ones.
  */
-async function checkFile(
+function checkFile(
   file: string,
   options: {
     fix: boolean;
@@ -513,7 +517,7 @@ async function checkFile(
     severityMap: Record<string, DiagnosticSeverity>;
     collect?: FileJsonResult[];
   }
-): Promise<number> {
+): number {
   let source: string;
   try {
     source = fs.readFileSync(file, 'utf-8');
@@ -717,7 +721,7 @@ Exit codes:
         ...(args.format === 'json' ? { collect } : {}),
       };
       for (const file of files) {
-        const result = await checkFile(file, checkOpts);
+        const result = checkFile(file, checkOpts);
         if (result > lintExit) lintExit = result;
       }
       if (args.format === 'json') {
@@ -736,7 +740,7 @@ Exit codes:
         console.log('No *.rill files found in project');
       }
     } else if (args.mode === 'check') {
-      lintExit = await checkFile(args.file, {
+      lintExit = checkFile(args.file, {
         fix: args.fix,
         verbose: args.verbose,
         format: args.format,

@@ -114,10 +114,7 @@ export async function scaffoldSinglePackage(
   if (!alreadyPresent) {
     // Append with a leading newline if the file is non-empty and doesn't end with one
     const prefix =
-      gitignoreLines.length > 0 &&
-      gitignoreLines[gitignoreLines.length - 1] !== ''
-        ? '\n'
-        : '';
+      gitignoreLines.length > 0 && gitignoreLines.at(-1) !== '' ? '\n' : '';
     fs.appendFileSync(projectGitignore, `${prefix}${rillEntry}\n`, 'utf8');
   }
 
@@ -156,9 +153,9 @@ export async function scaffoldSinglePackage(
  * Deprecated. Prints a deprecation message and exits with code 1.
  * Use `rill init` instead.
  */
-export async function run(_argv: string[]): Promise<number> {
+export function run(_argv: string[]): Promise<number> {
   process.stderr.write(
     'rill bootstrap has been renamed to rill init. Use `rill init` to create a single package, or `rill init bundle` to create a bundle.\n'
   );
-  return 1;
+  return Promise.resolve(1);
 }

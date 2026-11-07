@@ -27,7 +27,10 @@ export interface HaltView {
 function buildView(value: RillValue, fallbackMessage: string): HaltView {
   const status = getStatus(value);
   return {
-    atom: status.code ? `#${atomName(status.code)}` : null,
+    atom:
+      status.code !== undefined && status.code !== null
+        ? `#${atomName(status.code)}`
+        : null,
     message: status.message !== '' ? status.message : fallbackMessage,
     provider: status.provider !== '' ? status.provider : null,
     trace: status.trace,

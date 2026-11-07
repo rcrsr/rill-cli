@@ -107,8 +107,8 @@ export function extractSnippet(
   // Trim trailing blank context lines (e.g., from a trailing newline at EOF).
   while (
     snippetLines.length > 0 &&
-    !snippetLines[snippetLines.length - 1]!.isErrorLine &&
-    snippetLines[snippetLines.length - 1]!.content === ''
+    !snippetLines.at(-1)!.isErrorLine &&
+    snippetLines.at(-1)!.content === ''
   ) {
     snippetLines.pop();
   }
@@ -239,7 +239,7 @@ export function enrichError(
   filePath?: string
 ): EnrichedError {
   // Null error
-  if (!error) {
+  if (error === null || error === undefined) {
     throw new TypeError('Error is required');
   }
 
@@ -267,7 +267,7 @@ export function enrichError(
   if (scope && error.context) {
     // Look for undefined variable names in context
     const undefinedName = error.context['name'] as string | undefined;
-    if (undefinedName && typeof undefinedName === 'string') {
+    if (typeof undefinedName === 'string' && undefinedName !== '') {
       const candidates = [...scope.variableNames, ...scope.functionNames];
       const similarNames = suggestSimilarNames(undefinedName, candidates);
       if (similarNames.length > 0) {

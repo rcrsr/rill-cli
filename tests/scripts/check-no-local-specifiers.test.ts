@@ -44,7 +44,7 @@ describe('check-no-local-specifiers', () => {
   /**
    * Execute the check script and capture exit code, stdout, and stderr.
    */
-  async function execCheck(
+  function execCheck(
     args: string[]
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
@@ -60,11 +60,11 @@ describe('check-no-local-specifiers', () => {
       let stdout = '';
       let stderr = '';
 
-      proc.stdout.on('data', (data) => {
+      proc.stdout.on('data', (data: Buffer) => {
         stdout += data.toString();
       });
 
-      proc.stderr.on('data', (data) => {
+      proc.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
       });
 

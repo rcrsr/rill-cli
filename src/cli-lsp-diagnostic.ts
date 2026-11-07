@@ -70,15 +70,13 @@ export function toLspDiagnostic(error: RillError): LspDiagnostic {
   const contextSuggestions = errorData.context?.['suggestions'];
   let suggestions: string[] | undefined;
 
-  if (contextSuggestions) {
-    if (Array.isArray(contextSuggestions) && contextSuggestions.length > 0) {
-      const filtered = contextSuggestions
-        .slice(0, 3)
-        .map((s) => String(s))
-        .filter((s) => s.length > 0);
-      if (filtered.length > 0) {
-        suggestions = filtered;
-      }
+  if (Array.isArray(contextSuggestions) && contextSuggestions.length > 0) {
+    const filtered = contextSuggestions
+      .slice(0, 3)
+      .map((s) => String(s))
+      .filter((s) => s.length > 0);
+    if (filtered.length > 0) {
+      suggestions = filtered;
     }
   }
 

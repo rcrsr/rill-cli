@@ -7,6 +7,12 @@ import { describe, it, expect } from 'vitest';
 import { formatDiagnostics } from '../../src/cli-check.js';
 import type { Diagnostic } from '@rcrsr/rill-language-service/rules';
 
+/** Shape of the parsed JSON output that these tests inspect. */
+interface DiagnosticsJson {
+  errors: Array<{ fix: unknown }>;
+  summary: unknown;
+}
+
 describe('formatDiagnostics', () => {
   describe('text format', () => {
     it('formats single diagnostic with all fields', () => {
@@ -139,7 +145,7 @@ describe('formatDiagnostics', () => {
       ];
 
       const result = formatDiagnostics('file.rill', diagnostics, 'json', false);
-      const parsed = JSON.parse(result);
+      const parsed = JSON.parse(result) as DiagnosticsJson;
 
       expect(parsed).toEqual({
         file: 'file.rill',
@@ -182,9 +188,9 @@ describe('formatDiagnostics', () => {
       ];
 
       const result = formatDiagnostics('file.rill', diagnostics, 'json', false);
-      const parsed = JSON.parse(result);
+      const parsed = JSON.parse(result) as DiagnosticsJson;
 
-      expect(parsed.errors[0].fix).toEqual({
+      expect(parsed.errors[0]?.fix).toEqual({
         description: 'Rename to snake_case',
         applicable: true,
         range: {
@@ -240,7 +246,7 @@ describe('formatDiagnostics', () => {
       ];
 
       const result = formatDiagnostics('file.rill', diagnostics, 'json', false);
-      const parsed = JSON.parse(result);
+      const parsed = JSON.parse(result) as DiagnosticsJson;
 
       expect(parsed.summary).toEqual({
         total: 5,
@@ -263,7 +269,7 @@ describe('formatDiagnostics', () => {
       ];
 
       const result = formatDiagnostics('file.rill', diagnostics, 'json', false);
-      const parsed = JSON.parse(result);
+      const parsed = JSON.parse(result) as DiagnosticsJson;
 
       expect(parsed.errors[0]).not.toHaveProperty('category');
     });
@@ -283,7 +289,7 @@ describe('formatDiagnostics', () => {
       ];
 
       const result = formatDiagnostics('file.rill', diagnostics, 'json', true);
-      const parsed = JSON.parse(result);
+      const parsed = JSON.parse(result) as DiagnosticsJson;
 
       // Category should not be present if the rule code is not registered
       expect(parsed.errors[0]).not.toHaveProperty('category');
@@ -291,7 +297,7 @@ describe('formatDiagnostics', () => {
 
     it('formats empty diagnostics array as valid JSON', () => {
       const result = formatDiagnostics('empty.rill', [], 'json', false);
-      const parsed = JSON.parse(result);
+      const parsed = JSON.parse(result) as DiagnosticsJson;
 
       expect(parsed).toEqual({
         file: 'empty.rill',
@@ -321,7 +327,9 @@ describe('formatDiagnostics', () => {
 
       // Should be pretty-printed with 2-space indent
       expect(result).toContain('{\n  "file"');
-      expect(() => JSON.parse(result)).not.toThrow();
+      expect(() => {
+        JSON.parse(result);
+      }).not.toThrow();
     });
   });
 });

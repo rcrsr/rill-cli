@@ -12,6 +12,18 @@ import {
 } from '../../src/cli-error-formatter.js';
 import type { SourceSpan } from '@rcrsr/rill';
 
+/** Shape of the parsed JSON diagnostic that these tests inspect. */
+interface DiagnosticJson {
+  errorId: string;
+  severity: number;
+  message: string;
+  source: string;
+  code: string;
+  range: unknown;
+  suggestions: unknown;
+  helpUrl: string;
+}
+
 describe('formatError', () => {
   describe('IR-5: Human format with header and location', () => {
     it('formats error with header and location', () => {
@@ -153,7 +165,7 @@ describe('formatError', () => {
       };
 
       const result = formatError(error, options);
-      const diagnostic = JSON.parse(result);
+      const diagnostic = JSON.parse(result) as DiagnosticJson;
 
       expect(diagnostic.errorId).toBe('RILL-R005');
       expect(diagnostic.severity).toBe(1); // Error
@@ -180,7 +192,7 @@ describe('formatError', () => {
       };
 
       const result = formatError(error, options);
-      const diagnostic = JSON.parse(result);
+      const diagnostic = JSON.parse(result) as DiagnosticJson;
 
       expect(diagnostic.helpUrl).toBe('https://example.com/errors/R005');
     });

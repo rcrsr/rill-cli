@@ -74,7 +74,7 @@ export async function evaluateExpression(
   ctx.pipeValue = [];
 
   const ast = parse(expression);
-  return execute(ast, ctx);
+  return await execute(ast, ctx);
 }
 
 /**

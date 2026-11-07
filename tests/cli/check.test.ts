@@ -20,12 +20,26 @@ import {
 import { loadConfig } from '../../src/check-adapter/config.js';
 import { applyFixes } from '../../src/check-adapter/fixer.js';
 import { applySeverityOverlay } from '../../src/check-adapter/severity-overlay.js';
-import * as fs from 'fs/promises';
-import * as fssync from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { spawn } from 'child_process';
+import * as fs from 'node:fs/promises';
+import * as fssync from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+/** Shape of the JSON envelope emitted by `rill check --format json`. */
+interface CheckJson {
+  file: string;
+  errors: Array<{
+    code: string;
+    severity: string;
+    message: string;
+    context: string;
+    location: { line: number; column: number; offset: number };
+    fix?: { applicable: boolean; replacement: string };
+  }>;
+  summary: Record<string, number>;
+}
 
 describe('rill-check CLI', () => {
   let tempDir: string;
@@ -99,7 +113,7 @@ describe('rill-check CLI', () => {
    * Execute rill-check CLI command and capture output.
    * Returns exit code, stdout, and stderr.
    */
-  async function execCheck(
+  function execCheck(
     args: string[]
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
@@ -116,11 +130,11 @@ describe('rill-check CLI', () => {
       let stdout = '';
       let stderr = '';
 
-      proc.stdout.on('data', (data) => {
+      proc.stdout.on('data', (data: Buffer) => {
         stdout += data.toString();
       });
 
-      proc.stderr.on('data', (data) => {
+      proc.stderr.on('data', (data: Buffer) => {
         stderr += data.toString();
       });
 
@@ -236,7 +250,7 @@ describe('rill-check CLI', () => {
       ];
 
       const output = formatDiagnostics('test.rill', diagnostics, 'json', false);
-      const parsed = JSON.parse(output);
+      const parsed = JSON.parse(output) as CheckJson;
 
       expect(parsed).toEqual({
         file: 'test.rill',
@@ -285,7 +299,7 @@ describe('rill-check CLI', () => {
       expect(diagnostics).toEqual([]);
 
       const output = formatDiagnostics(script, diagnostics, 'json', false);
-      const parsed = JSON.parse(output);
+      const parsed = JSON.parse(output) as CheckJson;
       expect(parsed.file).toBe(script);
       expect(parsed.errors).toEqual([]);
       expect(parsed.summary).toEqual({
@@ -381,7 +395,7 @@ describe('rill-check CLI', () => {
       expect(result.stdout).toContain('lex-error.rill');
     });
 
-    it('exits with code 1 for unknown flag', async () => {
+    it('exits with code 1 for unknown flag', () => {
       expect(() => parseCheckArgs(['--unknown'])).toThrow('Unknown option');
     });
 
@@ -483,7 +497,7 @@ describe('rill-check CLI', () => {
       ];
 
       const output = formatDiagnostics('test.rill', diagnostics, 'json', true);
-      const parsed = JSON.parse(output);
+      const parsed = JSON.parse(output) as CheckJson;
 
       // Verbose mode adds category field (when the rule code is registered)
       expect(parsed.errors[0]).toHaveProperty('severity');
@@ -522,7 +536,7 @@ describe('rill-check CLI', () => {
 
       const output = formatDiagnostics(script, diagnostics, 'json', false);
       // Should be valid JSON
-      const parsed = JSON.parse(output);
+      const parsed = JSON.parse(output) as CheckJson;
       expect(parsed).toHaveProperty('file');
       expect(parsed).toHaveProperty('errors');
       expect(parsed).toHaveProperty('summary');
@@ -621,7 +635,7 @@ $itemList -> .len
       expect(duration).toBeLessThan(2000);
     });
 
-    it('all rules enabled by default', async () => {
+    it('all rules enabled by default', () => {
       const config = createDefaultConfig();
 
       // Verify every rule registered with the service is enabled by default.
@@ -734,7 +748,7 @@ $data2 -> log
        * Run `rill check` (no args) inside an isolated scan directory so the
        * shared tempDir doesn't pollute results with files from other tests.
        */
-      async function execScan(
+      function execScan(
         scanDir: string,
         args: string[]
       ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -750,10 +764,10 @@ $data2 -> log
           });
           let stdout = '';
           let stderr = '';
-          proc.stdout.on('data', (d) => {
+          proc.stdout.on('data', (d: Buffer) => {
             stdout += d.toString();
           });
-          proc.stderr.on('data', (d) => {
+          proc.stderr.on('data', (d: Buffer) => {
             stderr += d.toString();
           });
           proc.on('close', (code) => {
@@ -940,7 +954,7 @@ $data2 -> log
 
       const diagnostics = validateFile(script);
       const output = formatDiagnostics(script, diagnostics, 'json', true);
-      const parsed = JSON.parse(output);
+      const parsed = JSON.parse(output) as CheckJson;
       expect(parsed).toHaveProperty('file');
     });
   });
@@ -1188,7 +1202,7 @@ $data2 -> log
         const script = await writeFile('info-json.rill', INFO_SOURCE);
         const result = await execCheck(['--format', 'json', script]);
         expect(result.exitCode).toBe(0);
-        const parsed = JSON.parse(result.stdout);
+        const parsed = JSON.parse(result.stdout) as CheckJson;
         expect(parsed.summary.info).toBe(1);
         expect(parsed.summary.errors).toBe(0);
       });
@@ -1203,7 +1217,7 @@ $data2 -> log
           script,
         ]);
         expect(result.exitCode).toBe(1);
-        const parsed = JSON.parse(result.stdout);
+        const parsed = JSON.parse(result.stdout) as CheckJson;
         expect(parsed.summary.info).toBe(1);
       });
     });
@@ -1268,7 +1282,7 @@ $data2 -> log
         '42 => $myCamelCase\n5 -> log\n$myCamelCase -> log\n$myCamelCase -> log\n'
       );
       const result = await execCheck(['--format', 'json', script]);
-      const parsed = JSON.parse(result.stdout);
+      const parsed = JSON.parse(result.stdout) as CheckJson;
 
       expect(parsed.file).toBe(script);
       expect(parsed.errors).toHaveLength(1);
@@ -1277,17 +1291,19 @@ $data2 -> log
         code: 'NAMING_SNAKE_CASE',
         severity: 'error',
       });
+      const anyNumber: unknown = expect.any(Number);
+      const anyString: unknown = expect.any(String);
       expect(error.location).toEqual({
-        line: expect.any(Number),
-        column: expect.any(Number),
-        offset: expect.any(Number),
+        line: anyNumber,
+        column: anyNumber,
+        offset: anyNumber,
       });
       expect(typeof error.message).toBe('string');
       expect(typeof error.context).toBe('string');
       // NAMING_SNAKE_CASE always emits a fix payload.
       expect(error.fix).toMatchObject({
         applicable: true,
-        replacement: expect.any(String),
+        replacement: anyString,
       });
       expect(parsed.summary).toEqual({
         total: 1,
@@ -1326,10 +1342,10 @@ $data2 -> log
           });
           let stdout = '';
           let stderr = '';
-          proc.stdout.on('data', (d) => {
+          proc.stdout.on('data', (d: Buffer) => {
             stdout += d.toString();
           });
-          proc.stderr.on('data', (d) => {
+          proc.stderr.on('data', (d: Buffer) => {
             stderr += d.toString();
           });
           proc.on('close', (code) => {
@@ -1389,8 +1405,8 @@ $itemList -> .len
 
       expect(parsed.errors.length).toBeGreaterThan(1);
       for (let i = 1; i < parsed.errors.length; i++) {
-        const prev = parsed.errors[i - 1]!.location;
-        const curr = parsed.errors[i]!.location;
+        const prev = parsed.errors[i - 1].location;
+        const curr = parsed.errors[i].location;
         const inOrder =
           curr.line > prev.line ||
           (curr.line === prev.line && curr.column >= prev.column);
@@ -1534,7 +1550,7 @@ $raw -> log
   // ============================================================
 
   describe('min-severity one-shot notice', () => {
-    async function execCheckIn(
+    function execCheckIn(
       dir: string,
       args: string[]
     ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -1550,10 +1566,10 @@ $raw -> log
         });
         let stdout = '';
         let stderr = '';
-        proc.stdout.on('data', (d) => {
+        proc.stdout.on('data', (d: Buffer) => {
           stdout += d.toString();
         });
-        proc.stderr.on('data', (d) => {
+        proc.stderr.on('data', (d: Buffer) => {
           stderr += d.toString();
         });
         proc.on('close', (code) => {
@@ -1936,12 +1952,10 @@ $raw -> log
         '42 => $myCamelCase\n'
       );
       const result = await execCheck(['--format', 'json', script]);
-      const parsed = JSON.parse(result.stdout);
-      const diag = parsed.errors.find(
-        (e: { code: string }) => e.code === 'NAMING_SNAKE_CASE'
-      );
-      expect(diag.fix).toMatchObject({ applicable: true });
-      expect(typeof diag.fix.replacement).toBe('string');
+      const parsed = JSON.parse(result.stdout) as CheckJson;
+      const diag = parsed.errors.find((e) => e.code === 'NAMING_SNAKE_CASE');
+      expect(diag?.fix).toMatchObject({ applicable: true });
+      expect(typeof diag?.fix?.replacement).toBe('string');
     });
 
     it('UNNECESSARY_ASSERTION emits an applicable fix deleting the type assertion', async () => {
@@ -1950,11 +1964,11 @@ $raw -> log
         '42:number\n'
       );
       const result = await execCheck(['--format', 'json', script]);
-      const parsed = JSON.parse(result.stdout);
+      const parsed = JSON.parse(result.stdout) as CheckJson;
       const diag = parsed.errors.find(
-        (e: { code: string }) => e.code === 'UNNECESSARY_ASSERTION'
+        (e) => e.code === 'UNNECESSARY_ASSERTION'
       );
-      expect(diag.fix).toMatchObject({ applicable: true, replacement: '' });
+      expect(diag?.fix).toMatchObject({ applicable: true, replacement: '' });
     });
 
     it('achieves corpus parity across the Preserved-Behavior Inventory sample', async () => {
@@ -2073,10 +2087,10 @@ $raw -> log
           );
           let stdout = '';
           let stderr = '';
-          proc.stdout.on('data', (d) => {
+          proc.stdout.on('data', (d: Buffer) => {
             stdout += d.toString();
           });
-          proc.stderr.on('data', (d) => {
+          proc.stderr.on('data', (d: Buffer) => {
             stderr += d.toString();
           });
           proc.on('close', (code) => {

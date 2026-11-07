@@ -106,12 +106,12 @@ describe('atomicWriteFile', () => {
       const origWriteFile = fs.promises.writeFile.bind(fs.promises);
       const writeSpy = vi
         .spyOn(fs.promises, 'writeFile')
-        .mockImplementation(async (target, ...rest) => {
-          seenDirs.push(path.dirname(String(target)));
-          return origWriteFile(
-            target as Parameters<typeof origWriteFile>[0],
-            ...(rest as [])
-          );
+        .mockImplementation((target, ...rest) => {
+          if (typeof target !== 'string') {
+            throw new TypeError('expected a string path');
+          }
+          seenDirs.push(path.dirname(target));
+          return origWriteFile(target, ...(rest as []));
         });
 
       await atomicWriteFile(filePath, 'data', 'utf8');
@@ -154,7 +154,7 @@ describe('atomicWriteFile', () => {
         .mockImplementation(async (...args: Parameters<typeof origOpen>) => {
           const handle = await origOpen(...args);
           const origSync = handle.sync.bind(handle);
-          vi.spyOn(handle, 'sync').mockImplementation(async () => {
+          vi.spyOn(handle, 'sync').mockImplementation(() => {
             calls.push('sync');
             return origSync();
           });
@@ -164,7 +164,7 @@ describe('atomicWriteFile', () => {
       const origRename = fs.promises.rename.bind(fs.promises);
       const renameSpy = vi
         .spyOn(fs.promises, 'rename')
-        .mockImplementation(async (...args: Parameters<typeof origRename>) => {
+        .mockImplementation((...args: Parameters<typeof origRename>) => {
           calls.push('rename');
           return origRename(...args);
         });

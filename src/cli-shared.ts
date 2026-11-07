@@ -89,7 +89,7 @@ export function formatError(
     err.code === 'ENOENT' &&
     'path' in err
   ) {
-    return `File not found: ${err.path}`;
+    return `File not found: ${String(err.path)}`;
   }
 
   // Handle module errors

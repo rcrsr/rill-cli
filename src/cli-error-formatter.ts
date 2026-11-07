@@ -61,7 +61,7 @@ export function formatError(
     options.format !== 'json' &&
     options.format !== 'compact'
   ) {
-    throw new TypeError(`Unknown format: ${options.format}`);
+    throw new TypeError(`Unknown format: ${String(options.format)}`);
   }
 
   if (options.format === 'json') {
@@ -130,7 +130,7 @@ function formatErrorHuman(
   if (useTrace) {
     renderTraceBlock(
       lines,
-      error.halt!,
+      error.halt,
       error.source,
       error.filePath,
       traceMode
@@ -139,7 +139,10 @@ function formatErrorHuman(
     // Location: --> [path:]line:col
     if (error.span) {
       const loc = `${error.span.start.line}:${error.span.start.column}`;
-      const prefix = error.filePath ? `${error.filePath}:` : '';
+      const prefix =
+        error.filePath !== undefined && error.filePath !== ''
+          ? `${error.filePath}:`
+          : '';
       lines.push(`  --> ${prefix}${loc}`);
     }
 
@@ -177,7 +180,7 @@ function formatErrorHuman(
   }
 
   // Help URL
-  if (options.verbose && error.helpUrl) {
+  if (options.verbose && error.helpUrl !== undefined && error.helpUrl !== '') {
     lines.push(`   = see: ${error.helpUrl}`);
   }
 
@@ -245,7 +248,7 @@ function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
     diagnostic.suggestions = error.suggestions;
   }
 
-  if (options.verbose && error.helpUrl) {
+  if (options.verbose && error.helpUrl !== undefined && error.helpUrl !== '') {
     diagnostic.helpUrl = error.helpUrl;
   }
 
@@ -270,7 +273,7 @@ function formatErrorJson(error: EnrichedError, options: FormatOptions): string {
       return out;
     });
     if (Object.keys(error.halt.raw).length > 0) {
-      diagnostic.raw = error.halt.raw as Record<string, unknown>;
+      diagnostic.raw = error.halt.raw;
     }
   }
 
@@ -340,7 +343,9 @@ function renderTraceBlock(
   const first = parseSite(halt.trace[0]!.site);
   if (first) {
     const display =
-      filePath && (first.path === '<script>' || first.path === filePath)
+      filePath !== undefined &&
+      filePath !== '' &&
+      (first.path === '<script>' || first.path === filePath)
         ? `${filePath}:${first.line}:${first.column}`
         : halt.trace[0]!.site;
     lines.push(`  --> ${display}`);
@@ -371,7 +376,7 @@ function renderTraceBlock(
       (parsed.path === '<script>' ||
         (filePath !== undefined && parsed.path === filePath));
     const display =
-      parsed && isScript && filePath
+      parsed && isScript && filePath !== undefined && filePath !== ''
         ? `${filePath}:${parsed.line}:${parsed.column}`
         : frame.site;
     lines.push(`     ${idx + 1}. ${display}`);
@@ -428,14 +433,15 @@ function stringifyWrappedValue(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value);
   if (typeof value === 'number' || typeof value === 'boolean')
     return String(value);
-  if (typeof value === 'object' && '__rill_atom' in (value as object)) {
+  if (typeof value === 'object' && '__rill_atom' in value) {
     const name = (value as { name?: string }).name;
     return name !== undefined ? `#${name}` : '<atom>';
   }
   try {
     return JSON.stringify(value);
   } catch {
-    return String(value);
+    const raw: unknown = value;
+    return String(raw);
   }
 }
 

@@ -19,8 +19,10 @@ vi.mock('@rcrsr/rill', async (importActual) => {
   const actual = await importActual<typeof import('@rcrsr/rill')>();
   return {
     ...actual,
-    execute: vi.fn(async (...args: Parameters<typeof actual.execute>) => {
-      if (_executeErrorOverride !== null) throw _executeErrorOverride;
+    execute: vi.fn((...args: Parameters<typeof actual.execute>) => {
+      if (_executeErrorOverride !== null) {
+        return Promise.reject(_executeErrorOverride);
+      }
       return actual.execute(...args);
     }),
   };
@@ -268,15 +270,15 @@ describe('runScript', () => {
 
   describe('dispose callbacks', () => {
     it('calls all dispose callbacks after execution', async () => {
-      const dispose1 = vi.fn().mockResolvedValue(undefined);
-      const dispose2 = vi.fn().mockResolvedValue(undefined);
+      const dispose1 = vi.fn().mockResolvedValue();
+      const dispose2 = vi.fn().mockResolvedValue();
       await runTempScript('true', {}, makeConfig(), {}, [dispose1, dispose2]);
       expect(dispose1).toHaveBeenCalledOnce();
       expect(dispose2).toHaveBeenCalledOnce();
     });
 
     it('calls dispose callbacks even when script throws runtime error', async () => {
-      const dispose = vi.fn().mockResolvedValue(undefined);
+      const dispose = vi.fn().mockResolvedValue();
       await runTempScript('$undefined_xyz', {}, makeConfig(), {}, [dispose]);
       expect(dispose).toHaveBeenCalledOnce();
     });

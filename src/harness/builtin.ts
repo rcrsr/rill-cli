@@ -104,7 +104,8 @@ function buildRequestParams(
   if (desc === null || desc === undefined || !Array.isArray(desc.params)) {
     return params;
   }
-  desc.params.forEach((p, i) => {
+  const descriptors: readonly HandlerParamDescriptor[] = desc.params;
+  descriptors.forEach((p, i) => {
     if (i < args.length) {
       params[p.name] = args[i];
     }
@@ -216,7 +217,12 @@ async function postBuild(ctx: PostBuildContext): Promise<void> {
     .join('\n');
 
   // Determine the fallback mount for when no argv mount is provided.
-  const defaultMount = bundle.defaultPackage || packages[0]?.mount || '';
+  const defaultMount =
+    (bundle.defaultPackage !== undefined && bundle.defaultPackage !== ''
+      ? bundle.defaultPackage
+      : undefined) ??
+    packages[0]?.mount ??
+    '';
 
   const availableMountsJson = JSON.stringify(
     packages.map((p) => p.mount).join(', ')
@@ -304,7 +310,7 @@ async function serve(ctx: ServeContext): Promise<number> {
 
   logger.info(`[builtin harness] dispatching mount: ${String(mount)}`);
 
-  return dispatchByMount(packages, mount, [...args]);
+  return await dispatchByMount(packages, mount, [...args]);
 }
 
 // ============================================================

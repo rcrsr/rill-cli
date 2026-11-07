@@ -45,7 +45,7 @@ const MINIMAL_RILL_SCRIPT = `"hello world"`;
 
 const tmpDirs: string[] = [];
 
-async function makeTmpDir(): Promise<string> {
+function makeTmpDir(): string {
   const dir = makeSyncTmpDir();
   tmpDirs.push(dir);
   return dir;
@@ -74,8 +74,8 @@ async function makeProjectFixture(
   overrides: Partial<typeof MINIMAL_RILL_CONFIG> = {},
   extraFiles: Record<string, string> = {}
 ): Promise<{ projectDir: string; outputDir: string }> {
-  const projectDir = await makeTmpDir();
-  const outputDir = await makeTmpDir();
+  const projectDir = makeTmpDir();
+  const outputDir = makeTmpDir();
 
   const rillConfig = { ...MINIMAL_RILL_CONFIG, ...overrides };
   await writeFile(
@@ -101,7 +101,7 @@ async function makeProjectFixture(
 
 afterEach(async () => {
   for (const dir of tmpDirs.splice(0)) {
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
   mocks.loadProject.mockClear();
 });
@@ -209,7 +209,7 @@ describe('buildPackage success cases', () => {
   // ----------------------------------------------------------
   it('outputPath points to package dir inside custom outputDir', async () => {
     const { projectDir } = await makeProjectFixture();
-    const customOutputDir = await makeTmpDir();
+    const customOutputDir = makeTmpDir();
 
     const result = await buildPackage(projectDir, {
       outputDir: customOutputDir,
@@ -241,7 +241,7 @@ describe('buildPackage success cases', () => {
   // ----------------------------------------------------------
   it('same source built twice produces identical checksums', async () => {
     const { projectDir, outputDir } = await makeProjectFixture();
-    const outputDir2 = await makeTmpDir();
+    const outputDir2 = makeTmpDir();
 
     const result1 = await buildPackage(projectDir, { outputDir });
     const result2 = await buildPackage(projectDir, { outputDir: outputDir2 });
@@ -253,8 +253,8 @@ describe('buildPackage success cases', () => {
   // Local TS extension compiled and mount path rewritten
   // ----------------------------------------------------------
   it('compiles local TS extension and rewrites mount path in rill-config.json', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     // Write a minimal valid rill extension (must export extensionManifest with
     // a factory returning { value: ... } as required by the rill-config loader)
@@ -368,8 +368,8 @@ export const extensionManifest = {
   // throwing a BuildError(_, 'compilation').
   // ----------------------------------------------------------
   it('clean ESM-only TS extension does not trigger CJS-require detection', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     const extensionSrc = `
 export const extensionManifest = {
@@ -425,7 +425,7 @@ describe('buildPackage error cases', () => {
   // rill-config.json not found → BuildError('validation')
   // ----------------------------------------------------------
   it('throws BuildError phase validation when rill-config.json is missing', async () => {
-    const outputDir = await makeTmpDir();
+    const outputDir = makeTmpDir();
     const nonExistentDir = path.join(outputDir, 'does-not-exist');
     await initRillNpm(nonExistentDir);
 
@@ -444,8 +444,8 @@ describe('buildPackage error cases', () => {
   // Malformed rill-config.json → BuildError('validation') with parse detail
   // ----------------------------------------------------------
   it('throws BuildError phase validation when rill-config.json is malformed JSON', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await initRillNpm(projectDir);
     await writeFile(
@@ -471,8 +471,8 @@ describe('buildPackage error cases', () => {
   // parse-failure message above.
   // ----------------------------------------------------------
   it('throws BuildError phase validation with a read-failure message when rill-config.json cannot be read', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await initRillNpm(projectDir);
     // existsSync(rill-config.json) is true (it's a directory), but
@@ -496,8 +496,8 @@ describe('buildPackage error cases', () => {
   // Entry .rill file not found → BuildError('compilation')
   // ----------------------------------------------------------
   it('throws BuildError phase compilation when entry.rill is missing', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await initRillNpm(projectDir);
     // Write config but NOT the .rill file
@@ -522,8 +522,8 @@ describe('buildPackage error cases', () => {
   // Local extension source missing → BuildError('compilation')
   // ----------------------------------------------------------
   it('throws BuildError phase compilation when local extension source is missing', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await initRillNpm(projectDir);
     await writeFile(
@@ -556,8 +556,8 @@ describe('buildPackage error cases', () => {
   // into ESM output; detection catches these and rejects non-portable extensions.
   // ----------------------------------------------------------
   it('throws BuildError phase compilation when extension uses CJS require()', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     // TS extension that calls require('process') at module scope.
     // TypeScript does not know about require in ESM context, so we declare it.
@@ -605,8 +605,8 @@ export const extensionManifest = {
   // loadProject() dry-run failure deletes output and throws
   // ----------------------------------------------------------
   it('throws BuildError when npm extension cannot be resolved', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await initRillNpm(projectDir);
     // Write a config that references a non-existent npm extension
@@ -644,7 +644,7 @@ export const extensionManifest = {
       const { projectDir } = await makeProjectFixture();
 
       // Make a read-only parent directory so mkdir on the outputDir path fails.
-      const readOnlyParent = await makeTmpDir();
+      const readOnlyParent = makeTmpDir();
       const blockedOutputDir = path.join(readOnlyParent, 'output');
 
       // chmod 000 prevents the process from creating subdirectories inside.
@@ -677,8 +677,8 @@ describe('buildPackage boundary conditions', () => {
   // Name defaults to directory basename when not in config
   // ----------------------------------------------------------
   it('uses directory basename as package name when name field absent', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
     const dirName = path.basename(projectDir);
 
     await initRillNpm(projectDir);
@@ -699,8 +699,8 @@ describe('buildPackage boundary conditions', () => {
   // 3+ local TS extensions all produce compiled JS
   // ----------------------------------------------------------
   it('compiles 3 local TS extensions and all produce JS output files', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     const extensionSrc = (name: string) => `
 export const extensionManifest = {
@@ -771,8 +771,8 @@ export const extensionManifest = {
   // Two aliases mounting the same local source share one .js file
   // ----------------------------------------------------------
   it('deduplicates extensions when two aliases mount the same source', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     const extensionSrc = `
 export const extensionManifest = {
@@ -830,8 +830,8 @@ export const extensionManifest = {
   // Version required — throws when absent
   // ----------------------------------------------------------
   it('throws BuildError when version field is absent', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await initRillNpm(projectDir);
     await writeFile(
@@ -862,8 +862,8 @@ describe('buildPackage version sanitization and collision detection', () => {
   // Path traversal in version string → throws with clear message
   // ----------------------------------------------------------
   it('throws when extension version contains path traversal characters', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     // resolveExtensionVersion reads the version from rill-config.json for local
     // extensions. A malicious version in that field must be rejected before it is
@@ -909,8 +909,8 @@ export const extensionManifest = {
   // Same-basename extensions at different paths use stable hash suffix
   // ----------------------------------------------------------
   it('disambiguates same-basename extensions with a stable hash suffix', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     const extSrc = (name: string) => `
 export const extensionManifest = {
@@ -969,7 +969,7 @@ export const extensionManifest = {
     expect(files[0]).not.toBe(files[1]);
 
     // Build is deterministic: running again must produce identical filenames.
-    const outputDir2 = await makeTmpDir();
+    const outputDir2 = makeTmpDir();
     const result2 = await buildPackage(projectDir, { outputDir: outputDir2 });
     const extensionsDir2 = path.join(result2.outputPath, 'extensions');
     const files2 = readdirSync(extensionsDir2).sort();
@@ -1172,7 +1172,7 @@ describe('handler lifecycle contract', () => {
   });
 
   // ----------------------------------------------------------
-  // describe() returns introspection data when handler has params
+  // the describe export returns introspection data when handler has params
   // ----------------------------------------------------------
   it('describe() returns introspection data for handler with params', async () => {
     const { projectDir, outputDir } = await makeProjectFixture(
@@ -1291,7 +1291,7 @@ describe('handler lifecycle contract', () => {
   });
 
   // ----------------------------------------------------------
-  // describe() returns null when main field has no handler name
+  // the describe export returns null when main field has no handler name
   // ----------------------------------------------------------
   it('describe() returns null when no handler name in main field', async () => {
     const { projectDir, outputDir } = await makeProjectFixture({
@@ -1346,7 +1346,7 @@ describe('handler lifecycle contract', () => {
   });
 
   // ----------------------------------------------------------
-  // describe() returns a defensive copy (callers cannot mutate
+  // the describe export returns a defensive copy (callers cannot mutate
   // the shared introspection object)
   // ----------------------------------------------------------
   it('describe() returns a fresh copy on each call', async () => {
@@ -1535,8 +1535,8 @@ describe('findOffendingDynamicRequires', () => {
 
 describe('buildPackage .rill/npm/package.json missing', () => {
   it('throws BuildError phase compilation with FR-EXT-9 message', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     // Write rill-config.json and main.rill but do NOT call initRillNpm —
     // .rill/npm/package.json is absent.
@@ -1557,8 +1557,8 @@ describe('buildPackage .rill/npm/package.json missing', () => {
   });
 
   it('FR-EXT-9 message contains verbatim bootstrap instruction text', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     await writeFile(
       path.join(projectDir, 'rill-config.json'),
@@ -1602,8 +1602,8 @@ describe('buildPackage — createRequire wiring discriminator', () => {
   // to call require('buffer') at runtime must NOT be rejected by the CJS-require
   // detection. The REQUIRE_WIRING discriminator must suppress the offender list.
   it('does not throw when local JS extension uses createRequire(import.meta.url) wiring', async () => {
-    const projectDir = await makeTmpDir();
-    const outputDir = await makeTmpDir();
+    const projectDir = makeTmpDir();
+    const outputDir = makeTmpDir();
 
     // Fixture: plain ESM JS that wires require via createRequire(import.meta.url).
     // The build pipeline bundles it; esbuild preserves the wiring pattern.

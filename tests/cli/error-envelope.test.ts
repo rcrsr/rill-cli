@@ -11,6 +11,14 @@ import {
 } from '../../src/cli-error-formatter.js';
 import type { HaltView } from '../../src/cli-error-from-halt.js';
 
+/** Shape of the parsed JSON envelope that these tests inspect. */
+interface EnvelopeJson {
+  errorId: string;
+  atom: string;
+  provider: string;
+  trace: Array<{ wrapped: unknown }>;
+}
+
 const baseOpts: FormatOptions = {
   format: 'human',
   verbose: false,
@@ -169,7 +177,7 @@ describe('halt envelope - JSON format', () => {
       halt: haltTimeout,
     };
     const out = formatError(error, { ...baseOpts, format: 'json' });
-    const parsed = JSON.parse(out);
+    const parsed = JSON.parse(out) as EnvelopeJson;
     expect(parsed.atom).toBe('#TIMEOUT');
     expect(parsed.provider).toBe('http');
     expect(parsed.trace).toHaveLength(2);
@@ -192,7 +200,7 @@ describe('halt envelope - JSON format', () => {
       format: 'json',
       atomOnly: true,
     });
-    const parsed = JSON.parse(out);
+    const parsed = JSON.parse(out) as EnvelopeJson;
     expect(Object.keys(parsed).sort()).toEqual(['atom', 'errorId']);
     expect(parsed.atom).toBe('#TIMEOUT');
     expect(parsed.errorId).toBe('RILL-R007');
@@ -204,7 +212,7 @@ describe('halt envelope - JSON format', () => {
       message: 'undefined variable',
     };
     const out = formatError(error, { ...baseOpts, format: 'json' });
-    const parsed = JSON.parse(out);
+    const parsed = JSON.parse(out) as EnvelopeJson;
     expect(parsed.atom).toBeUndefined();
     expect(parsed.trace).toBeUndefined();
     expect(parsed.provider).toBeUndefined();
@@ -232,8 +240,8 @@ describe('halt envelope - JSON format', () => {
       halt,
     };
     const out = formatError(error, { ...baseOpts, format: 'json' });
-    const parsed = JSON.parse(out);
-    expect(parsed.trace[0].wrapped).toBeUndefined();
-    expect(parsed.trace[1].wrapped).toEqual({ code: '#X' });
+    const parsed = JSON.parse(out) as EnvelopeJson;
+    expect(parsed.trace[0]?.wrapped).toBeUndefined();
+    expect(parsed.trace[1]?.wrapped).toEqual({ code: '#X' });
   });
 });

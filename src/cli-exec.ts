@@ -49,7 +49,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const explainIndex = argv.findIndex((arg) => arg === '--explain');
   if (explainIndex !== -1) {
     const errorId = argv[explainIndex + 1];
-    if (!errorId) {
+    if (errorId === undefined || errorId === '') {
       throw new Error('Missing error ID after --explain');
     }
     return { mode: 'explain', errorId };
@@ -85,7 +85,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   );
   if (maxStackDepthIndex !== -1) {
     const depthValue = argv[maxStackDepthIndex + 1];
-    if (!depthValue) {
+    if (depthValue === undefined || depthValue === '') {
       throw new Error('Missing value after --max-stack-depth');
     }
     const depth = parseInt(depthValue, 10);
@@ -106,7 +106,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   ];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg && arg.startsWith('--')) {
+    if (arg !== undefined && arg !== '' && arg.startsWith('--')) {
       if (!knownFlags.includes(arg)) {
         throw new Error(`Unknown option: ${arg}`);
       }
@@ -118,7 +118,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
       ) {
         i++;
       }
-    } else if (arg && arg.startsWith('-') && arg !== '-') {
+    } else if (
+      arg !== undefined &&
+      arg !== '' &&
+      arg.startsWith('-') &&
+      arg !== '-'
+    ) {
       if (!knownFlags.includes(arg)) {
         throw new Error(`Unknown option: ${arg}`);
       }
@@ -131,7 +136,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg) continue;
+    if (arg === undefined || arg === '') continue;
 
     // Skip flags
     if (knownFlags.includes(arg)) {
@@ -147,13 +152,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
 
     // This is a positional argument
-    if (!firstArg) {
+    if (firstArg === undefined || firstArg === '') {
       firstArg = arg;
     }
     positionalArgs.push(arg);
   }
 
-  if (!firstArg) {
+  if (firstArg === undefined || firstArg === '') {
     throw new Error('Missing file argument');
   }
 
@@ -191,7 +196,7 @@ export async function executeScript(
 
   if (options?.source !== undefined) {
     source = options.source;
-  } else if (file === '-' || options?.stdin) {
+  } else if (file === '-' || options?.stdin === true) {
     // Read from stdin (must use sync API for stdin)
     source = fsSync.readFileSync(0, 'utf-8');
   } else {
@@ -294,7 +299,7 @@ Examples:
         );
         return 1;
 
-      case 'exec': {
+      default: {
         // Store format options for error handling
         formatOptions = {
           format: parsed.format,

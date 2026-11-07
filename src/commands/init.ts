@@ -48,7 +48,7 @@ export async function run(argv: string[]): Promise<number> {
   const subcommand = argv[0];
 
   if (subcommand === 'bundle') {
-    return bundleInitRun(argv.slice(1));
+    return await bundleInitRun(argv.slice(1));
   }
 
   if (subcommand === 'package') {

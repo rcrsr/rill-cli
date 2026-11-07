@@ -238,7 +238,7 @@ describe('init', () => {
       // directly.
       const realWriteFile = fs.promises.writeFile.bind(fs.promises);
       vi.spyOn(fs.promises, 'writeFile').mockImplementation(
-        async (filePath, data, options) => {
+        (filePath, data, options) => {
           if (
             typeof filePath === 'string' &&
             filePath.includes('rill-config.json')
@@ -246,14 +246,10 @@ describe('init', () => {
             const err = Object.assign(new Error('Permission denied'), {
               code: 'EACCES',
             });
-            throw err;
+            return Promise.reject(err);
           }
           // Delegate all other writes to the real implementation
-          return realWriteFile(
-            filePath as Parameters<typeof realWriteFile>[0],
-            data as Parameters<typeof realWriteFile>[1],
-            options as Parameters<typeof realWriteFile>[2]
-          );
+          return realWriteFile(filePath, data, options);
         }
       );
 

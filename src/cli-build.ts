@@ -34,7 +34,7 @@ export async function main(argv: string[]): Promise<number> {
   const knownFlags = new Set(['--output', '--flat', '--help', '-h']);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg && arg.startsWith('-')) {
+    if (arg !== undefined && arg !== '' && arg.startsWith('-')) {
       if (!knownFlags.has(arg)) {
         process.stderr.write(`Error: Unknown option: ${arg}\n`);
         return 1;
@@ -56,7 +56,7 @@ export async function main(argv: string[]): Promise<number> {
     const arg = argv[i];
     if (arg === '--output') {
       i++; // skip value
-    } else if (arg && !arg.startsWith('-')) {
+    } else if (arg !== undefined && arg !== '' && !arg.startsWith('-')) {
       positionals.push(arg);
     }
   }

@@ -270,7 +270,7 @@ describe('install', () => {
 
       expect(exitCode).toBe(1);
       expect(cap.stderr.join('')).toContain(
-        '--pin/--exact and --range are mutually exclusive'
+        '--pin and --range are mutually exclusive'
       );
     });
   });
@@ -672,11 +672,52 @@ describe('install', () => {
   });
 
   // ============================================================
-  // P2-1: --exact deprecation warning
+  // --exact is rejected
   // ============================================================
 
-  describe('P2-1: --exact deprecation warning', () => {
-    it('prints deprecation warning when --exact is used', async () => {
+  describe('--exact is rejected', () => {
+    it('exits 1, points to --pin, and runs no npm command', async () => {
+      bootstrapProject(tmpDir);
+
+      mocks.spawn.mockImplementation(makeSpawnMock(0));
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['@rcrsr/rill-ext-datetime', '--exact']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        '--exact was removed in 0.23; use --pin'
+      );
+      expect(mocks.spawn).not.toHaveBeenCalled();
+    });
+
+    it('points to --pin even when no package is given', async () => {
+      bootstrapProject(tmpDir);
+
+      const { run } = await import('../../src/commands/install.js');
+      const cap = captureOutput();
+      let exitCode: number;
+      try {
+        exitCode = await run(['--exact']);
+      } finally {
+        cap.restore();
+      }
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        '--exact was removed in 0.23; use --pin'
+      );
+      expect(cap.stderr.join('')).not.toContain('Missing required argument');
+      expect(mocks.spawn).not.toHaveBeenCalled();
+    });
+
+    it('accepts --pin without a removal message', async () => {
       bootstrapProject(tmpDir);
       const prefix = path.join(tmpDir, '.rill', 'npm');
       writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
@@ -688,31 +729,13 @@ describe('install', () => {
       const cap = captureOutput();
       let exitCode: number;
       try {
-        exitCode = await run(['@rcrsr/rill-ext-datetime', '--exact']);
+        exitCode = await run(['@rcrsr/rill-ext-datetime', '--pin']);
       } finally {
         cap.restore();
       }
 
       expect(exitCode).toBe(0);
-      expect(cap.stderr.join('')).toContain('--exact is deprecated');
-    });
-
-    it('does not warn when only --pin is used', async () => {
-      bootstrapProject(tmpDir);
-      const prefix = path.join(tmpDir, '.rill', 'npm');
-      writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
-
-      mocks.spawn.mockImplementation(makeSpawnMock(0));
-      mocks.loadProject.mockResolvedValue({});
-
-      const { run } = await import('../../src/commands/install.js');
-      const cap = captureOutput();
-      try {
-        await run(['@rcrsr/rill-ext-datetime', '--pin']);
-      } finally {
-        cap.restore();
-      }
-      expect(cap.stderr.join('')).not.toContain('deprecated');
+      expect(cap.stderr.join('')).not.toContain('--exact');
     });
   });
 
@@ -1137,31 +1160,6 @@ describe('install', () => {
       expect(out).toContain('[dry-run] for: app');
       expect(out).toContain('[dry-run] role: harness');
       expect(out).toContain('role is finalized at install time');
-    });
-  });
-
-  // ============================================================
-  // W-1 / #65j: --exact deprecation warning names 0.21, not 0.20
-  // ============================================================
-
-  describe('--exact deprecation warning names the removal version 0.21', () => {
-    it('warns with "removed in 0.21"', async () => {
-      bootstrapProject(tmpDir);
-      const prefix = path.join(tmpDir, '.rill', 'npm');
-      writeInstalledPkg(prefix, '@rcrsr/rill-ext-datetime', '0.19.0');
-
-      mocks.spawn.mockImplementation(makeSpawnMock(0));
-
-      const { run } = await import('../../src/commands/install.js');
-      const cap = captureOutput();
-      try {
-        await run(['@rcrsr/rill-ext-datetime', '--exact']);
-      } finally {
-        cap.restore();
-      }
-
-      expect(cap.stderr.join('')).toContain('removed in 0.21');
-      expect(cap.stderr.join('')).not.toContain('removed in 0.20');
     });
   });
 });

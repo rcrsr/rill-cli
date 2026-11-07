@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Project conventions:** Documents the handler exit-code and error-type rules. Workflow sections are marked operational. ([#80](https://github.com/rcrsr/rill-cli/pull/80))
 
+### Removed
+
+- **`--exact` alias for `--pin`:** `rill install` and `rill upgrade` drop the alias, whose deprecation warning promised removal in 0.21. Both commands now reject it with `--exact was removed in 0.23; use --pin` and exit 1 before running npm. They parse arguments with `strict: false`, so ignoring the flag instead would have recorded a caret range where the caller asked for a pin. `rill install` checks it ahead of the missing-package error, so the pointer to `--pin` always shows. Help text, the README, and the `--pin`/`--range` error messages no longer mention `--exact`. Scripts that pass `--exact` must switch to `--pin`. ([#82](https://github.com/rcrsr/rill-cli/pull/82))
+
 ## [0.21.0] - 2026-09-09
 
 ### Changed

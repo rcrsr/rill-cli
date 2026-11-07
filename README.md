@@ -122,7 +122,6 @@ rill install --dry-run @rcrsr/rill-ext-anthropic   # preview without writing
 |------|-------------|
 | `--as <mount>` | Mount name to use (default: derived from package name; required for single-file sources) |
 | `--pin` | Pin to the exact installed version (no caret prefix). Registry installs only. |
-| `--exact` | **Deprecated** alias for `--pin`. Will be removed in 0.20. |
 | `--range <semver>` | Specify a custom semver range. Registry installs only. |
 | `--dry-run` | Print what would be done without writing config or running npm. |
 | `--for <mount>` | Target a specific package mount when installing an extension from a bundle root. |

@@ -560,11 +560,11 @@ describe('upgrade', () => {
   });
 
   // ============================================================
-  // P2-1: --exact deprecation warning
+  // --exact is rejected
   // ============================================================
 
-  describe('P2-1: --exact deprecation warning', () => {
-    it('prints deprecation warning when --exact is used', async () => {
+  describe('--exact is rejected', () => {
+    it('exits 1, points to --pin, and runs no npm command', async () => {
       bootstrapProject(tmpDir, {
         datetime: '@rcrsr/rill-ext-datetime@^0.19.0',
       });
@@ -575,14 +575,18 @@ describe('upgrade', () => {
 
       const { run } = await import('../../src/commands/upgrade.js');
       const cap = captureOutput();
+      let exitCode: number;
       try {
-        await run(['datetime', '--exact']);
+        exitCode = await run(['datetime', '--exact']);
       } finally {
         cap.restore();
       }
-      expect(cap.stderr.join('')).toContain('--exact is deprecated');
-      expect(cap.stderr.join('')).toContain('removed in 0.21');
-      expect(cap.stderr.join('')).not.toContain('removed in 0.20');
+
+      expect(exitCode).toBe(1);
+      expect(cap.stderr.join('')).toContain(
+        '--exact was removed in 0.23; use --pin'
+      );
+      expect(mocks.spawn).not.toHaveBeenCalled();
     });
   });
 

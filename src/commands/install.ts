@@ -71,7 +71,6 @@ Options:
   --as <mount>         Override the mount path (default: derived from package name).
                        Required when <pkg-or-path> is a single-file source.
   --pin                Record exact installed version (no caret). Registry installs only.
-  --exact              Deprecated alias for --pin (will be removed in 0.21).
   --range <semver>     Record a custom semver range verbatim. Registry installs only.
   --dry-run            Print what would be done without writing config or running npm.
   --for <mount>        Target package mount to install an extension into (bundle mode).
@@ -251,7 +250,6 @@ export async function run(argv: string[]): Promise<number> {
     options: {
       as: { type: 'string' },
       pin: { type: 'boolean', default: false },
-      exact: { type: 'boolean', default: false },
       range: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
@@ -268,6 +266,15 @@ export async function run(argv: string[]): Promise<number> {
     return 0;
   }
 
+  // --exact was removed in 0.23. parseArgs runs with strict: false, which
+  // would otherwise ignore the flag and record a caret range in place of the
+  // pin the caller asked for, so it is rejected by name. Checked before the
+  // specifier so the caller sees the --pin pointer even with no package given.
+  if (values['exact'] !== undefined) {
+    process.stderr.write('--exact was removed in 0.23; use --pin\n');
+    return 1;
+  }
+
   const specifier = positionals[0];
   if (specifier === undefined || specifier === '') {
     process.stderr.write('Usage: rill install <pkg-or-path>\n');
@@ -275,21 +282,14 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
 
-  // P2-1: --exact is deprecated; warn once before continuing.
-  if (values['exact'] === true) {
-    process.stderr.write(
-      'warning: --exact is deprecated, use --pin (will be removed in 0.21)\n'
-    );
-  }
-
-  const pin = values['pin'] === true || values['exact'] === true;
+  const pin = values['pin'] === true;
   const rangeArg =
     typeof values['range'] === 'string' ? values['range'] : undefined;
   const dryRun = values['dry-run'] === true;
 
-  // --pin/--exact and --range are mutually exclusive
+  // --pin and --range are mutually exclusive
   if (pin && rangeArg !== undefined) {
-    process.stderr.write('--pin/--exact and --range are mutually exclusive\n');
+    process.stderr.write('--pin and --range are mutually exclusive\n');
     return 1;
   }
 
@@ -305,7 +305,7 @@ export async function run(argv: string[]): Promise<number> {
 
   // ---- Single-file local source short-circuit (P0-3) ----
   // Single-file extensions skip npm entirely. Mount value is the path verbatim.
-  // --as is required; --pin/--exact/--range are rejected since there is no version.
+  // --as is required; --pin/--range are rejected since there is no version.
   if (looksLikeLocalFilePath(specifier)) {
     if (asOverride === undefined) {
       process.stderr.write(
@@ -318,7 +318,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     if (pin || rangeArg !== undefined) {
       process.stderr.write(
-        '✗ --pin/--exact/--range are not valid for single-file sources\n'
+        '✗ --pin/--range are not valid for single-file sources\n'
       );
       return 1;
     }
@@ -561,7 +561,7 @@ export async function run(argv: string[]): Promise<number> {
     // --range: use verbatim semver range
     value = `${pkgName}@${rangeArg}`;
   } else if (pin) {
-    // --pin / --exact: exact version, no caret
+    // --pin: exact version, no caret
     // Non-local branch: installedVersion is guaranteed set here (Step 6
     // returns 1 above when it is undefined), so no fallback is reachable.
     value = `${pkgName}@${installedVersion}`;

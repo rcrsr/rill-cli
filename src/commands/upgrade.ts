@@ -49,7 +49,6 @@ Options:
   --for <mount>    Target a specific package's mount within a bundle
   --harness        Upgrade the bundle's declared harness instead of an extension mount
   --pin            Record exact installed version (no caret)
-  --exact          Deprecated alias for --pin (will be removed in 0.21)
   --range <semver> Install and record a custom semver range verbatim
   --help           Show this help message
 `;
@@ -86,7 +85,6 @@ export async function run(argv: string[]): Promise<number> {
     args: argv,
     options: {
       pin: { type: 'boolean', default: false },
-      exact: { type: 'boolean', default: false },
       range: { type: 'string' },
       for: { type: 'string' },
       harness: { type: 'boolean', default: false },
@@ -101,22 +99,23 @@ export async function run(argv: string[]): Promise<number> {
     return 0;
   }
 
-  // P2-1: --exact is deprecated; warn once before continuing.
-  if (values['exact'] === true) {
-    process.stderr.write(
-      'warning: --exact is deprecated, use --pin (will be removed in 0.21)\n'
-    );
+  // --exact was removed in 0.23. parseArgs runs with strict: false, which
+  // would otherwise ignore the flag and record a caret range in place of the
+  // pin the caller asked for, so it is rejected by name.
+  if (values['exact'] !== undefined) {
+    process.stderr.write('--exact was removed in 0.23; use --pin\n');
+    return 1;
   }
 
-  const pin = values['pin'] === true || values['exact'] === true;
+  const pin = values['pin'] === true;
   const rangeArg =
     typeof values['range'] === 'string' ? values['range'] : undefined;
 
   // [ASSUMPTION] The spec assigns this check to install only, but
-  // --pin/--exact and --range are still mutually exclusive by the same logic.
+  // --pin and --range are still mutually exclusive by the same logic.
   // Documented as a defensive check.
   if (pin && rangeArg !== undefined) {
-    process.stderr.write('--pin/--exact and --range are mutually exclusive\n');
+    process.stderr.write('--pin and --range are mutually exclusive\n');
     return 1;
   }
 
@@ -275,7 +274,7 @@ export async function run(argv: string[]): Promise<number> {
     // --range: install at the specific range so npm fetches that version set
     installSpec = `${pkgName}@${rangeArg}`;
   } else {
-    // Default, --pin, or --exact: always fetch latest from npm
+    // Default or --pin: always fetch latest from npm
     installSpec = `${pkgName}@latest`;
   }
 
@@ -317,7 +316,7 @@ export async function run(argv: string[]): Promise<number> {
     // --range: record the verbatim range argument
     newMountValue = `${pkgName}@${rangeArg}`;
   } else if (pin) {
-    // --pin / --exact: exact version, no caret
+    // --pin: exact version, no caret
     newMountValue = `${pkgName}@${newVersion}`;
   } else {
     // Default: caret constraint

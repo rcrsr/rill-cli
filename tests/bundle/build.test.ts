@@ -31,7 +31,7 @@ beforeEach(() => {
 afterEach(async () => {
   process.chdir(savedCwd);
   for (const dir of tmpDirs.splice(0)) {
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 });
 

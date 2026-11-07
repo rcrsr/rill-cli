@@ -106,10 +106,10 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     // rill help <cmd> → equivalent to rill <cmd> --help
-    return dispatchSubcommand(helpTarget, ['--help']);
+    return await dispatchSubcommand(helpTarget, ['--help']);
   }
 
-  return dispatchSubcommand(subcommand, argv.slice(1));
+  return await dispatchSubcommand(subcommand, argv.slice(1));
 }
 
 /**
@@ -142,8 +142,9 @@ function dispatchSubcommand(name: string, subArgv: string[]): Promise<number> {
 // Guard against running during tests (matches repo convention)
 const shouldRunMain =
   process.env['NODE_ENV'] !== 'test' &&
-  !process.env['VITEST'] &&
-  !process.env['VITEST_WORKER_ID'];
+  (process.env['VITEST'] === undefined || process.env['VITEST'] === '') &&
+  (process.env['VITEST_WORKER_ID'] === undefined ||
+    process.env['VITEST_WORKER_ID'] === '');
 
 if (shouldRunMain) {
   main(process.argv.slice(2))

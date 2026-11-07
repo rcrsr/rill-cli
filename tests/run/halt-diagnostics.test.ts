@@ -19,14 +19,23 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runScript } from '../../src/run/runner.js';
 import type { RunCliOptions } from '../../src/run/types.js';
 import type { RillConfigFile } from '@rcrsr/rill-config';
+
+/** Shape of the parsed JSON halt envelope that these tests inspect. */
+interface HaltJson {
+  errorId: string;
+  atom: string;
+  provider: string;
+  message: string;
+  trace: unknown[];
+}
 
 // ============================================================
 // MODULE MODE: runScript helper (operates on synthetic temp file)
@@ -182,7 +191,7 @@ describe('rill-run halt output (module mode)', () => {
     it('emits a structured envelope with errorId, atom, provider, and trace', async () => {
       const result = await runHalt({ format: 'json' });
       expect(result.errorOutput).toBeDefined();
-      const parsed = JSON.parse(result.errorOutput!);
+      const parsed = JSON.parse(result.errorOutput!) as HaltJson;
       expect(parsed.errorId).toBe('RILL-R038');
       expect(parsed.atom).toBe('#RILL_R038');
       expect(parsed.provider).toBe('runtime');
@@ -207,7 +216,7 @@ describe('rill-run halt output (module mode)', () => {
     it('emits a structured atom-only envelope, not a bare placeholder', async () => {
       const result = await runHalt({ format: 'json', atomOnly: true });
       expect(result.errorOutput).toBeDefined();
-      const parsed = JSON.parse(result.errorOutput!);
+      const parsed = JSON.parse(result.errorOutput!) as HaltJson;
       expect(parsed.atom).toBe('#RILL_R038');
       expect(parsed.errorId).toBe('RILL-R038');
     });
@@ -262,7 +271,7 @@ describe('rill-run halt output (handler mode)', () => {
     it('--format json emits a parseable structured envelope', () => {
       const result = spawnRillRun(TYPE_ASSERTION, ['--format', 'json']);
       expect(result.exitCode).toBe(1);
-      const parsed = JSON.parse(result.stderr);
+      const parsed = JSON.parse(result.stderr) as HaltJson;
       expect(parsed.atom).toBe('#TYPE_MISMATCH');
       expect(parsed.provider).toBe('runtime');
       expect(parsed.message).toContain('expected number');
@@ -279,7 +288,7 @@ describe('rill-run halt output (handler mode)', () => {
         '--atom-only',
       ]);
       expect(result.exitCode).toBe(1);
-      const parsed = JSON.parse(result.stderr);
+      const parsed = JSON.parse(result.stderr) as HaltJson;
       expect(parsed.atom).toBe('#TYPE_MISMATCH');
     });
 
@@ -298,7 +307,7 @@ describe('rill-run halt output (handler mode)', () => {
         'json',
       ]);
       expect(result.exitCode).toBe(1);
-      const parsed = JSON.parse(result.stderr);
+      const parsed = JSON.parse(result.stderr) as HaltJson;
       expect(parsed.atom).toBe('#TYPE_MISMATCH');
       expect(parsed.message).toContain('expected number');
     });
@@ -317,7 +326,7 @@ describe('rill-run halt output (handler mode)', () => {
     it('--format json includes user message in envelope', () => {
       const result = spawnRillRun(EXPLICIT_ERROR, ['--format', 'json']);
       expect(result.exitCode).toBe(1);
-      const parsed = JSON.parse(result.stderr);
+      const parsed = JSON.parse(result.stderr) as HaltJson;
       expect(parsed.atom).toBe('#RILL_R016');
       expect(parsed.message).toContain('deliberate halt');
     });
@@ -337,7 +346,7 @@ describe('rill-run halt output (handler mode)', () => {
     it('--format json carries the division atom', () => {
       const result = spawnRillRun(DIVIDE_BY_ZERO, ['--format', 'json']);
       expect(result.exitCode).toBe(1);
-      const parsed = JSON.parse(result.stderr);
+      const parsed = JSON.parse(result.stderr) as HaltJson;
       expect(parsed.atom).toBe('#RILL_R002');
     });
   });

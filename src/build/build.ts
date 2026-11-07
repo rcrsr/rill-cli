@@ -219,7 +219,6 @@ async function readBuildMarker(dir: string): Promise<BuildMarker | undefined> {
       parsed !== null &&
       typeof parsed === 'object' &&
       Array.isArray((parsed as Record<string, unknown>)['owned']) &&
-      (parsed as Record<string, unknown>)['owned'] &&
       (parsed as { owned: unknown[] }).owned.every(
         (e) => typeof e === 'string' && isSafeMarkerEntry(e)
       )
@@ -244,7 +243,7 @@ async function removeEntries(
   await Promise.all(
     entries.map((entry) =>
       rm(path.join(dir, entry), { recursive: true, force: true }).catch(
-        () => undefined
+        () => {}
       )
     )
   );
@@ -283,7 +282,7 @@ async function ensureFlatOutputDir(dir: string): Promise<void> {
 
   await removeEntries(dir, marker.owned);
   await rm(path.join(dir, BUILD_MARKER_FILENAME), { force: true }).catch(
-    () => undefined
+    () => {}
   );
 }
 
@@ -572,7 +571,7 @@ async function buildPackageFiles(
       : mountSpecifier;
 
     const existing = bundledByIdentity.get(identity);
-    if (existing) {
+    if (existing !== undefined && existing !== '') {
       rewrittenMounts[alias] = existing;
       continue;
     }
@@ -918,7 +917,7 @@ export async function buildPackage(
   await myTask;
 
   if (chdirError !== undefined) {
-    const err = chdirError;
+    const err: unknown = chdirError;
     if (
       err instanceof ConfigEnvError ||
       (err instanceof ExtensionLoadError &&
@@ -935,7 +934,7 @@ export async function buildPackage(
         );
       } else {
         await rm(packageOutDir, { recursive: true, force: true }).catch(
-          () => undefined
+          () => {}
         );
       }
       const msg = err instanceof Error ? err.message : String(err);
@@ -1071,7 +1070,7 @@ export async function buildPackage(
     const msg = err instanceof Error ? err.message : String(err);
     throw new BuildError(`Cannot generate runtime.js: ${msg}`, 'bundling');
   } finally {
-    await rm(runtimeSrcPath, { force: true }).catch(() => undefined);
+    await rm(runtimeSrcPath, { force: true }).catch(() => {});
   }
 
   // run.js — thin CLI wrapper (not bundled, imports from ./runtime.js)

@@ -30,9 +30,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 // ============================================================
 
 const SILENT_LOGGER: Logger = {
-  info: () => undefined,
-  warn: () => undefined,
-  error: () => undefined,
+  info: () => {},
+  warn: () => {},
+  error: () => {},
 };
 
 const MINIMAL_BUNDLE: ResolvedRillBundleConfig = {
@@ -132,11 +132,7 @@ function makeServeContext(
     args?: readonly string[];
   } = {}
 ): ServeContext {
-  const {
-    bundle = MINIMAL_BUNDLE,
-    requestedMount = undefined,
-    args = [],
-  } = opts;
+  const { bundle = MINIMAL_BUNDLE, requestedMount, args = [] } = opts;
   return {
     bundleDir: '',
     bundle,
@@ -146,8 +142,8 @@ function makeServeContext(
     requestedMount,
     args,
     compile: () => Promise.resolve([...packages]),
-    onSourceChange: () => undefined,
-    onShutdown: () => undefined,
+    onSourceChange: () => {},
+    onShutdown: () => {},
   };
 }
 
@@ -292,8 +288,8 @@ describe('builtinHarness.serve dispatch', () => {
     info: (...args) => {
       logs.push(args);
     },
-    warn: () => undefined,
-    error: () => undefined,
+    warn: () => {},
+    error: () => {},
   };
 
   beforeEach(() => {

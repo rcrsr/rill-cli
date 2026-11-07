@@ -1,0 +1,17 @@
+{
+  // Type context for `oxlint --type-aware` only. The type-aware backend ignores
+  // --tsconfig and uses the nearest tsconfig.json per file, and the root config
+  // scopes `include` to src/ because it drives the emit. Without this file,
+  // linting tests/ on its own resolves node:* imports to an error type and every
+  // type-aware rule reports noise. It emits nothing and `pnpm check:types` does
+  // not read it, so tests stay outside the typechecker as before.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "composite": false,
+    "declaration": false
+  },
+  "include": ["./**/*", "../src/**/*"],
+  "exclude": ["./**/fixtures/**"]
+}

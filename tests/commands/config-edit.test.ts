@@ -52,6 +52,10 @@ function writeConfig(dir: string, content: object): string {
 // TESTS: readConfigSnapshot (IR-12)
 // ============================================================
 
+interface ConfigShape {
+  extensions: { mounts: Record<string, string> };
+}
+
 describe('readConfigSnapshot', () => {
   afterEach(() => {
     vi.resetAllMocks();
@@ -150,7 +154,7 @@ describe('applyMountEdit', () => {
       );
 
       const written = fs.readFileSync(snapshot.path, 'utf8');
-      const parsed = JSON.parse(written);
+      const parsed = JSON.parse(written) as ConfigShape;
       expect(parsed.extensions.mounts.foo).toBe('pkg@^1.0.0');
       expect(loadProjectMock).toHaveBeenCalledOnce();
     } finally {
@@ -175,7 +179,7 @@ describe('applyMountEdit', () => {
       await applyMountEdit(snapshot, { kind: 'remove', mount: 'foo' }, tmpDir);
 
       const written = fs.readFileSync(snapshot.path, 'utf8');
-      const parsed = JSON.parse(written);
+      const parsed = JSON.parse(written) as ConfigShape;
       expect(parsed.extensions.mounts).not.toHaveProperty('foo');
       expect(parsed.extensions.mounts.bar).toBe('other@2.0.0');
       expect(loadProjectMock).toHaveBeenCalledOnce();
@@ -276,14 +280,14 @@ describe('applyMountEdit', () => {
     let writeCallCount = 0;
     const writeSpy = vi
       .spyOn(fs.promises, 'writeFile')
-      .mockImplementation(async (...args: Parameters<typeof origWriteFile>) => {
+      .mockImplementation((...args: Parameters<typeof origWriteFile>) => {
         writeCallCount++;
         // First write = the edit itself; let it through. Second write = the
         // rollback attempt; fail it to simulate a rollback-write failure.
         if (writeCallCount === 1) {
           return origWriteFile(...args);
         }
-        throw new Error('EACCES: rollback write denied');
+        return Promise.reject(new Error('EACCES: rollback write denied'));
       });
 
     try {
@@ -341,7 +345,7 @@ describe('applyMountEdit', () => {
       );
 
       const written = fs.readFileSync(snapshot.path, 'utf8');
-      const parsed = JSON.parse(written);
+      const parsed = JSON.parse(written) as ConfigShape;
       expect(parsed.extensions.mounts.foo).toBe('pkg@^1.0.0');
       expect(loadProjectMock).not.toHaveBeenCalled();
     } finally {

@@ -32,6 +32,60 @@
     "typescript/no-unsafe-function-type": "error",
     "typescript/no-wrapper-object-types": "error",
     "typescript/no-array-constructor": "error",
+    "eqeqeq": "error",
+    "no-shadow": "error",
+    "max-lines": [
+      "error",
+      { "max": 1000, "skipBlankLines": true, "skipComments": true }
+    ],
+    "typescript/explicit-module-boundary-types": "error",
+
+    "import/no-cycle": "error",
+    "import/no-self-import": "error",
+    "import/no-empty-named-blocks": "error",
+    "import/no-named-as-default-member": "error",
+
+    "vitest/expect-expect": [
+      "error",
+      { "assertFunctionNames": ["expect", "expect*"] }
+    ],
+    "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+    "vitest/no-standalone-expect": "error",
+    "vitest/no-identical-title": "error",
+    "vitest/no-focused-tests": "error",
+    "vitest/no-disabled-tests": "error",
+    "vitest/no-commented-out-tests": "error",
+
+    "promise/catch-or-return": ["error", { "allowThen": true }],
+    "promise/no-return-wrap": "error",
+    "promise/no-new-statics": "error",
+
+    "require-await": "error",
+    "radix": "error",
+    "no-throw-literal": "error",
+    "no-promise-executor-return": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/no-useless-undefined": "error",
+    "unicorn/explicit-length-check": "error",
+    "unicorn/prefer-string-slice": "error",
+
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/strict-boolean-expressions": "error",
+    "typescript/consistent-return": "error",
+    "typescript/strict-void-return": "error",
+    "typescript/return-await": ["error", "error-handling-correctness-only"],
+    "typescript/unbound-method": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/switch-exhaustiveness-check": [
+      "error",
+      { "considerDefaultExhaustiveForUnions": true }
+    ],
+    "typescript/no-floating-promises": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-argument": "error",
 
     // These two ship in the vitest plugin's `correctness` category, so loading
     // the plugin above turns them on against the `categories` setting. Each is
@@ -45,7 +99,9 @@
     // - vitest/require-mock-type-parameters (41 hits): stylistic; wants an
     //   explicit type parameter on every vi.fn().
     "vitest/no-conditional-expect": "off",
-    "vitest/require-mock-type-parameters": "off"
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/require-to-throw-message": "off",
+    "promise/valid-params": "off"
 
     // Also deliberately NOT disabled, recorded so the next reader does not
     // re-measure: vitest/warn-todo and vitest/valid-title both fired and were
@@ -58,7 +114,10 @@
     "**/dist/**",
     "**/node_modules/**",
     "**/*.d.ts",
-    "**/generated/**"
+    "**/generated/**",
+    // Build fixtures are input files the build tests compile, not code this
+    // repository maintains; linting them would lint the test data.
+    "tests/**/fixtures/**"
   ],
   // A package specifier, not a relative path: the rules ship in
   // `@rcrsr/rill-dev`, pinned in the lockfile. The rules it registers are
@@ -69,6 +128,15 @@
   // constructs one.
   "jsPlugins": ["@rcrsr/rill-dev/lint-rules"],
   "overrides": [
+    {
+      // STD-LINT-10 caps shipped source at 1000 lines. Test files are exempt:
+      // a table-driven suite grows with the cases it covers, and splitting it
+      // only to satisfy a line count scatters one behaviour across files.
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
     {
       // Scoped to shipped source. This repository has a private planning
       // directory at conduct/, so STD-LINT-3 applies: its identifiers are

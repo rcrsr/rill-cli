@@ -571,7 +571,7 @@ describe('main() loadProject flow', () => {
     beforeEach(() => {
       mocks.readFileSync.mockReturnValue('# script source');
       mocks.parse.mockReturnValue({ type: 'Script', body: [] });
-      mocks.execute.mockResolvedValue(undefined);
+      mocks.execute.mockResolvedValue();
       mocks.isScriptCallable.mockReturnValue(true);
       mocks.isStream.mockReturnValue(false);
       mocks.invokeCallable.mockResolvedValue('');
@@ -582,7 +582,7 @@ describe('main() loadProject flow', () => {
       mocks.createRuntimeContext.mockReturnValue({
         variables,
         get pipeValue() {
-          return undefined;
+          return;
         },
         set pipeValue(_v: unknown) {},
       });
@@ -719,15 +719,11 @@ describe('main() loadProject flow', () => {
       mocks.invokeCallable.mockResolvedValue(fakeStream);
       mocks.isStream.mockReturnValue(true);
       mocks.drainStream.mockImplementation(
-        async (
-          _stream: unknown,
-          _ctx: unknown,
-          onChunk?: (v: unknown) => void
-        ) => {
+        (_stream: unknown, _ctx: unknown, onChunk?: (v: unknown) => void) => {
           for (const chunk of ['chunk1', 'chunk2']) {
             if (onChunk) onChunk(chunk);
           }
-          return ['chunk1', 'chunk2'];
+          return Promise.resolve(['chunk1', 'chunk2']);
         }
       );
 
@@ -831,7 +827,7 @@ describe('main() loadProject flow', () => {
     beforeEach(() => {
       mocks.readFileSync.mockReturnValue('# script source');
       mocks.parse.mockReturnValue({ type: 'Script', body: [] });
-      mocks.execute.mockResolvedValue(undefined);
+      mocks.execute.mockResolvedValue();
       mocks.isScriptCallable.mockReturnValue(true);
       mocks.isStream.mockReturnValue(false);
 
@@ -841,7 +837,7 @@ describe('main() loadProject flow', () => {
       mocks.createRuntimeContext.mockReturnValue({
         variables,
         get pipeValue() {
-          return undefined;
+          return;
         },
         set pipeValue(_v: unknown) {},
       });
@@ -901,7 +897,7 @@ describe('main() loadProject flow', () => {
     });
 
     it('disposes project.disposes exactly once when the handler throws', async () => {
-      const dispose = vi.fn().mockResolvedValue(undefined);
+      const dispose = vi.fn().mockResolvedValue();
       mocks.loadProject.mockResolvedValue({
         ...makeHandlerProject(),
         disposes: [dispose],

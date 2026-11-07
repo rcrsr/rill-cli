@@ -131,7 +131,7 @@ describe('cli dispatch', () => {
       let handlerEntryTime: number | undefined;
       const mainCallTime = performance.now();
 
-      mocks.bootstrapRun.mockImplementation(async () => {
+      mocks.bootstrapRun.mockImplementation(() => {
         handlerEntryTime = performance.now();
         return 0;
       });

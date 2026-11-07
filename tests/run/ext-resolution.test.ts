@@ -29,7 +29,7 @@ function makeExtTree(): Record<string, RillValue> {
   return {
     tools: {
       greet: toCallable({
-        fn: async (_args: unknown[]) => 'hello',
+        fn: (_args: unknown[]) => 'hello',
         params: [
           {
             name: 'name',
@@ -42,7 +42,7 @@ function makeExtTree(): Record<string, RillValue> {
         annotations: { description: 'Greets a user by name' },
       }),
       compute: toCallable({
-        fn: async (_args: unknown[]) => 42,
+        fn: (_args: unknown[]) => 42,
         params: [],
         returnType: structureToTypeValue({ kind: 'number' }),
         annotations: {},
@@ -174,7 +174,7 @@ describe('ext-resolution', () => {
       tools: {
         inner: {
           fn: toCallable({
-            fn: async (_args: unknown[]) => 'deep',
+            fn: (_args: unknown[]) => 'deep',
             params: [],
             returnType: structureToTypeValue({ kind: 'string' }),
             annotations: { description: 'A deeply nested function' },

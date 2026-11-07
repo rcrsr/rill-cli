@@ -44,14 +44,14 @@ export function explainError(errorId: string): string | null {
   sections.push('');
 
   // Cause section (if present)
-  if (definition.cause) {
+  if (definition.cause !== undefined && definition.cause !== '') {
     sections.push('Cause:');
     sections.push(`  ${definition.cause}`);
     sections.push('');
   }
 
   // Resolution section (if present)
-  if (definition.resolution) {
+  if (definition.resolution !== undefined && definition.resolution !== '') {
     sections.push('Resolution:');
     sections.push(`  ${definition.resolution}`);
     sections.push('');

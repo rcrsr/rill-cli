@@ -132,10 +132,7 @@ export async function scaffoldPackageDir(
   }
   if (!gitignoreLines.some((line) => line === rillEntry)) {
     const prefix =
-      gitignoreLines.length > 0 &&
-      gitignoreLines[gitignoreLines.length - 1] !== ''
-        ? '\n'
-        : '';
+      gitignoreLines.length > 0 && gitignoreLines.at(-1) !== '' ? '\n' : '';
     fs.appendFileSync(gitignorePath, `${prefix}${rillEntry}\n`, 'utf8');
   }
 

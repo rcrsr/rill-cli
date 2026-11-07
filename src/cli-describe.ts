@@ -113,7 +113,7 @@ function parseArgs(argv: string[]): ParsedArgs | { mode: 'help' } {
       return parseProjectArgs(rest);
     case 'handler':
       return parseHandlerArgs(rest);
-    case 'builtins':
+    default:
       return parseBuiltinsArgs(rest);
   }
 }
@@ -255,7 +255,7 @@ function rillReplacer(_key: string, v: unknown): unknown {
     v !== null &&
     typeof v === 'object' &&
     !Array.isArray(v) &&
-    Object.keys(v as object).some((k) => k.startsWith(RILL_KEY_PREFIX))
+    Object.keys(v).some((k) => k.startsWith(RILL_KEY_PREFIX))
   ) {
     return null;
   }
@@ -387,7 +387,7 @@ function collectAnyReturnCallables(
     return;
   }
 
-  const node = tree as { [key: string]: ContractTree };
+  const node = tree;
   for (const key of Object.keys(node).sort()) {
     const child = node[key];
     if (child !== undefined) {
@@ -742,7 +742,7 @@ function runBuiltins(args: BuiltinsArgs): number {
   // Per-type method dicts: nested under each type name.
   const typeNamespace: { [key: string]: ContractTree } = {};
   for (const [typeName, methodDict] of ctx.typeMethodDicts) {
-    const subtree = buildTree(methodDict as RillValue, visited);
+    const subtree = buildTree(methodDict, visited);
     if (subtree !== null) {
       typeNamespace[typeName] = subtree;
     }
@@ -813,7 +813,7 @@ export async function main(argv: string[]): Promise<number> {
         return await runProject(parsed);
       case 'handler':
         return await runHandler(parsed);
-      case 'builtins':
+      default:
         return runBuiltins(parsed);
     }
   } catch (err) {

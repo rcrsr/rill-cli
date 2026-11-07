@@ -18,9 +18,7 @@ import {
   isInvalid,
   invokeCallable,
   type RillValue,
-  type RillTuple,
   type RillStream,
-  type RillCallable,
   type RuntimeContext,
   type RuntimeOptions,
   type SchemeResolver,
@@ -213,16 +211,16 @@ export async function drainStream(
         }
       }
       const nextFn = current.next;
-      if (!isCallable(nextFn as RillValue)) break;
-      const next = await invokeCallable(nextFn as RillCallable, [], ctx);
-      if (!isStream(next as RillValue)) break;
-      current = next as RillStream;
+      if (!isCallable(nextFn)) break;
+      const next = await invokeCallable(nextFn, [], ctx);
+      if (!isStream(next)) break;
+      current = next;
     }
   } finally {
     const disposeFn = (stream as Record<string, unknown>)[
       '__rill_stream_dispose'
     ];
-    if (typeof disposeFn === 'function') disposeFn();
+    if (typeof disposeFn === 'function') (disposeFn as () => void)();
   }
 
   return chunks;
@@ -230,11 +228,11 @@ export async function drainStream(
 
 /** Write to stdout with backpressure handling. */
 function writeWithBackpressure(data: string): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((done) => {
     if (process.stdout.write(data)) {
-      resolve();
+      done();
     } else {
-      process.stdout.once('drain', resolve);
+      process.stdout.once('drain', done);
     }
   });
 }
@@ -267,7 +265,8 @@ export function createStreamWriter(format: RunCliOptions['format']): {
 
   return {
     async onChunk(value: RillValue) {
-      await writeWithBackpressure(String(value));
+      const raw: unknown = value;
+      await writeWithBackpressure(String(raw));
     },
     async finalize() {},
   };
@@ -298,7 +297,7 @@ function mapResultToRunResult(
   }
 
   if (isTuple(result)) {
-    const tuple = result as RillTuple;
+    const tuple = result;
     if (tuple.entries.length === 2) {
       const code = tuple.entries[0];
       const message = tuple.entries[1];
@@ -350,7 +349,7 @@ export async function runScript(
   extTree: Record<string, RillValue>,
   disposes: Array<() => void | Promise<void>>
 ): Promise<RunResult> {
-  if (!opts.scriptPath) {
+  if (opts.scriptPath === undefined || opts.scriptPath === '') {
     return { exitCode: 1, errorOutput: 'no script path provided' };
   }
 
@@ -407,7 +406,7 @@ export async function runScript(
     result = execResult.result;
     if (isStream(result)) {
       const writer = createStreamWriter(opts.format);
-      await drainStream(result as RillStream, ctx, writer.onChunk);
+      await drainStream(result, ctx, writer.onChunk);
       await writer.finalize();
       return { exitCode: 0 };
     }

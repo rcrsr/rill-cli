@@ -338,7 +338,7 @@ describe('dispose-once (in-process, mocked project)', () => {
   function makeProjectWithDisposeSpy(
     overrides: Partial<{ main: string }> = {}
   ) {
-    const disposeSpy = vi.fn().mockResolvedValue(undefined);
+    const disposeSpy = vi.fn().mockResolvedValue();
     const config: { main?: string } = {};
     if (overrides.main !== undefined) {
       config.main = overrides.main;

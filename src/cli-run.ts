@@ -21,7 +21,6 @@ import {
   toNative,
   VERSION,
   type RuntimeOptions,
-  type RillStream,
 } from '@rcrsr/rill';
 import {
   resolveConfigPath,
@@ -472,7 +471,7 @@ export async function main(argv: string[]): Promise<number> {
         (p) =>
           (Object.prototype.hasOwnProperty.call(handlerArgs, p.name)
             ? handlerArgs[p.name]
-            : undefined) as unknown as import('@rcrsr/rill').RillValue
+            : undefined) as import('@rcrsr/rill').RillValue
       );
 
       let handlerResult: import('@rcrsr/rill').RillValue;
@@ -482,7 +481,7 @@ export async function main(argv: string[]): Promise<number> {
         if (isStream(handlerResult)) {
           streamed = true;
           const writer = createStreamWriter(opts.format);
-          await drainStream(handlerResult as RillStream, ctx, writer.onChunk);
+          await drainStream(handlerResult, ctx, writer.onChunk);
           await writer.finalize();
         }
       } catch (err) {
